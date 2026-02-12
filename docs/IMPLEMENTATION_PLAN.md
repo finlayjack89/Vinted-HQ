@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0  
 **Last Updated:** 12 Feb 2025  
-**Status:** Phase 1 Complete — Ready for Phase 2
+**Status:** Phase 3 Complete — Ready for Phase 4
 
 ---
 
@@ -293,4 +293,4 @@ vinted-hq/
 
 ## 12. Next Action
 
-**Start Phase 0, Task 0.1:** Open vinted.co.uk in Chrome, log in, perform a search, and document the Network requests in `docs/VINTED_API_REFERENCE.md`.
+**Start Phase 4, Task 4.1:** Add to cart API (implement via Python bridge).

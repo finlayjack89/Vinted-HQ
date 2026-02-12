@@ -3,12 +3,13 @@
  */
 
 import React, { useState } from 'react';
+import Feed from './components/Feed';
 import Settings from './components/Settings';
 
 type Tab = 'feed' | 'settings';
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('settings');
+  const [tab, setTab] = useState<Tab>('feed');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
@@ -52,12 +53,8 @@ export default function App() {
         </nav>
       </header>
 
-      <main style={{ flex: 1 }}>
-        {tab === 'feed' && (
-          <div style={{ padding: 24 }}>
-            <p style={{ color: '#666' }}>Feed coming in Phase 3. Add search URLs in Settings first.</p>
-          </div>
-        )}
+      <main style={{ flex: 1, overflow: 'auto' }}>
+        {tab === 'feed' && <Feed />}
         {tab === 'settings' && <Settings />}
       </main>
     </div>

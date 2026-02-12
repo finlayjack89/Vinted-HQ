@@ -1,9 +1,9 @@
 /**
- * Settings page — session, polling, couriers, delivery, proxies
+ * Settings page — session, polling, couriers, delivery, proxies, search URLs
  */
 
 import React, { useEffect, useState } from 'react';
-import type { AppSettings } from '../types/global';
+import type { AppSettings, SearchUrl } from '../types/global';
 
 const defaultSettings: AppSettings = {
   pollingIntervalSeconds: 5,
@@ -23,10 +23,13 @@ export default function Settings() {
   const [cookieInput, setCookieInput] = useState('');
   const [proxyInput, setProxyInput] = useState('');
   const [saved, setSaved] = useState(false);
+  const [searchUrls, setSearchUrls] = useState<SearchUrl[]>([]);
+  const [searchUrlInput, setSearchUrlInput] = useState('');
 
   useEffect(() => {
     window.vinted.getSettings().then(setSettings);
     window.vinted.hasCookie().then(setHasCookie);
+    window.vinted.getSearchUrls().then(setSearchUrls);
   }, []);
 
   const handleSaveCookie = async () => {
@@ -64,6 +67,30 @@ export default function Settings() {
     const urls = settings.proxyUrls.filter((_, i) => i !== index);
     setSettings((prev) => ({ ...prev, proxyUrls: urls }));
     window.vinted.setSetting('proxyUrls', urls);
+  };
+
+  const handleAddSearchUrl = async () => {
+    const url = searchUrlInput.trim();
+    if (!url) return;
+    const added = await window.vinted.addSearchUrl(url);
+    if (added) {
+      setSearchUrls((prev) => [...prev, added]);
+      setSearchUrlInput('');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      window.vinted.startFeedPolling();
+    }
+  };
+
+  const handleToggleSearchUrl = async (id: number, enabled: boolean) => {
+    await window.vinted.updateSearchUrl(id, { enabled });
+    setSearchUrls((prev) => prev.map((u) => (u.id === id ? { ...u, enabled } : u)));
+    if (enabled) window.vinted.startFeedPolling();
+  };
+
+  const handleDeleteSearchUrl = async (id: number) => {
+    await window.vinted.deleteSearchUrl(id);
+    setSearchUrls((prev) => prev.filter((u) => u.id !== id));
   };
 
   return (
@@ -112,6 +139,61 @@ export default function Settings() {
               Save session
             </button>
           </>
+        )}
+      </section>
+
+      {/* Search URLs (Phase 3) */}
+      <section style={{ marginBottom: 32 }}>
+        <h3>Search URLs</h3>
+        <p style={{ color: '#666', fontSize: 14 }}>
+          Vinted catalog URLs to poll. One proxy per URL (from list below). Active = included in feed.
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <input
+            type="url"
+            placeholder="https://www.vinted.co.uk/catalog?search_text=...&order=newest_first"
+            value={searchUrlInput}
+            onChange={(e) => setSearchUrlInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddSearchUrl()}
+            style={{ flex: 1, padding: 8 }}
+          />
+          <button type="button" onClick={handleAddSearchUrl} style={{ padding: '8px 16px', cursor: 'pointer' }}>
+            Add
+          </button>
+        </div>
+        {searchUrls.length > 0 && (
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {searchUrls.map((u) => (
+              <li
+                key={u.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 0',
+                  borderBottom: '1px solid #eee',
+                }}
+              >
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={u.enabled}
+                    onChange={(e) => handleToggleSearchUrl(u.id, e.target.checked)}
+                  />
+                  <span style={{ fontFamily: 'monospace', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={u.url}>
+                    {u.url}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSearchUrl(u.id)}
+                  style={{ fontSize: 12, cursor: 'pointer', color: '#c00', flexShrink: 0 }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

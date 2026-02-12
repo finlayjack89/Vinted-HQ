@@ -5,6 +5,8 @@ import { spawn, ChildProcess } from 'node:child_process';
 import started from 'electron-squirrel-startup';
 import { initDb, closeDb } from './main/db';
 import { registerIpcHandlers } from './main/ipc';
+import * as feedService from './main/feedService';
+import * as searchUrls from './main/searchUrls';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -86,9 +88,13 @@ app.on('ready', () => {
   registerIpcHandlers();
   startPythonBridge();
   createWindow();
+  if (searchUrls.getEnabledSearchUrls().length > 0) {
+    feedService.startPolling();
+  }
 });
 
 app.on('before-quit', () => {
+  feedService.stopPolling();
   stopPythonBridge();
   closeDb();
 });
