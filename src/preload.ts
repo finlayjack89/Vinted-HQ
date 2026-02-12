@@ -4,6 +4,13 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 
+export type SniperCountdownParams = {
+  countdownId: string;
+  item: { id: number; title: string; price: string; [k: string]: unknown };
+  sniper: { id: number; name: string };
+  secondsLeft: number;
+};
+
 export type AppSettings = {
   pollingIntervalSeconds: number;
   defaultCourier: string;
@@ -75,6 +82,24 @@ contextBridge.exposeInMainWorld('vinted', {
     const handler = (_: unknown, params: { redirectUrl: string; purchaseId: string }) => callback(params);
     ipcRenderer.on('checkout:3ds-required', handler);
     return () => ipcRenderer.removeListener('checkout:3ds-required', handler);
+  },
+  getSnipers: () => ipcRenderer.invoke('snipers:getAll'),
+  addSniper: (data: { name: string; price_max?: number; keywords?: string; condition?: string; budget_limit?: number }) =>
+    ipcRenderer.invoke('snipers:add', data),
+  updateSniper: (id: number, updates: { name?: string; price_max?: number; keywords?: string; condition?: string; budget_limit?: number; enabled?: boolean }) =>
+    ipcRenderer.invoke('snipers:update', id, updates),
+  deleteSniper: (id: number) => ipcRenderer.invoke('snipers:delete', id),
+  getSniperSpent: (id: number) => ipcRenderer.invoke('snipers:getSpent', id),
+  cancelSniperCountdown: (countdownId: string) => ipcRenderer.invoke('sniper:cancelCountdown', countdownId),
+  onSniperCountdown: (callback: (params: SniperCountdownParams) => void) => {
+    const handler = (_: unknown, params: SniperCountdownParams) => callback(params);
+    ipcRenderer.on('sniper:countdown', handler);
+    return () => ipcRenderer.removeListener('sniper:countdown', handler);
+  },
+  onSniperCountdownDone: (callback: (params: { countdownId: string; simulated?: boolean; ok?: boolean; message: string }) => void) => {
+    const handler = (_: unknown, params: { countdownId: string; simulated?: boolean; ok?: boolean; message: string }) => callback(params);
+    ipcRenderer.on('sniper:countdown-done', handler);
+    return () => ipcRenderer.removeListener('sniper:countdown-done', handler);
   },
   onFeedItems: (callback: (items: unknown[]) => void) => {
     const handler = (_: unknown, items: unknown[]) => callback(items);

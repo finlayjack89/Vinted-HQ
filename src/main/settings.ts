@@ -14,6 +14,8 @@ export interface AppSettings {
   verificationThresholdPounds: number;
   authRequiredForPurchase: boolean;
   proxyUrls: string[];
+  simulationMode: boolean;
+  autobuyEnabled: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -26,6 +28,8 @@ const DEFAULTS: AppSettings = {
   verificationThresholdPounds: 100,
   authRequiredForPurchase: true,
   proxyUrls: [],
+  simulationMode: true,
+  autobuyEnabled: false,
 };
 
 const SETTINGS_KEYS: (keyof AppSettings)[] = [
@@ -38,6 +42,8 @@ const SETTINGS_KEYS: (keyof AppSettings)[] = [
   'verificationThresholdPounds',
   'authRequiredForPurchase',
   'proxyUrls',
+  'simulationMode',
+  'autobuyEnabled',
 ];
 
 function serialize(value: unknown): string {
@@ -50,7 +56,7 @@ function deserialize(key: keyof AppSettings, value: string): unknown {
   if (key === 'pollingIntervalSeconds' || key === 'latitude' || key === 'longitude' || key === 'verificationThresholdPounds') {
     return parseFloat(value) || DEFAULTS[key];
   }
-  if (key === 'verificationEnabled' || key === 'authRequiredForPurchase') {
+  if (key === 'verificationEnabled' || key === 'authRequiredForPurchase' || key === 'simulationMode' || key === 'autobuyEnabled') {
     return value === '1';
   }
   if (key === 'proxyUrls') {

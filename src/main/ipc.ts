@@ -9,6 +9,8 @@ import * as bridge from './bridge';
 import * as searchUrls from './searchUrls';
 import * as feedService from './feedService';
 import * as checkoutService from './checkoutService';
+import * as snipers from './snipers';
+import * as sniperService from './sniperService';
 import type { AppSettings } from './settings';
 import { logger } from './logger';
 
@@ -84,6 +86,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('feed:startPolling', () => feedService.startPolling());
   ipcMain.handle('feed:stopPolling', () => feedService.stopPolling());
   ipcMain.handle('feed:isPolling', () => feedService.isPollingActive());
+
+  // Snipers (Phase 5)
+  ipcMain.handle('snipers:getAll', () => snipers.getAllSnipers());
+  ipcMain.handle('snipers:add', (_event, data: Parameters<typeof snipers.addSniper>[0]) => snipers.addSniper(data));
+  ipcMain.handle('snipers:update', (_event, id: number, updates: Parameters<typeof snipers.updateSniper>[1]) =>
+    snipers.updateSniper(id, updates)
+  );
+  ipcMain.handle('snipers:delete', (_event, id: number) => snipers.deleteSniper(id));
+  ipcMain.handle('snipers:getSpent', (_event, id: number) => snipers.getSniperSpent(id));
+  ipcMain.handle('sniper:cancelCountdown', (_event, countdownId: string) => sniperService.cancelCountdown(countdownId));
 
   // Checkout (Phase 4)
   ipcMain.handle(

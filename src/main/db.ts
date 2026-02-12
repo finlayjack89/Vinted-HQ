@@ -58,11 +58,17 @@ function migrate(database: Database.Database): void {
       order_id INTEGER,
       amount REAL,
       status TEXT,
+      sniper_id INTEGER,
       created_at INTEGER DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
     CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at);
   `);
+  // Migration: add sniper_id to purchases if missing
+  const cols = database.prepare("PRAGMA table_info(purchases)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'sniper_id')) {
+    database.prepare('ALTER TABLE purchases ADD COLUMN sniper_id INTEGER').run();
+  }
 }
 
 export function getDb(): Database.Database | null {

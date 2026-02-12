@@ -7,6 +7,7 @@ import { BrowserWindow } from 'electron';
 import * as bridge from './bridge';
 import * as searchUrls from './searchUrls';
 import * as settings from './settings';
+import * as sniperService from './sniperService';
 import { logger } from './logger';
 
 const PAGES_PER_URL = 3;
@@ -144,6 +145,8 @@ async function runPoll(): Promise<void> {
       win.webContents.send('feed:items', sorted);
     }
   }
+
+  sniperService.processItems(sorted);
 
   logger.info('feed:poll-complete', { urlCount: urls.length, itemCount: sorted.length });
 }

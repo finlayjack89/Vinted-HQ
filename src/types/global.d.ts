@@ -2,8 +2,26 @@
  * Global type declarations for renderer
  */
 
+export type Sniper = {
+  id: number;
+  name: string;
+  price_max: number | null;
+  keywords: string | null;
+  condition: string | null;
+  budget_limit: number;
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+};
+
+export type SniperCountdownParams = {
+  countdownId: string;
+  item: FeedItem;
+  sniper: { id: number; name: string };
+  secondsLeft: number;
+};
+
 export type AppSettings = {
-  pollingIntervalSeconds: number;
   defaultCourier: string;
   deliveryType: 'home' | 'dropoff';
   latitude: number;
@@ -12,6 +30,8 @@ export type AppSettings = {
   verificationThresholdPounds: number;
   authRequiredForPurchase: boolean;
   proxyUrls: string[];
+  simulationMode: boolean;
+  autobuyEnabled: boolean;
 };
 
 export type BridgeResult<T = unknown> =
@@ -88,6 +108,14 @@ declare global {
       checkoutBuy: (item: FeedItem, proxy?: string) => Promise<CheckoutResult>;
       onCheckoutProgress: (callback: (step: string) => void) => () => void;
       onCheckout3dsRequired: (callback: (params: { redirectUrl: string; purchaseId: string }) => void) => () => void;
+      getSnipers: () => Promise<Sniper[]>;
+      addSniper: (data: { name: string; price_max?: number; keywords?: string; condition?: string; budget_limit?: number }) => Promise<Sniper | null>;
+      updateSniper: (id: number, updates: Partial<Sniper>) => Promise<Sniper | null>;
+      deleteSniper: (id: number) => Promise<boolean>;
+      getSniperSpent: (id: number) => Promise<number>;
+      cancelSniperCountdown: (countdownId: string) => Promise<boolean>;
+      onSniperCountdown: (callback: (params: SniperCountdownParams) => void) => () => void;
+      onSniperCountdownDone: (callback: (params: { countdownId: string; simulated?: boolean; ok?: boolean; message: string }) => void) => () => void;
     };
   }
 }

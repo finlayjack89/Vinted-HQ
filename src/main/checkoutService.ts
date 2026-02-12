@@ -120,7 +120,7 @@ function emitProgress(step: string): void {
   }
 }
 
-export async function runCheckout(item: FeedItem, proxy?: string): Promise<CheckoutResult> {
+export async function runCheckout(item: FeedItem, proxy?: string, sniperId?: number): Promise<CheckoutResult> {
   const orderId = item.order_id ?? item.id;
   const price = parseFloat(item.price) || 0;
   const s = settings.getAllSettings();
@@ -222,8 +222,8 @@ export async function runCheckout(item: FeedItem, proxy?: string): Promise<Check
   const db = getDb();
   if (db) {
     db.prepare(
-      'INSERT INTO purchases (item_id, order_id, amount, status, created_at) VALUES (?, ?, ?, ?, unixepoch())'
-    ).run(item.id, orderId, item.price, 'completed');
+      'INSERT INTO purchases (item_id, order_id, amount, status, sniper_id, created_at) VALUES (?, ?, ?, ?, ?, unixepoch())'
+    ).run(item.id, orderId, item.price, 'completed', sniperId ?? null);
   }
 
   return {

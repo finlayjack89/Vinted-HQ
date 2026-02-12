@@ -3,7 +3,19 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import type { AppSettings, SearchUrl } from '../types/global';
+import type { AppSettings, SearchUrl, Sniper } from '../types/global';
+
+function SniperSpentDisplay({ sniperId, budgetLimit }: { sniperId: number; budgetLimit: number }) {
+  const [spent, setSpent] = useState<number | null>(null);
+  useEffect(() => {
+    window.vinted.getSniperSpent(sniperId).then(setSpent);
+  }, [sniperId]);
+  return (
+    <span style={{ color: '#666', fontSize: 12 }}>
+      budget £{budgetLimit} (spent: £{spent ?? '…'})
+    </span>
+  );
+}
 
 const defaultSettings: AppSettings = {
   pollingIntervalSeconds: 5,
@@ -15,6 +27,8 @@ const defaultSettings: AppSettings = {
   verificationThresholdPounds: 100,
   authRequiredForPurchase: true,
   proxyUrls: [],
+  simulationMode: true,
+  autobuyEnabled: false,
 };
 
 export default function Settings() {
@@ -25,11 +39,17 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [searchUrls, setSearchUrls] = useState<SearchUrl[]>([]);
   const [searchUrlInput, setSearchUrlInput] = useState('');
+  const [snipers, setSnipers] = useState<Sniper[]>([]);
+  const [sniperName, setSniperName] = useState('');
+  const [sniperPriceMax, setSniperPriceMax] = useState('');
+  const [sniperKeywords, setSniperKeywords] = useState('');
+  const [sniperBudget, setSniperBudget] = useState('');
 
   useEffect(() => {
     window.vinted.getSettings().then(setSettings);
     window.vinted.hasCookie().then(setHasCookie);
     window.vinted.getSearchUrls().then(setSearchUrls);
+    window.vinted.getSnipers().then(setSnipers);
   }, []);
 
   const handleSaveCookie = async () => {
@@ -91,6 +111,36 @@ export default function Settings() {
   const handleDeleteSearchUrl = async (id: number) => {
     await window.vinted.deleteSearchUrl(id);
     setSearchUrls((prev) => prev.filter((u) => u.id !== id));
+  };
+
+  const handleAddSniper = async () => {
+    const name = sniperName.trim();
+    if (!name) return;
+    const added = await window.vinted.addSniper({
+      name,
+      price_max: sniperPriceMax ? parseFloat(sniperPriceMax) : undefined,
+      keywords: sniperKeywords.trim() || undefined,
+      budget_limit: sniperBudget ? parseFloat(sniperBudget) : 0,
+    });
+    if (added) {
+      setSnipers((prev) => [...prev, added]);
+      setSniperName('');
+      setSniperPriceMax('');
+      setSniperKeywords('');
+      setSniperBudget('');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+  };
+
+  const handleToggleSniper = async (id: number, enabled: boolean) => {
+    await window.vinted.updateSniper(id, { enabled });
+    setSnipers((prev) => prev.map((s) => (s.id === id ? { ...s, enabled } : s)));
+  };
+
+  const handleDeleteSniper = async (id: number) => {
+    await window.vinted.deleteSniper(id);
+    setSnipers((prev) => prev.filter((s) => s.id !== id));
   };
 
   return (
@@ -187,6 +237,105 @@ export default function Settings() {
                 <button
                   type="button"
                   onClick={() => handleDeleteSearchUrl(u.id)}
+                  style={{ fontSize: 12, cursor: 'pointer', color: '#c00', flexShrink: 0 }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Autobuy (Phase 5) */}
+      <section style={{ marginBottom: 32 }}>
+        <h3>Autobuy (Sniper)</h3>
+        <label style={{ display: 'block', marginBottom: 8 }}>
+          <input
+            type="checkbox"
+            checked={settings.autobuyEnabled}
+            onChange={(e) => handleSettingsChange('autobuyEnabled', e.target.checked)}
+          />
+          Enable autobuy (snipers will attempt to purchase matching items)
+        </label>
+        <label style={{ display: 'block' }}>
+          <input
+            type="checkbox"
+            checked={settings.simulationMode}
+            onChange={(e) => handleSettingsChange('simulationMode', e.target.checked)}
+          />
+          Simulation mode — log "would have bought" only, no real purchases
+        </label>
+      </section>
+
+      {/* Snipers */}
+      <section style={{ marginBottom: 32 }}>
+        <h3>Snipers</h3>
+        <p style={{ color: '#666', fontSize: 14 }}>
+          Rules that auto-purchase matching items. Enable Autobuy above. Each sniper: price max, keywords, budget limit.
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+          <input
+            type="text"
+            placeholder="Name"
+            value={sniperName}
+            onChange={(e) => setSniperName(e.target.value)}
+            style={{ width: 120, padding: 8 }}
+          />
+          <input
+            type="number"
+            placeholder="Max £"
+            value={sniperPriceMax}
+            onChange={(e) => setSniperPriceMax(e.target.value)}
+            style={{ width: 80, padding: 8 }}
+          />
+          <input
+            type="text"
+            placeholder="Keywords"
+            value={sniperKeywords}
+            onChange={(e) => setSniperKeywords(e.target.value)}
+            style={{ width: 120, padding: 8 }}
+          />
+          <input
+            type="number"
+            placeholder="Budget £"
+            value={sniperBudget}
+            onChange={(e) => setSniperBudget(e.target.value)}
+            style={{ width: 80, padding: 8 }}
+          />
+          <button type="button" onClick={handleAddSniper} style={{ padding: '8px 16px', cursor: 'pointer' }}>
+            Add sniper
+          </button>
+        </div>
+        {snipers.length > 0 && (
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {snipers.map((s) => (
+              <li
+                key={s.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 0',
+                  borderBottom: '1px solid #eee',
+                }}
+              >
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={s.enabled}
+                    onChange={(e) => handleToggleSniper(s.id, e.target.checked)}
+                  />
+                  <span style={{ fontWeight: 500 }}>{s.name}</span>
+                  {s.price_max != null && <span style={{ color: '#666', fontSize: 12 }}>max £{s.price_max}</span>}
+                  {s.keywords && <span style={{ color: '#666', fontSize: 12 }}>"{s.keywords}"</span>}
+                  {s.budget_limit > 0 && (
+                    <SniperSpentDisplay sniperId={s.id} budgetLimit={s.budget_limit} />
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSniper(s.id)}
                   style={{ fontSize: 12, cursor: 'pointer', color: '#c00', flexShrink: 0 }}
                 >
                   Remove

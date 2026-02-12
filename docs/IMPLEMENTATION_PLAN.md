@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0  
 **Last Updated:** 12 Feb 2025  
-**Status:** Phase 4 Complete — Ready for Phase 5
+**Status:** Phase 5 Complete — Ready for Phase 6
 
 ---
 
@@ -293,4 +293,4 @@ vinted-hq/
 
 ## 12. Next Action
 
-**Start Phase 5, Task 5.1:** Sniper CRUD.
+**Start Phase 6, Task 6.1:** Session expiry UX.
