@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0  
 **Last Updated:** 12 Feb 2025  
-**Status:** Phase 0 Complete — Ready for Phase 1
+**Status:** Phase 0 Complete (API docs filled from HAR) — Ready for Phase 1
 
 ---
 

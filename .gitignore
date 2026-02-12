@@ -91,6 +91,9 @@ typings/
 # Electron-Forge
 out/
 
+# HAR files (may contain session tokens/cookies)
+*.har
+
 # Python
 python-bridge/venv/
 __pycache__/
