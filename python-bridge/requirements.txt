@@ -1,0 +1,6 @@
+# Vinted UK Sniper — Python Bridge
+# Stealth HTTP client for bypassing Cloudflare/Datadome
+
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+curl_cffi>=0.6.0
