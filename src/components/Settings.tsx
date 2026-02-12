@@ -196,7 +196,7 @@ export default function Settings() {
       <section style={{ marginBottom: 32 }}>
         <h3>Search URLs</h3>
         <p style={{ color: '#666', fontSize: 14 }}>
-          Vinted catalog URLs to poll. One proxy per URL (from list below). Active = included in feed.
+          Vinted catalog URLs to poll. One proxy per URL (from Proxies section below). Active = included in feed.
         </p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
           <input
@@ -238,6 +238,54 @@ export default function Settings() {
                   type="button"
                   onClick={() => handleDeleteSearchUrl(u.id)}
                   style={{ fontSize: 12, cursor: 'pointer', color: '#c00', flexShrink: 0 }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Proxies — essential for feed & checkout; placed after Search URLs for context */}
+      <section style={{ marginBottom: 32 }}>
+        <h3>Proxies (required for Vinted)</h3>
+        <p style={{ color: '#666', fontSize: 14 }}>
+          Residential proxies are recommended to avoid bot detection. One proxy per search URL — first proxy for first URL,
+          second for second URL, etc. Format: <code style={{ fontSize: 12 }}>http://user:pass@host:port</code> or{' '}
+          <code style={{ fontSize: 12 }}>socks5://user:pass@host:port</code>. Same proxy used for entire checkout (sticky).
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <input
+            type="text"
+            placeholder="http://user:pass@host:port or socks5://..."
+            value={proxyInput}
+            onChange={(e) => setProxyInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddProxy()}
+            style={{ flex: 1, padding: 8 }}
+          />
+          <button type="button" onClick={handleAddProxy} style={{ padding: '8px 16px', cursor: 'pointer' }}>
+            Add
+          </button>
+        </div>
+        {settings.proxyUrls.length > 0 && (
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {settings.proxyUrls.map((url, i) => (
+              <li
+                key={i}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '6px 0',
+                  borderBottom: '1px solid #eee',
+                }}
+              >
+                <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{url}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveProxy(i)}
+                  style={{ fontSize: 12, cursor: 'pointer', color: '#c00' }}
                 >
                   Remove
                 </button>
@@ -460,52 +508,6 @@ export default function Settings() {
           <option value="royal_mail">Royal Mail</option>
           <option value="cheapest">Cheapest</option>
         </select>
-      </section>
-
-      {/* Proxies */}
-      <section style={{ marginBottom: 32 }}>
-        <h3>Proxies</h3>
-        <p style={{ color: '#666', fontSize: 14 }}>
-          One proxy per search URL. Format: http://user:pass@host:port or socks5://...
-        </p>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-          <input
-            type="text"
-            placeholder="http://user:pass@host:port"
-            value={proxyInput}
-            onChange={(e) => setProxyInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddProxy()}
-            style={{ flex: 1, padding: 8 }}
-          />
-          <button type="button" onClick={handleAddProxy} style={{ padding: '8px 16px', cursor: 'pointer' }}>
-            Add
-          </button>
-        </div>
-        {settings.proxyUrls.length > 0 && (
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-            {settings.proxyUrls.map((url, i) => (
-              <li
-                key={i}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '6px 0',
-                  borderBottom: '1px solid #eee',
-                }}
-              >
-                <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{url}</span>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveProxy(i)}
-                  style={{ fontSize: 12, cursor: 'pointer', color: '#c00' }}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
 
       {saved && <p style={{ color: 'green', fontSize: 14 }}>Saved.</p>}

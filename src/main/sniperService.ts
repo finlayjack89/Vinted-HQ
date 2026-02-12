@@ -7,6 +7,7 @@ import { BrowserWindow } from 'electron';
 import * as snipers from './snipers';
 import * as settings from './settings';
 import * as checkoutService from './checkoutService';
+import * as proxyService from './proxyService';
 import { logger } from './logger';
 import type { FeedItem } from './feedService';
 
@@ -106,7 +107,8 @@ export function processItems(items: FeedItem[]): void {
           return;
         }
 
-        checkoutService.runCheckout(item, undefined, sniper.id).then((result) => {
+        const proxy = proxyService.getProxyForItem(item);
+        checkoutService.runCheckout(item, proxy, sniper.id).then((result) => {
           for (const win of BrowserWindow.getAllWindows()) {
             if (win.webContents && !win.isDestroyed()) {
               win.webContents.send(CHANNEL_COUNTDOWN_DONE, {

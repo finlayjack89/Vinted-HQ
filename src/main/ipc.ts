@@ -9,6 +9,7 @@ import * as bridge from './bridge';
 import * as searchUrls from './searchUrls';
 import * as feedService from './feedService';
 import * as checkoutService from './checkoutService';
+import * as proxyService from './proxyService';
 import * as snipers from './snipers';
 import * as sniperService from './sniperService';
 import * as sessionService from './sessionService';
@@ -112,10 +113,12 @@ export function registerIpcHandlers(): void {
     'checkout:buy',
     async (
       _event,
-      item: { id: number; order_id?: number; price: string; title: string; [k: string]: unknown },
+      item: { id: number; order_id?: number; price: string; title: string; source_urls?: string[]; [k: string]: unknown },
       proxy?: string
     ) => {
-      const result = await checkoutService.runCheckout(item as import('./feedService').FeedItem, proxy);
+      const feedItem = item as import('./feedService').FeedItem;
+      const resolvedProxy = proxy ?? proxyService.getProxyForItem(feedItem);
+      const result = await checkoutService.runCheckout(feedItem, resolvedProxy);
       return result;
     }
   );

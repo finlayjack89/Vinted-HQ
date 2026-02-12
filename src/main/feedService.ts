@@ -7,6 +7,7 @@ import { BrowserWindow } from 'electron';
 import * as bridge from './bridge';
 import * as searchUrls from './searchUrls';
 import * as settings from './settings';
+import * as proxyService from './proxyService';
 import * as sniperService from './sniperService';
 import * as sessionService from './sessionService';
 import { logger } from './logger';
@@ -126,12 +127,11 @@ async function runPoll(): Promise<void> {
   const urls = searchUrls.getEnabledSearchUrls();
   if (urls.length === 0) return;
 
-  const proxyList = settings.getSetting('proxyUrls') ?? [];
   const allItems: FeedItem[] = [];
 
   for (let i = 0; i < urls.length; i++) {
     const u = urls[i];
-    const proxy = proxyList[i] ?? undefined;
+    const proxy = proxyService.getProxyForUrlIndex(i);
     try {
       const items = await pollOneUrl(u.url, proxy);
       allItems.push(...items);

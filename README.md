@@ -22,6 +22,15 @@ cd python-bridge && python3 -m venv venv && source venv/bin/activate && pip inst
 npm start
 ```
 
+## Proxies (Required for Vinted)
+
+The app uses proxies to avoid bot detection. Configure in **Settings → Proxies**:
+
+- **Format:** `http://user:pass@host:port` or `socks5://user:pass@host:port`
+- **Residential proxies** are recommended
+- **Rotation:** One proxy per search URL (first proxy ↔ first URL, etc.); round-robin when more URLs than proxies
+- **Sticky proxy:** The same proxy used to fetch an item is used for its entire checkout sequence
+
 ## Next Steps
 
 1. **Fill out API docs** — Open vinted.co.uk and document the Network tab in `docs/VINTED_API_REFERENCE.md`
