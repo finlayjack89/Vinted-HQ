@@ -12,6 +12,9 @@ export default function Feed() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [hasCookie, setHasCookie] = useState(false);
   const [searchUrlCount, setSearchUrlCount] = useState(0);
+  const [buyingId, setBuyingId] = useState<number | null>(null);
+  const [buyProgress, setBuyProgress] = useState<string | null>(null);
+  const [buyResult, setBuyResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     window.vinted.hasCookie().then(setHasCookie);
@@ -36,6 +39,28 @@ export default function Feed() {
     }
   }, [searchUrlCount, hasCookie]);
 
+  useEffect(() => {
+    const unsubProgress = window.vinted.onCheckoutProgress(setBuyProgress);
+    return unsubProgress;
+  }, []);
+
+  const handleBuy = async (item: FeedItem) => {
+    setBuyingId(item.id);
+    setBuyProgress('Starting...');
+    setBuyResult(null);
+    try {
+      const result = await window.vinted.checkoutBuy(item);
+      setBuyResult({ ok: result.ok, message: result.message });
+      if (!result.ok) setBuyProgress(null);
+      else setBuyProgress(null);
+    } catch (err) {
+      setBuyResult({ ok: false, message: err instanceof Error ? err.message : 'Checkout failed' });
+      setBuyProgress(null);
+    } finally {
+      setBuyingId(null);
+    }
+  };
+
   const handleDismissNew = () => setNewCount(0);
 
   if (!hasCookie) {
@@ -59,7 +84,11 @@ export default function Feed() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <span style={{ fontSize: 14, color: '#666' }}>
           {items.length} items · {isPolling ? 'Polling active' : 'Polling paused'}
+          {buyProgress && ` · ${buyProgress}`}
         </span>
+        {buyResult && (
+          <span style={{ color: buyResult.ok ? 'green' : '#c00', fontSize: 14 }}>{buyResult.message}</span>
+        )}
         {newCount > 0 && (
           <button
             type="button"
@@ -93,6 +122,8 @@ export default function Feed() {
             item={item}
             expanded={expandedId === item.id}
             onToggle={() => setExpandedId((id) => (id === item.id ? null : item.id))}
+            onBuy={handleBuy}
+            isBuying={buyingId !== null}
           />
         ))}
       </div>
@@ -110,10 +141,14 @@ function FeedItemCard({
   item,
   expanded,
   onToggle,
+  onBuy,
+  isBuying,
 }: {
   item: FeedItem;
   expanded: boolean;
   onToggle: () => void;
+  onBuy: (item: FeedItem) => void;
+  isBuying: boolean;
 }) {
   return (
     <div
@@ -165,15 +200,36 @@ function FeedItemCard({
           {item.brand && <div>Brand: {item.brand}</div>}
           {item.seller_login && <div>Seller: {item.seller_login}</div>}
           {item.source_urls.length > 1 && <div>From {item.source_urls.length} searches</div>}
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            style={{ color: '#09f', marginTop: 8, display: 'inline-block' }}
-          >
-            Open on Vinted →
-          </a>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onBuy(item);
+              }}
+              disabled={isBuying}
+              style={{
+                padding: '8px 16px',
+                background: '#09f',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              Buy Now
+            </button>
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{ color: '#09f', display: 'inline-flex', alignItems: 'center' }}
+            >
+              Open on Vinted →
+            </a>
+          </div>
         </div>
       )}
     </div>

@@ -26,6 +26,14 @@ export type SearchUrl = {
   updated_at: number;
 };
 
+export type CheckoutResult = {
+  ok: boolean;
+  purchaseId?: string;
+  redirectUrl?: string;
+  message: string;
+  code?: string;
+};
+
 export type FeedItem = {
   id: number;
   title: string;
@@ -77,6 +85,9 @@ declare global {
       stopFeedPolling: () => Promise<void>;
       isFeedPolling: () => Promise<boolean>;
       onFeedItems: (callback: (items: FeedItem[]) => void) => () => void;
+      checkoutBuy: (item: FeedItem, proxy?: string) => Promise<CheckoutResult>;
+      onCheckoutProgress: (callback: (step: string) => void) => () => void;
+      onCheckout3dsRequired: (callback: (params: { redirectUrl: string; purchaseId: string }) => void) => () => void;
     };
   }
 }

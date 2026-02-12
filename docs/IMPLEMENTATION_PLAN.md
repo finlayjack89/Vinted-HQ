@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0  
 **Last Updated:** 12 Feb 2025  
-**Status:** Phase 3 Complete — Ready for Phase 4
+**Status:** Phase 4 Complete — Ready for Phase 5
 
 ---
 
@@ -293,4 +293,4 @@ vinted-hq/
 
 ## 12. Next Action
 
-**Start Phase 4, Task 4.1:** Add to cart API (implement via Python bridge).
+**Start Phase 5, Task 5.1:** Sniper CRUD.

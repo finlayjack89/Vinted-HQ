@@ -64,6 +64,18 @@ contextBridge.exposeInMainWorld('vinted', {
   startFeedPolling: () => ipcRenderer.invoke('feed:startPolling'),
   stopFeedPolling: () => ipcRenderer.invoke('feed:stopPolling'),
   isFeedPolling: () => ipcRenderer.invoke('feed:isPolling'),
+  checkoutBuy: (item: { id: number; order_id?: number; price: string; [k: string]: unknown }, proxy?: string) =>
+    ipcRenderer.invoke('checkout:buy', item, proxy),
+  onCheckoutProgress: (callback: (step: string) => void) => {
+    const handler = (_: unknown, step: string) => callback(step);
+    ipcRenderer.on('checkout:progress', handler);
+    return () => ipcRenderer.removeListener('checkout:progress', handler);
+  },
+  onCheckout3dsRequired: (callback: (params: { redirectUrl: string; purchaseId: string }) => void) => {
+    const handler = (_: unknown, params: { redirectUrl: string; purchaseId: string }) => callback(params);
+    ipcRenderer.on('checkout:3ds-required', handler);
+    return () => ipcRenderer.removeListener('checkout:3ds-required', handler);
+  },
   onFeedItems: (callback: (items: unknown[]) => void) => {
     const handler = (_: unknown, items: unknown[]) => callback(items);
     ipcRenderer.on('feed:items', handler);

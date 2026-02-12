@@ -8,6 +8,7 @@ import * as settings from './settings';
 import * as bridge from './bridge';
 import * as searchUrls from './searchUrls';
 import * as feedService from './feedService';
+import * as checkoutService from './checkoutService';
 import type { AppSettings } from './settings';
 import { logger } from './logger';
 
@@ -83,4 +84,17 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('feed:startPolling', () => feedService.startPolling());
   ipcMain.handle('feed:stopPolling', () => feedService.stopPolling());
   ipcMain.handle('feed:isPolling', () => feedService.isPollingActive());
+
+  // Checkout (Phase 4)
+  ipcMain.handle(
+    'checkout:buy',
+    async (
+      _event,
+      item: { id: number; order_id?: number; price: string; title: string; [k: string]: unknown },
+      proxy?: string
+    ) => {
+      const result = await checkoutService.runCheckout(item as import('./feedService').FeedItem, proxy);
+      return result;
+    }
+  );
 }
