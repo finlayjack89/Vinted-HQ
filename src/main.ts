@@ -3,6 +3,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { spawn, ChildProcess } from 'node:child_process';
 import started from 'electron-squirrel-startup';
+import { initDb, closeDb } from './main/db';
+import { registerIpcHandlers } from './main/ipc';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -80,11 +82,16 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
+  initDb();
+  registerIpcHandlers();
   startPythonBridge();
   createWindow();
 });
 
-app.on('before-quit', stopPythonBridge);
+app.on('before-quit', () => {
+  stopPythonBridge();
+  closeDb();
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
