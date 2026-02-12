@@ -11,6 +11,9 @@ import * as feedService from './feedService';
 import * as checkoutService from './checkoutService';
 import * as snipers from './snipers';
 import * as sniperService from './sniperService';
+import * as sessionService from './sessionService';
+import * as logs from './logs';
+import * as purchases from './purchases';
 import type { AppSettings } from './settings';
 import { logger } from './logger';
 
@@ -18,6 +21,7 @@ export function registerIpcHandlers(): void {
   // Session / Cookie
   ipcMain.handle('session:storeCookie', (_event, cookie: string) => {
     secureStorage.storeCookie(cookie);
+    sessionService.emitSessionReconnected();
     logger.info('session:stored', { hasCookie: true });
   });
 
@@ -96,6 +100,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('snipers:delete', (_event, id: number) => snipers.deleteSniper(id));
   ipcMain.handle('snipers:getSpent', (_event, id: number) => snipers.getSniperSpent(id));
   ipcMain.handle('sniper:cancelCountdown', (_event, countdownId: string) => sniperService.cancelCountdown(countdownId));
+
+  // Logs (Phase 6)
+  ipcMain.handle('logs:getAll', (_event, opts?: Parameters<typeof logs.getLogs>[0]) => logs.getLogs(opts ?? {}));
+
+  // Purchases (Phase 6)
+  ipcMain.handle('purchases:getAll', (_event, limit?: number) => purchases.getAllPurchases(limit));
 
   // Checkout (Phase 4)
   ipcMain.handle(

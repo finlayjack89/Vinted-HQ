@@ -20,6 +20,45 @@ export interface BridgeErrorResult {
 
 export type BridgeResult<T = unknown> = BridgeSearchResult | BridgeErrorResult;
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_BASE_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Retry on RATE_LIMITED with exponential backoff. */
+async function fetchWithRetry(
+  url: string,
+  opts: RequestInit,
+  checkRetry: (json: BridgeResult) => boolean
+): Promise<BridgeResult> {
+  let lastJson: BridgeResult | null = null;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, opts);
+      const json = (await res.json()) as BridgeResult;
+      lastJson = json;
+      if (checkRetry(json)) {
+        const delay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt);
+        await sleep(delay);
+        continue;
+      }
+      return json;
+    } catch (err) {
+      if (attempt === MAX_RETRIES - 1) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
+          return { ok: false, code: 'BRIDGE_UNREACHABLE', message: 'Python bridge not running. Restart the app.' };
+        }
+        return { ok: false, code: 'REQUEST_FAILED', message: msg };
+      }
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+  return lastJson ?? { ok: false, code: 'REQUEST_FAILED', message: 'Max retries exceeded' };
+}
+
 /**
  * Search catalog by URL. Returns items from Vinted API.
  */
@@ -38,20 +77,11 @@ export async function search(url: string, page: number = 1, proxy?: string): Pro
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie. Connect Vinted in settings.' };
   }
 
-  try {
-    const res = await fetch(`${BRIDGE_BASE}/search?${qs}`, {
-      method: 'GET',
-      headers: { 'X-Vinted-Cookie': cookie },
-    });
-    const json = (await res.json()) as BridgeResult;
-    return json;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
-      return { ok: false, code: 'BRIDGE_UNREACHABLE', message: 'Python bridge not running. Restart the app.' };
-    }
-    return { ok: false, code: 'REQUEST_FAILED', message: msg };
-  }
+  return fetchWithRetry(
+    `${BRIDGE_BASE}/search?${qs}`,
+    { method: 'GET', headers: { 'X-Vinted-Cookie': cookie } },
+    (json) => !json.ok && json.code === 'RATE_LIMITED'
+  );
 }
 
 /**

@@ -10,6 +10,7 @@ const CHECKOUT_PROGRESS_CHANNEL = 'checkout:progress';
 import * as bridge from './bridge';
 import * as settings from './settings';
 import { getDb } from './db';
+import * as sessionService from './sessionService';
 import type { FeedItem } from './feedService';
 
 export interface CheckoutResult {
@@ -131,6 +132,9 @@ export async function runCheckout(item: FeedItem, proxy?: string, sniperId?: num
 
   const buildResult = await bridge.checkoutBuild(orderId, proxy);
   if (!buildResult.ok) {
+    if (sessionService.isSessionExpiredError(buildResult)) {
+      sessionService.emitSessionExpired();
+    }
     return {
       ok: false,
       message: buildResult.message,
@@ -182,6 +186,9 @@ export async function runCheckout(item: FeedItem, proxy?: string, sniperId?: num
 
   const putResult = await bridge.checkoutPut(purchaseIdStr, components, proxy);
   if (!putResult.ok) {
+    if (sessionService.isSessionExpiredError(putResult)) {
+      sessionService.emitSessionExpired();
+    }
     return { ok: false, message: putResult.message, code: putResult.code };
   }
 
@@ -198,6 +205,9 @@ export async function runCheckout(item: FeedItem, proxy?: string, sniperId?: num
     proxy
   );
   if (!paymentPutResult.ok) {
+    if (sessionService.isSessionExpiredError(paymentPutResult)) {
+      sessionService.emitSessionExpired();
+    }
     return { ok: false, message: paymentPutResult.message, code: paymentPutResult.code };
   }
 

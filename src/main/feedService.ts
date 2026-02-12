@@ -8,6 +8,7 @@ import * as bridge from './bridge';
 import * as searchUrls from './searchUrls';
 import * as settings from './settings';
 import * as sniperService from './sniperService';
+import * as sessionService from './sessionService';
 import { logger } from './logger';
 
 const PAGES_PER_URL = 3;
@@ -109,6 +110,9 @@ async function pollOneUrl(url: string, proxy?: string): Promise<FeedItem[]> {
   for (let page = 1; page <= PAGES_PER_URL; page++) {
     const result = await bridge.search(url, page, proxy);
     if (!result.ok) {
+      if (sessionService.isSessionExpiredError(result)) {
+        sessionService.emitSessionExpired();
+      }
       logger.warn('feed:poll-error', { url, page, code: result.code, message: result.message });
       break;
     }

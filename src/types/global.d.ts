@@ -54,6 +54,25 @@ export type CheckoutResult = {
   code?: string;
 };
 
+export type LogEntry = {
+  id: number;
+  level: string;
+  event: string;
+  payload: string | null;
+  request_id: string | null;
+  created_at: number;
+};
+
+export type Purchase = {
+  id: number;
+  item_id: number | null;
+  order_id: number | null;
+  amount: number | null;
+  status: string | null;
+  sniper_id: number | null;
+  created_at: number;
+};
+
 export type FeedItem = {
   id: number;
   title: string;
@@ -116,6 +135,10 @@ declare global {
       cancelSniperCountdown: (countdownId: string) => Promise<boolean>;
       onSniperCountdown: (callback: (params: SniperCountdownParams) => void) => () => void;
       onSniperCountdownDone: (callback: (params: { countdownId: string; simulated?: boolean; ok?: boolean; message: string }) => void) => () => void;
+      onSessionExpired: (callback: () => void) => () => void;
+      onSessionReconnected: (callback: () => void) => () => void;
+      getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) => Promise<LogEntry[]>;
+      getPurchases: (limit?: number) => Promise<Purchase[]>;
     };
   }
 }

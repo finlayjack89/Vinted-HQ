@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0  
 **Last Updated:** 12 Feb 2025  
-**Status:** Phase 5 Complete — Ready for Phase 6
+**Status:** Phase 6 Complete — MVP Done
 
 ---
 
@@ -293,4 +293,4 @@ vinted-hq/
 
 ## 12. Next Action
 
-**Start Phase 6, Task 6.1:** Session expiry UX.
+**MVP complete.** See `docs/TESTING.md` for E2E testing. Consider Post-MVP: WebSocket/Pusher, 3DS timeout handling, advanced filters.

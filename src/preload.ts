@@ -101,6 +101,19 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.on('sniper:countdown-done', handler);
     return () => ipcRenderer.removeListener('sniper:countdown-done', handler);
   },
+  onSessionExpired: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('session:expired', handler);
+    return () => ipcRenderer.removeListener('session:expired', handler);
+  },
+  getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) =>
+    ipcRenderer.invoke('logs:getAll', opts),
+  getPurchases: (limit?: number) => ipcRenderer.invoke('purchases:getAll', limit),
+  onSessionReconnected: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('session:reconnected', handler);
+    return () => ipcRenderer.removeListener('session:reconnected', handler);
+  },
   onFeedItems: (callback: (items: unknown[]) => void) => {
     const handler = (_: unknown, items: unknown[]) => callback(items);
     ipcRenderer.on('feed:items', handler);

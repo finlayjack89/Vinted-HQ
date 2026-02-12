@@ -5,15 +5,31 @@
 import React, { useState, useEffect } from 'react';
 import Feed from './components/Feed';
 import Settings from './components/Settings';
+import Logs from './components/Logs';
+import Purchases from './components/Purchases';
 import type { SniperCountdownParams } from './types/global';
 
-type Tab = 'feed' | 'settings';
+type Tab = 'feed' | 'settings' | 'logs' | 'purchases';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('feed');
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [reconnectCookie, setReconnectCookie] = useState('');
   const [countdown, setCountdown] = useState<SniperCountdownParams | null>(null);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [countdownDone, setCountdownDone] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubExpired = window.vinted.onSessionExpired(() => setSessionExpired(true));
+    const unsubReconnected = window.vinted.onSessionReconnected(() => {
+      setSessionExpired(false);
+      setReconnectCookie('');
+    });
+    return () => {
+      unsubExpired();
+      unsubReconnected();
+    };
+  }, []);
 
   useEffect(() => {
     const unsub = window.vinted.onSniperCountdown((params) => {
@@ -52,6 +68,11 @@ export default function App() {
     return () => clearInterval(t);
   }, [countdown, countdownSeconds]);
 
+  const handleReconnect = async () => {
+    if (!reconnectCookie.trim()) return;
+    await window.vinted.storeCookie(reconnectCookie.trim());
+  };
+
   const handleCancelCountdown = () => {
     if (countdown) {
       window.vinted.cancelSniperCountdown(countdown.countdownId);
@@ -61,6 +82,20 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
+      {sessionExpired && (
+        <div
+          style={{
+            background: '#c00',
+            color: '#fff',
+            padding: '10px 24px',
+            textAlign: 'center',
+            fontSize: 14,
+          }}
+        >
+          Session expired. Re-authenticate to continue.
+        </div>
+      )}
+
       <header
         style={{
           padding: '12px 24px',
@@ -98,12 +133,40 @@ export default function App() {
           >
             Settings
           </button>
+          <button
+            type="button"
+            onClick={() => setTab('logs')}
+            style={{
+              padding: '8px 16px',
+              cursor: 'pointer',
+              background: tab === 'logs' ? '#f0f0f0' : 'transparent',
+              border: '1px solid #ccc',
+              borderRadius: 4,
+            }}
+          >
+            Logs
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('purchases')}
+            style={{
+              padding: '8px 16px',
+              cursor: 'pointer',
+              background: tab === 'purchases' ? '#f0f0f0' : 'transparent',
+              border: '1px solid #ccc',
+              borderRadius: 4,
+            }}
+          >
+            Purchases
+          </button>
         </nav>
       </header>
 
       <main style={{ flex: 1, overflow: 'auto' }}>
         {tab === 'feed' && <Feed />}
         {tab === 'settings' && <Settings />}
+        {tab === 'logs' && <Logs />}
+        {tab === 'purchases' && <Purchases />}
       </main>
 
       {countdown && (
@@ -148,6 +211,83 @@ export default function App() {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {sessionExpired && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1002,
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              padding: 24,
+              borderRadius: 8,
+              maxWidth: 480,
+              width: '90%',
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px' }}>Session expired</h3>
+            <p style={{ margin: '0 0 16px', color: '#666', fontSize: 14 }}>
+              Your Vinted session has expired. Paste your cookie string from Chrome DevTools to reconnect.
+            </p>
+            <textarea
+              placeholder="Paste cookie string here..."
+              value={reconnectCookie}
+              onChange={(e) => setReconnectCookie(e.target.value)}
+              rows={4}
+              style={{
+                width: '100%',
+                padding: 12,
+                fontFamily: 'monospace',
+                fontSize: 12,
+                resize: 'vertical',
+                boxSizing: 'border-box',
+                marginBottom: 12,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={handleReconnect}
+                disabled={!reconnectCookie.trim()}
+                style={{
+                  padding: '10px 20px',
+                  background: '#09f',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: reconnectCookie.trim() ? 'pointer' : 'default',
+                }}
+              >
+                Reconnect
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSessionExpired(false);
+                  setReconnectCookie('');
+                }}
+                style={{
+                  padding: '10px 20px',
+                  background: '#eee',
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         </div>
       )}
