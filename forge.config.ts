@@ -1,4 +1,5 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -11,10 +12,20 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // Set now to keep a stable app identity; required later for signing/notarization.
+    appBundleId: 'com.finlayjack89.vinted-uk-sniper',
+    // Optional metadata: shown in some macOS app lists.
+    appCategoryType: 'public.app-category.utilities',
+    // Keep Vite build output and production dependencies (needed for native modules like better-sqlite3).
+    ignore: (file: string) => {
+      if (!file) return false;
+      return !file.startsWith('/.vite') && !file.startsWith('/node_modules');
+    },
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({}),
+    new MakerDMG({}, ['darwin']),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({}),
