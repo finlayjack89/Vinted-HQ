@@ -1,9 +1,37 @@
 /**
  * Log viewer — browse logs with filters, export
+ * Dark glass table with colored level badges
  */
 
 import React, { useEffect, useState } from 'react';
+import {
+  colors,
+  font,
+  glassPanel,
+  glassInput,
+  glassSelect,
+  btnSecondary,
+  btnSmall,
+  glassTable,
+  tableHeader,
+  tableHeaderCell,
+  tableCell,
+  tableRowHoverBg,
+  badge,
+  radius,
+  spacing,
+  transition,
+} from '../theme';
 import type { LogEntry } from '../types/global';
+
+/* ─── Level badge config ────────────────────────────────────── */
+
+const levelColors: Record<string, { bg: string; fg: string }> = {
+  ERROR: { bg: colors.errorBg, fg: colors.error },
+  WARN: { bg: colors.warningBg, fg: colors.warning },
+  INFO: { bg: colors.infoBg, fg: colors.info },
+  DEBUG: { bg: 'rgba(255, 255, 255, 0.06)', fg: colors.textMuted },
+};
 
 export default function Logs() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -44,12 +72,23 @@ export default function Logs() {
   };
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+    <div style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+      {/* Filter bar */}
+      <div
+        style={{
+          ...glassPanel,
+          padding: `${spacing.md}px ${spacing.xl}px`,
+          display: 'flex',
+          gap: spacing.md,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          borderRadius: radius.lg,
+        }}
+      >
         <select
           value={level}
           onChange={(e) => setLevel(e.target.value)}
-          style={{ padding: 8, minWidth: 120 }}
+          style={{ ...glassSelect, minWidth: 130 }}
         >
           <option value="">All levels</option>
           <option value="DEBUG">DEBUG</option>
@@ -62,68 +101,95 @@ export default function Logs() {
           placeholder="Filter by event"
           value={eventFilter}
           onChange={(e) => setEventFilter(e.target.value)}
-          style={{ padding: 8, width: 180 }}
+          style={{ ...glassInput, width: 200 }}
         />
-        <button type="button" onClick={loadLogs} style={{ padding: '8px 16px', cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={loadLogs}
+          style={{ ...btnSecondary, ...btnSmall }}
+        >
           Refresh
         </button>
-        <button type="button" onClick={handleExport} style={{ padding: '8px 16px', cursor: 'pointer' }}>
+        <button
+          type="button"
+          onClick={handleExport}
+          style={{ ...btnSecondary, ...btnSmall }}
+        >
           Export JSON
         </button>
       </div>
 
+      {/* Table */}
       {loading ? (
-        <p style={{ color: '#666' }}>Loading...</p>
+        <p style={{ color: colors.textMuted, padding: spacing.xl }} className="animate-pulse">
+          Loading...
+        </p>
       ) : (
-        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ ...glassTable, overflow: 'auto', maxHeight: 'calc(100vh - 180px)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: font.size.md }}>
             <thead>
-              <tr style={{ background: '#f5f5f5', position: 'sticky', top: 0 }}>
-                <th style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid #ddd' }}>Time</th>
-                <th style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid #ddd' }}>Level</th>
-                <th style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid #ddd' }}>Event</th>
-                <th style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid #ddd' }}>Payload</th>
+              <tr style={tableHeader}>
+                <th style={tableHeaderCell}>Time</th>
+                <th style={tableHeaderCell}>Level</th>
+                <th style={tableHeaderCell}>Event</th>
+                <th style={tableHeaderCell}>Payload</th>
               </tr>
             </thead>
             <tbody>
-              {logs.map((log) => (
-                <tr key={log.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: 8, whiteSpace: 'nowrap', color: '#666' }}>{formatTime(log.created_at)}</td>
-                  <td style={{ padding: 8 }}>
-                    <span
+              {logs.map((log) => {
+                const lc = levelColors[log.level] || levelColors.DEBUG;
+                return (
+                  <tr
+                    key={log.id}
+                    style={{ transition: transition.fast }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = tableRowHoverBg;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <td style={{ ...tableCell, whiteSpace: 'nowrap', color: colors.textMuted, fontVariantNumeric: 'tabular-nums' }}>
+                      {formatTime(log.created_at)}
+                    </td>
+                    <td style={tableCell}>
+                      <span style={badge(lc.bg, lc.fg)}>
+                        {log.level}
+                      </span>
+                    </td>
+                    <td style={{ ...tableCell, color: colors.textPrimary }}>{log.event}</td>
+                    <td
                       style={{
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        background:
-                          log.level === 'ERROR'
-                            ? '#fee'
-                            : log.level === 'WARN'
-                              ? '#fef3cd'
-                              : log.level === 'INFO'
-                                ? '#e3f2fd'
-                                : '#f5f5f5',
+                        ...tableCell,
+                        fontFamily: font.mono,
+                        fontSize: font.size.sm,
+                        color: colors.textMuted,
+                        maxWidth: 400,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
                       }}
                     >
-                      {log.level}
-                    </span>
-                  </td>
-                  <td style={{ padding: 8 }}>{log.event}</td>
-                  <td style={{ padding: 8, fontFamily: 'monospace', fontSize: 12, overflow: 'hidden', maxWidth: 400 }}>
-                    {log.payload ? (
-                      <span title={log.payload}>{log.payload.length > 80 ? log.payload.slice(0, 80) + '…' : log.payload}</span>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      {log.payload ? (
+                        <span title={log.payload}>
+                          {log.payload.length > 80 ? log.payload.slice(0, 80) + '…' : log.payload}
+                        </span>
+                      ) : (
+                        <span style={{ color: colors.textMuted }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-      {logs.length === 0 && !loading && <p style={{ color: '#999' }}>No logs yet.</p>}
+      {logs.length === 0 && !loading && (
+        <p style={{ color: colors.textMuted, textAlign: 'center', padding: spacing['3xl'] }}>
+          No logs yet.
+        </p>
+      )}
     </div>
   );
 }
