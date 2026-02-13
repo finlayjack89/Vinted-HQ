@@ -68,7 +68,7 @@ export default function Purchases() {
           Loading...
         </p>
       ) : (
-        <div style={{ ...glassTable, overflow: 'auto' }}>
+        <div style={{ ...glassTable, overflow: 'auto', maxHeight: 'calc(100vh - 180px)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: font.size.base }}>
             <thead>
               <tr style={tableHeader}>

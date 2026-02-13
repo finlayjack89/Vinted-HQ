@@ -11,6 +11,7 @@
 }
 
 html {
+  height: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -21,13 +22,13 @@ body {
     Helvetica, Arial, sans-serif;
   background: #080b12;
   color: #e8ecf4;
-  min-height: 100vh;
+  height: 100vh;
   line-height: 1.5;
   overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
 }
 
 /* ─── Selection ─────────────────────────────────────────────── */
