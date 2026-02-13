@@ -3,6 +3,7 @@
  */
 
 import { getDb } from './db';
+import { logger } from './logger';
 
 export interface AppSettings {
   pollingIntervalSeconds: number;
@@ -13,7 +14,9 @@ export interface AppSettings {
   verificationEnabled: boolean;
   verificationThresholdPounds: number;
   authRequiredForPurchase: boolean;
-  proxyUrls: string[];
+  proxyUrls: string[]; // Legacy - kept for backward compatibility
+  scrapingProxies: string[]; // ISP proxies for feed polling/searching
+  checkoutProxies: string[]; // Residential proxies for checkout/payments
   simulationMode: boolean;
   autobuyEnabled: boolean;
   sessionAutofillEnabled: boolean;
@@ -30,6 +33,8 @@ const DEFAULTS: AppSettings = {
   verificationThresholdPounds: 100,
   authRequiredForPurchase: true,
   proxyUrls: [],
+  scrapingProxies: [],
+  checkoutProxies: [],
   simulationMode: true,
   autobuyEnabled: false,
   sessionAutofillEnabled: true,
@@ -46,6 +51,8 @@ const SETTINGS_KEYS: (keyof AppSettings)[] = [
   'verificationThresholdPounds',
   'authRequiredForPurchase',
   'proxyUrls',
+  'scrapingProxies',
+  'checkoutProxies',
   'simulationMode',
   'autobuyEnabled',
   'sessionAutofillEnabled',
@@ -72,7 +79,7 @@ function deserialize(key: keyof AppSettings, value: string): unknown {
   ) {
     return value === '1';
   }
-  if (key === 'proxyUrls') {
+  if (key === 'proxyUrls' || key === 'scrapingProxies' || key === 'checkoutProxies') {
     try {
       const arr = JSON.parse(value) as string[];
       return Array.isArray(arr) ? arr : [];
@@ -112,5 +119,22 @@ export function setAllSettings(settings: Partial<AppSettings>): void {
     if (value !== undefined && key in DEFAULTS) {
       setSetting(key as keyof AppSettings, value as AppSettings[keyof AppSettings]);
     }
+  }
+}
+
+/**
+ * Check if legacy proxy settings need migration to new proxy pools.
+ * Logs a warning if legacy proxyUrls exist but new pools are empty.
+ */
+export function migrateProxySettings(): void {
+  const legacy = getSetting('proxyUrls');
+  const scraping = getSetting('scrapingProxies');
+  const checkout = getSetting('checkoutProxies');
+  
+  if (legacy.length > 0 && scraping.length === 0 && checkout.length === 0) {
+    logger.info('proxy-migration-needed', { 
+      message: 'Legacy proxy URLs detected. Configure separate ISP/residential proxies in settings.',
+      legacyCount: legacy.length
+    });
   }
 }

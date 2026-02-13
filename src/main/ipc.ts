@@ -125,7 +125,7 @@ export function registerIpcHandlers(): void {
       proxy?: string
     ) => {
       const feedItem = item as import('./feedService').FeedItem;
-      const resolvedProxy = proxy ?? proxyService.getProxyForItem(feedItem);
+      const resolvedProxy = proxy ?? proxyService.getProxyForCheckout(feedItem);
       const result = await checkoutService.runCheckout(feedItem, resolvedProxy);
       return result;
     }

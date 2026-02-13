@@ -87,6 +87,8 @@ const defaultSettings: AppSettings = {
   verificationThresholdPounds: 100,
   authRequiredForPurchase: true,
   proxyUrls: [],
+  scrapingProxies: [],
+  checkoutProxies: [],
   simulationMode: true,
   autobuyEnabled: false,
   sessionAutofillEnabled: true,
@@ -100,6 +102,8 @@ export default function Settings() {
   const [hasCookie, setHasCookie] = useState(false);
   const [cookieInput, setCookieInput] = useState('');
   const [proxyInput, setProxyInput] = useState('');
+  const [scrapingProxyInput, setScrapingProxyInput] = useState('');
+  const [checkoutProxyInput, setCheckoutProxyInput] = useState('');
   const [saved, setSaved] = useState(false);
   const [searchUrls, setSearchUrls] = useState<SearchUrl[]>([]);
   const [searchUrlInput, setSearchUrlInput] = useState('');
@@ -213,6 +217,36 @@ export default function Settings() {
     const urls = settings.proxyUrls.filter((_, i) => i !== index);
     setSettings((prev) => ({ ...prev, proxyUrls: urls }));
     window.vinted.setSetting('proxyUrls', urls);
+  };
+
+  const handleAddScrapingProxy = () => {
+    const url = scrapingProxyInput.trim();
+    if (!url) return;
+    const urls = [...settings.scrapingProxies, url];
+    setSettings((prev) => ({ ...prev, scrapingProxies: urls }));
+    window.vinted.setSetting('scrapingProxies', urls);
+    setScrapingProxyInput('');
+  };
+
+  const handleRemoveScrapingProxy = (index: number) => {
+    const urls = settings.scrapingProxies.filter((_, i) => i !== index);
+    setSettings((prev) => ({ ...prev, scrapingProxies: urls }));
+    window.vinted.setSetting('scrapingProxies', urls);
+  };
+
+  const handleAddCheckoutProxy = () => {
+    const url = checkoutProxyInput.trim();
+    if (!url) return;
+    const urls = [...settings.checkoutProxies, url];
+    setSettings((prev) => ({ ...prev, checkoutProxies: urls }));
+    window.vinted.setSetting('checkoutProxies', urls);
+    setCheckoutProxyInput('');
+  };
+
+  const handleRemoveCheckoutProxy = (index: number) => {
+    const urls = settings.checkoutProxies.filter((_, i) => i !== index);
+    setSettings((prev) => ({ ...prev, checkoutProxies: urls }));
+    window.vinted.setSetting('checkoutProxies', urls);
   };
 
   const handleAddSearchUrl = async () => {
@@ -510,29 +544,116 @@ export default function Settings() {
         )}
       </Section>
 
-      {/* ─── Proxies ──────────────────────────────────── */}
+      {/* ─── ISP Proxies (Scraping) ───────────────────── */}
       <Section
-        title="Proxies (required for Vinted)"
-        description={`Residential proxies recommended to avoid bot detection. One proxy per search URL — first proxy for first URL, second for second URL, etc. Format: http://user:pass@host:port or socks5://user:pass@host:port. Same proxy used for entire checkout (sticky).`}
+        title="ISP Proxies (Scraping & Search)"
+        description="Dedicated ISP proxies for high-speed feed polling and search operations. One proxy per search URL. Recommended: UK-based ISP proxies (BT, Virgin Media, Sky). Format: http://user:pass@host:port or socks5://user:pass@host:port"
       >
         <InputRow>
           <input
             type="text"
             placeholder="http://user:pass@host:port or socks5://..."
-            value={proxyInput}
-            onChange={(e) => setProxyInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddProxy()}
+            value={scrapingProxyInput}
+            onChange={(e) => setScrapingProxyInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddScrapingProxy()}
             style={{ ...glassInput, flex: 1 }}
           />
           <button
             type="button"
-            onClick={handleAddProxy}
+            onClick={handleAddScrapingProxy}
             style={{ ...btnPrimary, ...btnSmall }}
           >
             Add
           </button>
         </InputRow>
-        {settings.proxyUrls.length > 0 && (
+        {settings.scrapingProxies.length > 0 && (
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {settings.scrapingProxies.map((url, i) => (
+              <li key={i} style={listRow}>
+                <span
+                  style={{
+                    fontFamily: font.mono,
+                    fontSize: font.size.sm,
+                    color: colors.textPrimary,
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {url}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveScrapingProxy(i)}
+                  style={dangerText}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {/* ─── Residential Proxies (Checkout) ────────────── */}
+      <Section
+        title="Residential Proxies (Checkout & Payments)"
+        description="High-quality residential proxies for checkout and payment operations. Used for entire purchase flow (sticky sessions). Recommended: UK residential static IPs. Format: http://user:pass@host:port or socks5://user:pass@host:port"
+      >
+        <InputRow>
+          <input
+            type="text"
+            placeholder="http://user:pass@host:port or socks5://..."
+            value={checkoutProxyInput}
+            onChange={(e) => setCheckoutProxyInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddCheckoutProxy()}
+            style={{ ...glassInput, flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={handleAddCheckoutProxy}
+            style={{ ...btnPrimary, ...btnSmall }}
+          >
+            Add
+          </button>
+        </InputRow>
+        {settings.checkoutProxies.length > 0 && (
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {settings.checkoutProxies.map((url, i) => (
+              <li key={i} style={listRow}>
+                <span
+                  style={{
+                    fontFamily: font.mono,
+                    fontSize: font.size.sm,
+                    color: colors.textPrimary,
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {url}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCheckoutProxy(i)}
+                  style={dangerText}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {/* ─── Legacy Proxies (Deprecated) ───────────────── */}
+      {settings.proxyUrls.length > 0 && (
+        <Section
+          title="Legacy Proxies (Deprecated)"
+          description="These are legacy proxy URLs. Please migrate to ISP Proxies (for scraping) or Residential Proxies (for checkout) above."
+        >
           <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
             {settings.proxyUrls.map((url, i) => (
               <li key={i} style={listRow}>
@@ -540,7 +661,7 @@ export default function Settings() {
                   style={{
                     fontFamily: font.mono,
                     fontSize: font.size.sm,
-                    color: colors.textPrimary,
+                    color: colors.textMuted,
                     flex: 1,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -559,8 +680,8 @@ export default function Settings() {
               </li>
             ))}
           </ul>
-        )}
-      </Section>
+        </Section>
+      )}
 
       {/* ─── Autobuy ──────────────────────────────────── */}
       <Section title="Autobuy (Sniper)">

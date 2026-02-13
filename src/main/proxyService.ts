@@ -34,3 +34,33 @@ export function getProxyForUrlIndex(idx: number): string | undefined {
   if (proxyList.length === 0) return undefined;
   return proxyList[idx % proxyList.length];
 }
+
+/**
+ * Get ISP proxy for scraping/feed polling by URL index.
+ * Uses dedicated scrapingProxies pool for high-speed operations.
+ * Falls back to legacy proxyUrls if scrapingProxies is empty.
+ */
+export function getProxyForScraping(urlIndex: number): string | undefined {
+  const scrapers = settings.getSetting('scrapingProxies') ?? [];
+  if (scrapers.length > 0) {
+    return scrapers[urlIndex % scrapers.length];
+  }
+  // Fallback to legacy proxyUrls
+  return getProxyForUrlIndex(urlIndex);
+}
+
+/**
+ * Get residential proxy for checkout/payment operations.
+ * Uses dedicated checkoutProxies pool for high-trust operations.
+ * Distributes items across checkout proxies using item ID hash.
+ * Falls back to legacy proxy selection if checkoutProxies is empty.
+ */
+export function getProxyForCheckout(item: FeedItem): string | undefined {
+  const residential = settings.getSetting('checkoutProxies') ?? [];
+  if (residential.length > 0) {
+    const hash = item.id % residential.length;
+    return residential[hash];
+  }
+  // Fallback to legacy logic
+  return getProxyForItem(item);
+}

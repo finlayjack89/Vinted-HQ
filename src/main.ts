@@ -7,6 +7,7 @@ import { initDb, closeDb } from './main/db';
 import { registerIpcHandlers } from './main/ipc';
 import * as feedService from './main/feedService';
 import * as searchUrls from './main/searchUrls';
+import * as settings from './main/settings';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -86,6 +87,7 @@ const createWindow = () => {
 app.on('ready', () => {
   initDb();
   registerIpcHandlers();
+  settings.migrateProxySettings();
   startPythonBridge();
   createWindow();
   if (searchUrls.getEnabledSearchUrls().length > 0) {

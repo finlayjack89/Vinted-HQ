@@ -107,7 +107,7 @@ export function processItems(items: FeedItem[]): void {
           return;
         }
 
-        const proxy = proxyService.getProxyForItem(item);
+        const proxy = proxyService.getProxyForCheckout(item);
         checkoutService.runCheckout(item, proxy, sniper.id).then((result) => {
           for (const win of BrowserWindow.getAllWindows()) {
             if (win.webContents && !win.isDestroyed()) {

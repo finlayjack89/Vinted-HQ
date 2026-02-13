@@ -31,6 +31,8 @@ export type AppSettings = {
   verificationThresholdPounds: number;
   authRequiredForPurchase: boolean;
   proxyUrls: string[];
+  scrapingProxies: string[];
+  checkoutProxies: string[];
   simulationMode: boolean;
   autobuyEnabled: boolean;
   sessionAutofillEnabled: boolean;

@@ -131,7 +131,7 @@ async function runPoll(): Promise<void> {
 
   for (let i = 0; i < urls.length; i++) {
     const u = urls[i];
-    const proxy = proxyService.getProxyForUrlIndex(i);
+    const proxy = proxyService.getProxyForScraping(i);
     try {
       const items = await pollOneUrl(u.url, proxy);
       allItems.push(...items);
