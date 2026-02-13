@@ -23,6 +23,16 @@ import {
 } from '../theme';
 import type { AppSettings, SearchUrl, Sniper } from '../types/global';
 
+type RefreshStatus =
+  | 'idle'
+  | 'opening'
+  | 'waiting'
+  | 'captured'
+  | 'refreshed'
+  | 'timed_out'
+  | 'window_closed'
+  | 'failed';
+
 /* ─── Sniper Budget Display ─────────────────────────────────── */
 
 function SniperSpentDisplay({ sniperId, budgetLimit }: { sniperId: number; budgetLimit: number }) {
@@ -79,6 +89,8 @@ const defaultSettings: AppSettings = {
   proxyUrls: [],
   simulationMode: true,
   autobuyEnabled: false,
+  sessionAutofillEnabled: true,
+  sessionAutoSubmitEnabled: false,
 };
 
 /* ─── Main Component ────────────────────────────────────────── */
@@ -96,12 +108,18 @@ export default function Settings() {
   const [sniperPriceMax, setSniperPriceMax] = useState('');
   const [sniperKeywords, setSniperKeywords] = useState('');
   const [sniperBudget, setSniperBudget] = useState('');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [hasLoginCredentials, setHasLoginCredentials] = useState(false);
+  const [isRefreshingSession, setIsRefreshingSession] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
 
   useEffect(() => {
     window.vinted.getSettings().then(setSettings);
     window.vinted.hasCookie().then(setHasCookie);
     window.vinted.getSearchUrls().then(setSearchUrls);
     window.vinted.getSnipers().then(setSnipers);
+    window.vinted.hasLoginCredentials().then(setHasLoginCredentials);
   }, []);
 
   const showSaved = () => {
@@ -122,6 +140,59 @@ export default function Settings() {
     setHasCookie(false);
     setCookieInput('');
     showSaved();
+  };
+
+  const handleRefreshSession = async () => {
+    if (isRefreshingSession) return;
+    setIsRefreshingSession(true);
+    setRefreshStatus('opening');
+    // Keep "waiting" visible even while the window is active.
+    const waitingTimer = setTimeout(() => setRefreshStatus('waiting'), 900);
+    try {
+      const result = await window.vinted.startCookieRefresh();
+      if (result.ok) {
+        setRefreshStatus('captured');
+        setHasCookie(true);
+        setTimeout(() => setRefreshStatus('refreshed'), 300);
+        showSaved();
+      } else if (result.reason === 'TIMED_OUT') {
+        setRefreshStatus('timed_out');
+      } else if (result.reason === 'WINDOW_CLOSED') {
+        setRefreshStatus('window_closed');
+      } else {
+        setRefreshStatus('failed');
+      }
+    } finally {
+      clearTimeout(waitingTimer);
+      setIsRefreshingSession(false);
+    }
+  };
+
+  const handleSaveLoginCredentials = async () => {
+    if (!loginUsername.trim() || !loginPassword.trim()) return;
+    await window.vinted.saveLoginCredentials(loginUsername.trim(), loginPassword);
+    setHasLoginCredentials(true);
+    setLoginPassword('');
+    showSaved();
+  };
+
+  const handleClearLoginCredentials = async () => {
+    await window.vinted.clearLoginCredentials();
+    setHasLoginCredentials(false);
+    setLoginUsername('');
+    setLoginPassword('');
+    showSaved();
+  };
+
+  const refreshLabel: Record<RefreshStatus, string> = {
+    idle: '',
+    opening: 'Opening login window...',
+    waiting: 'Waiting for login and cookie capture...',
+    captured: 'Cookies captured.',
+    refreshed: 'Session refreshed.',
+    timed_out: 'Timed out while waiting for login.',
+    window_closed: 'Login window closed before capture.',
+    failed: 'Unable to refresh session.',
   };
 
   const handleSettingsChange = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -243,52 +314,141 @@ export default function Settings() {
       {/* ─── Session ──────────────────────────────────── */}
       <Section
         title="Vinted Session"
-        description="Paste your full cookie string from Chrome DevTools (Application → Cookies → copy). Kept secure in OS Keychain."
+        description="One-click refresh opens a short-lived login window, captures cookies, then closes automatically. Manual paste remains available as fallback."
       >
-        {hasCookie ? (
-          <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center' }}>
-            <span style={badge(colors.successBg, colors.success)}>
-              ✓ Connected
-            </span>
-            <button
-              type="button"
-              onClick={handleClearCookie}
-              style={{
-                ...btnSecondary,
-                ...btnSmall,
-              }}
-            >
-              Clear session
-            </button>
-          </div>
-        ) : (
-          <>
-            <textarea
-              placeholder="Paste cookie string here..."
-              value={cookieInput}
-              onChange={(e) => setCookieInput(e.target.value)}
-              rows={4}
-              style={{
-                ...glassTextarea,
-                width: '100%',
-              }}
-            />
-            <button
-              type="button"
-              onClick={handleSaveCookie}
-              disabled={!cookieInput.trim()}
-              style={{
-                ...btnPrimary,
-                ...btnSmall,
-                marginTop: spacing.sm,
-                opacity: cookieInput.trim() ? 1 : 0.4,
-                cursor: cookieInput.trim() ? 'pointer' : 'default',
-              }}
-            >
-              Save session
-            </button>
-          </>
+        <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center', marginBottom: spacing.md }}>
+          <span style={badge(hasCookie ? colors.successBg : colors.warningBg, hasCookie ? colors.success : colors.warning)}>
+            {hasCookie ? '✓ Connected' : 'No active session'}
+          </span>
+          <button
+            type="button"
+            onClick={handleRefreshSession}
+            disabled={isRefreshingSession}
+            style={{
+              ...btnPrimary,
+              ...btnSmall,
+              opacity: isRefreshingSession ? 0.6 : 1,
+              cursor: isRefreshingSession ? 'default' : 'pointer',
+            }}
+          >
+            Refresh session (open login)
+          </button>
+          <button
+            type="button"
+            onClick={handleClearCookie}
+            style={{
+              ...btnSecondary,
+              ...btnSmall,
+            }}
+          >
+            Clear session
+          </button>
+        </div>
+        {refreshStatus !== 'idle' && (
+          <p style={{ ...sectionDesc, marginBottom: spacing.md }}>{refreshLabel[refreshStatus]}</p>
         )}
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: spacing.sm,
+            cursor: 'pointer',
+            marginBottom: spacing.sm,
+            fontSize: font.size.base,
+            color: colors.textSecondary,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={settings.sessionAutofillEnabled}
+            onChange={(e) => handleSettingsChange('sessionAutofillEnabled', e.target.checked)}
+          />
+          Use saved login credentials to autofill Vinted login form
+        </label>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: spacing.sm,
+            cursor: 'pointer',
+            marginBottom: spacing.md,
+            fontSize: font.size.base,
+            color: colors.textSecondary,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={settings.sessionAutoSubmitEnabled}
+            onChange={(e) => handleSettingsChange('sessionAutoSubmitEnabled', e.target.checked)}
+          />
+          Auto-submit login form after autofill
+        </label>
+        <InputRow>
+          <input
+            type="text"
+            placeholder="Vinted email/username"
+            value={loginUsername}
+            onChange={(e) => setLoginUsername(e.target.value)}
+            style={{ ...glassInput, flex: 1 }}
+          />
+          <input
+            type="password"
+            placeholder="Vinted password"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            style={{ ...glassInput, flex: 1 }}
+          />
+        </InputRow>
+        <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginBottom: spacing.lg }}>
+          <button
+            type="button"
+            onClick={handleSaveLoginCredentials}
+            disabled={!loginUsername.trim() || !loginPassword.trim()}
+            style={{
+              ...btnSecondary,
+              ...btnSmall,
+              opacity: loginUsername.trim() && loginPassword.trim() ? 1 : 0.4,
+              cursor: loginUsername.trim() && loginPassword.trim() ? 'pointer' : 'default',
+            }}
+          >
+            Save login credentials
+          </button>
+          <button
+            type="button"
+            onClick={handleClearLoginCredentials}
+            style={{ ...btnSecondary, ...btnSmall }}
+          >
+            Clear saved credentials
+          </button>
+          {hasLoginCredentials && (
+            <span style={badge(colors.successBg, colors.success)}>Credentials saved in Keychain</span>
+          )}
+        </div>
+
+        <textarea
+          placeholder="Fallback: paste cookie string manually..."
+          value={cookieInput}
+          onChange={(e) => setCookieInput(e.target.value)}
+          rows={4}
+          style={{
+            ...glassTextarea,
+            width: '100%',
+          }}
+        />
+        <button
+          type="button"
+          onClick={handleSaveCookie}
+          disabled={!cookieInput.trim()}
+          style={{
+            ...btnPrimary,
+            ...btnSmall,
+            marginTop: spacing.sm,
+            opacity: cookieInput.trim() ? 1 : 0.4,
+            cursor: cookieInput.trim() ? 'pointer' : 'default',
+          }}
+        >
+          Save pasted session
+        </button>
       </Section>
 
       {/* ─── Search URLs ──────────────────────────────── */}

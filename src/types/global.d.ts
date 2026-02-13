@@ -22,6 +22,7 @@ export type SniperCountdownParams = {
 };
 
 export type AppSettings = {
+  pollingIntervalSeconds: number;
   defaultCourier: string;
   deliveryType: 'home' | 'dropoff';
   latitude: number;
@@ -32,6 +33,8 @@ export type AppSettings = {
   proxyUrls: string[];
   simulationMode: boolean;
   autobuyEnabled: boolean;
+  sessionAutofillEnabled: boolean;
+  sessionAutoSubmitEnabled: boolean;
 };
 
 export type BridgeResult<T = unknown> =
@@ -97,6 +100,10 @@ declare global {
       hasCookie: () => Promise<boolean>;
       clearCookie: () => Promise<void>;
       isEncryptionAvailable: () => Promise<boolean>;
+      startCookieRefresh: () => Promise<{ ok: boolean; reason?: string }>;
+      saveLoginCredentials: (username: string, password: string) => Promise<void>;
+      hasLoginCredentials: () => Promise<boolean>;
+      clearLoginCredentials: () => Promise<void>;
       getSettings: () => Promise<AppSettings>;
       setSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void>;
       setSettings: (partial: Partial<AppSettings>) => Promise<void>;

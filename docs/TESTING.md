@@ -16,10 +16,22 @@ This document describes how to test the app end-to-end against live Vinted.
 
 ## 1. Authenticate
 
+### Preferred: One-Click Refresh (Embedded Login Window)
+
+1. Open the app: Settings → Vinted Session.
+2. (Optional) Enter Vinted email/password and click **Save login credentials**.
+3. Click **Refresh session (open login)**.
+4. A temporary Vinted login window opens.
+5. Complete login (and 2FA/challenge if prompted).
+6. Verify the window closes automatically after cookie capture.
+7. Verify "✓ Connected" appears.
+
+### Fallback: Manual Cookie Paste
+
 1. Open [vinted.co.uk](https://www.vinted.co.uk) in Chrome and log in.
 2. DevTools → Application → Cookies → `https://www.vinted.co.uk`
 3. Copy the full cookie string (or use "Copy as cURL" from a request and extract the Cookie header).
-4. In the app: Settings → paste cookie into the Session box → Save session.
+4. In the app: Settings → paste cookie into the Session box → Save pasted session.
 5. Verify "✓ Connected" appears.
 
 ---
@@ -73,7 +85,7 @@ This document describes how to test the app end-to-end against live Vinted.
 
 ## Known Issues to Document
 
-- **Session expiry:** If you see "Session expired" banner, re-paste your cookie.
+- **Session expiry:** If you see "Session expired" banner, run one-click refresh again. If it times out, use manual cookie paste.
 - **Python bridge:** If feed is empty, check `python-bridge` is running: `cd python-bridge && python3 server.py`.
 - **Rate limiting:** The app retries on RATE_LIMITED with exponential backoff. If you hit limits, increase polling interval.
 - **3DS:** If your bank requires 3DS, the app opens the browser. Complete the flow there; the purchase may take a moment to confirm.
@@ -83,6 +95,9 @@ This document describes how to test the app end-to-end against live Vinted.
 ## Regression Checklist
 
 - [ ] Cookie storage and retrieval
+- [ ] Embedded one-click login opens and closes after capture
+- [ ] Keychain credentials can be saved/cleared and autofill works
+- [ ] Timeout and window-closed failures show clear status
 - [ ] Search URL add/remove/toggle
 - [ ] Feed shows items
 - [ ] Buy Now completes (or fails gracefully)

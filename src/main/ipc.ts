@@ -13,6 +13,8 @@ import * as proxyService from './proxyService';
 import * as snipers from './snipers';
 import * as sniperService from './sniperService';
 import * as sessionService from './sessionService';
+import * as authCapture from './authCapture';
+import * as credentialStore from './credentialStore';
 import * as logs from './logs';
 import * as purchases from './purchases';
 import type { AppSettings } from './settings';
@@ -34,6 +36,12 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('session:isEncryptionAvailable', () => secureStorage.isEncryptionAvailable());
+  ipcMain.handle('session:startCookieRefresh', () => authCapture.startCookieRefresh());
+  ipcMain.handle('session:saveLoginCredentials', (_event, username: string, password: string) =>
+    credentialStore.saveLoginCredentials({ username, password })
+  );
+  ipcMain.handle('session:hasLoginCredentials', () => credentialStore.hasLoginCredentials());
+  ipcMain.handle('session:clearLoginCredentials', () => credentialStore.clearLoginCredentials());
 
   // Settings
   ipcMain.handle('settings:getAll', () => settings.getAllSettings());

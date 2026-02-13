@@ -16,6 +16,8 @@ export interface AppSettings {
   proxyUrls: string[];
   simulationMode: boolean;
   autobuyEnabled: boolean;
+  sessionAutofillEnabled: boolean;
+  sessionAutoSubmitEnabled: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -30,6 +32,8 @@ const DEFAULTS: AppSettings = {
   proxyUrls: [],
   simulationMode: true,
   autobuyEnabled: false,
+  sessionAutofillEnabled: true,
+  sessionAutoSubmitEnabled: false,
 };
 
 const SETTINGS_KEYS: (keyof AppSettings)[] = [
@@ -44,6 +48,8 @@ const SETTINGS_KEYS: (keyof AppSettings)[] = [
   'proxyUrls',
   'simulationMode',
   'autobuyEnabled',
+  'sessionAutofillEnabled',
+  'sessionAutoSubmitEnabled',
 ];
 
 function serialize(value: unknown): string {
@@ -56,7 +62,14 @@ function deserialize(key: keyof AppSettings, value: string): unknown {
   if (key === 'pollingIntervalSeconds' || key === 'latitude' || key === 'longitude' || key === 'verificationThresholdPounds') {
     return parseFloat(value) || DEFAULTS[key];
   }
-  if (key === 'verificationEnabled' || key === 'authRequiredForPurchase' || key === 'simulationMode' || key === 'autobuyEnabled') {
+  if (
+    key === 'verificationEnabled' ||
+    key === 'authRequiredForPurchase' ||
+    key === 'simulationMode' ||
+    key === 'autobuyEnabled' ||
+    key === 'sessionAutofillEnabled' ||
+    key === 'sessionAutoSubmitEnabled'
+  ) {
     return value === '1';
   }
   if (key === 'proxyUrls') {

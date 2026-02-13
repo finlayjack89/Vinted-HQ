@@ -21,6 +21,10 @@ export type AppSettings = {
   verificationThresholdPounds: number;
   authRequiredForPurchase: boolean;
   proxyUrls: string[];
+  simulationMode: boolean;
+  autobuyEnabled: boolean;
+  sessionAutofillEnabled: boolean;
+  sessionAutoSubmitEnabled: boolean;
 };
 
 contextBridge.exposeInMainWorld('vinted', {
@@ -29,6 +33,11 @@ contextBridge.exposeInMainWorld('vinted', {
   hasCookie: () => ipcRenderer.invoke('session:hasCookie'),
   clearCookie: () => ipcRenderer.invoke('session:clearCookie'),
   isEncryptionAvailable: () => ipcRenderer.invoke('session:isEncryptionAvailable'),
+  startCookieRefresh: () => ipcRenderer.invoke('session:startCookieRefresh'),
+  saveLoginCredentials: (username: string, password: string) =>
+    ipcRenderer.invoke('session:saveLoginCredentials', username, password),
+  hasLoginCredentials: () => ipcRenderer.invoke('session:hasLoginCredentials'),
+  clearLoginCredentials: () => ipcRenderer.invoke('session:clearLoginCredentials'),
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:getAll'),
