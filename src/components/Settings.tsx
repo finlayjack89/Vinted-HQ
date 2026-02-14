@@ -95,6 +95,73 @@ const defaultSettings: AppSettings = {
   sessionAutoSubmitEnabled: false,
 };
 
+/* ─── Relist Timing Section ─────────────────────────────────── */
+
+function RelistTimingSection() {
+  const [minDelay, setMinDelay] = useState(30);
+  const [maxDelay, setMaxDelay] = useState(90);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    window.vinted.getQueueSettings().then((s) => {
+      setMinDelay(s.minDelay);
+      setMaxDelay(s.maxDelay);
+    });
+  }, []);
+
+  const handleSave = () => {
+    const min = Math.max(5, minDelay);
+    const max = Math.max(min + 5, maxDelay);
+    setMinDelay(min);
+    setMaxDelay(max);
+    window.vinted.setQueueSettings(min, max);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <Section
+      title="Relist Timing"
+      description="Randomized delay between bulk relists to avoid pattern detection. Each relist waits a random duration between min and max before proceeding to the next item."
+    >
+      <div style={{ display: 'flex', gap: spacing.lg, alignItems: 'center', marginBottom: spacing.md }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: font.size.base, color: colors.textSecondary }}>
+          <span>Min delay (s):</span>
+          <input
+            type="number"
+            min={5}
+            max={300}
+            value={minDelay}
+            onChange={(e) => setMinDelay(Math.max(5, parseInt(e.target.value, 10) || 30))}
+            style={{ ...glassInput, width: 90 }}
+          />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: font.size.base, color: colors.textSecondary }}>
+          <span>Max delay (s):</span>
+          <input
+            type="number"
+            min={10}
+            max={600}
+            value={maxDelay}
+            onChange={(e) => setMaxDelay(Math.max(10, parseInt(e.target.value, 10) || 90))}
+            style={{ ...glassInput, width: 90 }}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={handleSave}
+          style={{ ...btnPrimary, ...btnSmall }}
+        >
+          {saved ? '✓ Saved' : 'Save'}
+        </button>
+      </div>
+      <p style={{ fontSize: font.size.sm, color: colors.textMuted, margin: 0 }}>
+        Current range: {minDelay}–{maxDelay}s between relists. The 10-second delete-post safety gap is applied automatically.
+      </p>
+    </Section>
+  );
+}
+
 /* ─── Main Component ────────────────────────────────────────── */
 
 export default function Settings() {
@@ -682,6 +749,9 @@ export default function Settings() {
           </ul>
         </Section>
       )}
+
+      {/* ─── Relist Timing ─────────────────────────────── */}
+      <RelistTimingSection />
 
       {/* ─── Autobuy ──────────────────────────────────── */}
       <Section title="Autobuy (Sniper)">

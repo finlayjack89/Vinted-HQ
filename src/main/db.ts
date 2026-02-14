@@ -63,6 +63,62 @@ function migrate(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
     CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at);
+
+    -- Inventory Vault: local "source of truth" for each listing
+    CREATE TABLE IF NOT EXISTS inventory_master (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      price REAL NOT NULL,
+      currency TEXT DEFAULT 'GBP',
+      category_id INTEGER,
+      brand_id INTEGER,
+      brand_name TEXT,
+      size_id INTEGER,
+      size_label TEXT,
+      condition TEXT,
+      status_id INTEGER,
+      color_ids TEXT,              -- JSON array e.g. [1, 5]
+      photo_urls TEXT,             -- JSON array of original Vinted CDN URLs
+      local_image_paths TEXT,      -- JSON array of local cached file paths
+      package_size_id INTEGER,
+      item_attributes TEXT,        -- JSON array e.g. [{"code":"material","ids":[43]}]
+      is_unisex INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'local_only',  -- 'live','local_only','discrepancy','action_required'
+      extra_metadata TEXT,         -- JSON blob for any additional fields
+      created_at INTEGER DEFAULT (unixepoch()),
+      updated_at INTEGER DEFAULT (unixepoch())
+    );
+
+    -- Sync link between local master and Vinted item IDs
+    CREATE TABLE IF NOT EXISTS inventory_sync (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      local_id INTEGER NOT NULL REFERENCES inventory_master(id) ON DELETE CASCADE,
+      vinted_item_id INTEGER,       -- current live Vinted item ID (null if not listed)
+      relist_count INTEGER DEFAULT 0,
+      last_synced_at INTEGER,
+      last_relist_at INTEGER,
+      sync_direction TEXT,          -- 'push', 'pull', or null
+      created_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(local_id)
+    );
+
+    -- Local ontology cache for categories, brands, attributes
+    CREATE TABLE IF NOT EXISTS vinted_ontology (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL,    -- 'category','brand','color','condition','size_group'
+      entity_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT,
+      parent_id INTEGER,
+      extra TEXT,                   -- JSON for entity-specific data
+      fetched_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(entity_type, entity_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_inventory_master_status ON inventory_master(status);
+    CREATE INDEX IF NOT EXISTS idx_inventory_sync_vinted_id ON inventory_sync(vinted_item_id);
+    CREATE INDEX IF NOT EXISTS idx_ontology_type ON vinted_ontology(entity_type);
   `);
   // Migration: add sniper_id to purchases if missing
   const cols = database.prepare("PRAGMA table_info(purchases)").all() as { name: string }[];

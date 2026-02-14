@@ -202,3 +202,340 @@ export async function healthCheck(): Promise<{ ok: boolean; service?: string }> 
     return { ok: false };
   }
 }
+
+// ─── Wardrobe & Inventory Bridge Methods ────────────────────────────────────
+
+/** Build common auth headers for wardrobe/listing operations. */
+function authHeaders(): Record<string, string> {
+  const cookie = secureStorage.retrieveCookie();
+  const headers: Record<string, string> = {};
+  if (cookie) headers['X-Vinted-Cookie'] = cookie;
+  // CSRF token and anon_id stored alongside cookie in settings
+  const csrfToken = _getSettingRaw('csrf_token');
+  const anonId = _getSettingRaw('anon_id');
+  if (csrfToken) headers['X-Csrf-Token'] = csrfToken;
+  if (anonId) headers['X-Anon-Id'] = anonId;
+  return headers;
+}
+
+/** Read a raw string setting from the DB. */
+function _getSettingRaw(key: string): string | null {
+  try {
+    // Dynamic import to avoid circular deps
+    const { getDb } = require('./db');
+    const db = getDb();
+    if (!db) return null;
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function bridgeError(err: unknown): BridgeResult {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
+    return { ok: false, code: 'BRIDGE_UNREACHABLE', message: 'Python bridge not running. Restart the app.' };
+  }
+  return { ok: false, code: 'REQUEST_FAILED', message: msg };
+}
+
+/**
+ * Fetch user's wardrobe listings.
+ */
+export async function fetchWardrobe(
+  userId: number,
+  page: number = 1,
+  perPage: number = 20,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {
+    user_id: String(userId),
+    page: String(page),
+    per_page: String(perPage),
+  };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/wardrobe?${qs}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Fetch ontology categories.
+ */
+export async function fetchOntologyCategories(proxy?: string): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {};
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/ontology/categories${qs ? '?' + qs : ''}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Fetch ontology brands, optionally filtered.
+ */
+export async function fetchOntologyBrands(
+  categoryId?: number,
+  keyword?: string,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {};
+  if (categoryId !== undefined) params.category_id = String(categoryId);
+  if (keyword) params.keyword = keyword;
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/ontology/brands${qs ? '?' + qs : ''}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Fetch ontology colors.
+ */
+export async function fetchOntologyColors(proxy?: string): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {};
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/ontology/colors${qs ? '?' + qs : ''}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Fetch ontology conditions for a category.
+ */
+export async function fetchOntologyConditions(catalogId: number, proxy?: string): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = { catalog_id: String(catalogId) };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/ontology/conditions?${qs}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Preview mutation — applies Pillow mutation without uploading. Returns mutated image bytes.
+ */
+export async function previewMutation(
+  imageBuffer: Buffer,
+  relistCount: number
+): Promise<Buffer | null> {
+  try {
+    const formData = new FormData();
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: 'image/jpeg' }), 'photo.jpg');
+    formData.append('relist_count', String(relistCount));
+
+    const res = await fetch(`${BRIDGE_BASE}/preview-mutation`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) return null;
+    const arrayBuf = await res.arrayBuffer();
+    return Buffer.from(arrayBuf);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Create and publish a new listing.
+ */
+export async function createListing(
+  itemData: Record<string, unknown>,
+  uploadSessionId?: string,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {};
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/listing${qs ? '?' + qs : ''}`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_data: itemData, upload_session_id: uploadSessionId }),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Edit an existing listing.
+ */
+export async function editListing(
+  itemId: number,
+  itemData: Record<string, unknown>,
+  uploadSessionId?: string,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {};
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/listing/${itemId}${qs ? '?' + qs : ''}`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_data: itemData, upload_session_id: uploadSessionId }),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Delete a live listing.
+ */
+export async function deleteListing(itemId: number, proxy?: string): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {};
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/listing/${itemId}/delete${qs ? '?' + qs : ''}`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Hide or unhide a listing.
+ */
+export async function toggleListingVisibility(
+  itemId: number,
+  isHidden: boolean,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {};
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/listing/${itemId}/visibility${qs ? '?' + qs : ''}`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_hidden: isHidden }),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Full stealth relist: mutate images, delete old, wait 10s, publish new.
+ */
+export async function relistItem(
+  oldItemId: number,
+  itemData: Record<string, unknown>,
+  imageBuffers: Buffer[],
+  relistCount: number,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {};
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  // Encode images as base64 for JSON transport to bridge
+  const imageB64 = imageBuffers.map((buf) => buf.toString('base64'));
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/relist${qs ? '?' + qs : ''}`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        old_item_id: oldItemId,
+        item_data: itemData,
+        image_bytes_b64: imageB64,
+        relist_count: relistCount,
+      }),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}

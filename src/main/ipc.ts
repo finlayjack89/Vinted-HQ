@@ -17,6 +17,9 @@ import * as authCapture from './authCapture';
 import * as credentialStore from './credentialStore';
 import * as logs from './logs';
 import * as purchases from './purchases';
+import * as inventoryDb from './inventoryDb';
+import * as inventoryService from './inventoryService';
+import * as ontologyService from './ontologyService';
 import type { AppSettings } from './settings';
 import { logger } from './logger';
 
@@ -129,5 +132,68 @@ export function registerIpcHandlers(): void {
       const result = await checkoutService.runCheckout(feedItem, resolvedProxy);
       return result;
     }
+  );
+
+  // ─── Wardrobe / Inventory Vault ─────────────────────────────────────────
+
+  ipcMain.handle('wardrobe:getAll', (_event, filter?: { status?: string }) =>
+    inventoryDb.getAllInventoryItems(filter)
+  );
+
+  ipcMain.handle('wardrobe:getItem', (_event, localId: number) =>
+    inventoryDb.getInventoryItem(localId)
+  );
+
+  ipcMain.handle('wardrobe:upsertItem', (_event, data: Parameters<typeof inventoryDb.upsertInventoryItem>[0]) =>
+    inventoryDb.upsertInventoryItem(data)
+  );
+
+  ipcMain.handle('wardrobe:deleteItem', (_event, localId: number) =>
+    inventoryDb.deleteInventoryItem(localId)
+  );
+
+  ipcMain.handle('wardrobe:pullFromVinted', (_event, userId: number) =>
+    inventoryService.pullFromVinted(userId)
+  );
+
+  ipcMain.handle('wardrobe:pushToVinted', (_event, localId: number, proxy?: string) =>
+    inventoryService.pushToVinted(localId, proxy)
+  );
+
+  // ─── Relist Queue (Waiting Room) ────────────────────────────────────────
+
+  ipcMain.handle('wardrobe:getQueue', () => ({
+    queue: inventoryService.getQueue(),
+    countdown: inventoryService.getQueueCountdown(),
+  }));
+
+  ipcMain.handle('wardrobe:enqueueRelist', (_event, localIds: number[]) =>
+    inventoryService.enqueueRelist(localIds)
+  );
+
+  ipcMain.handle('wardrobe:dequeueRelist', (_event, localId: number) =>
+    inventoryService.dequeueRelist(localId)
+  );
+
+  ipcMain.handle('wardrobe:clearQueue', () =>
+    inventoryService.clearQueue()
+  );
+
+  ipcMain.handle('wardrobe:getQueueSettings', () =>
+    inventoryService.getQueueSettings()
+  );
+
+  ipcMain.handle('wardrobe:setQueueSettings', (_event, minDelay: number, maxDelay: number) =>
+    inventoryService.setQueueSettings(minDelay, maxDelay)
+  );
+
+  // ─── Ontology ───────────────────────────────────────────────────────────
+
+  ipcMain.handle('wardrobe:refreshOntology', () =>
+    ontologyService.refreshAll()
+  );
+
+  ipcMain.handle('wardrobe:getOntology', (_event, entityType: string) =>
+    inventoryDb.getOntologyEntities(entityType)
   );
 }

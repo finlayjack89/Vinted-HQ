@@ -5,9 +5,12 @@ Bypasses Cloudflare/Datadome via TLS fingerprint impersonation.
 
 import random
 import time
+import uuid
 from urllib.parse import urlencode, urlparse, parse_qs
 
 from curl_cffi import requests
+
+from image_mutator import mutate_image, jitter_text
 
 # Impersonate Chrome for JA3/JA4 fingerprint (chrome = latest available)
 IMPOSTOR = "chrome110"  # Stable; alternatives: "chrome", "chrome131"
@@ -76,6 +79,45 @@ def _extract_csrf_from_cookie(cookie: str) -> str | None:
     # Vinted often expects x-csrf-token in headers; it may be in a cookie or set by JS.
     # For now we rely on cookie bundle; add explicit csrf header if needed.
     return None
+
+
+def _build_write_headers(
+    cookie: str,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    referer: str | None = None,
+    upload_form: bool = False,
+) -> dict:
+    """Build headers for write operations (POST/PUT/DELETE) that require CSRF."""
+    headers = _build_headers(cookie, referer)
+    headers["Content-Type"] = "application/json"
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+    if upload_form:
+        headers["x-upload-form"] = "true"
+    return headers
+
+
+def _handle_response(resp, allow_statuses: tuple = (200,)) -> dict:
+    """Common response status handling. Raises VintedError on failure."""
+    if resp.status_code == 401:
+        raise VintedError("SESSION_EXPIRED", "Session expired or invalid cookie", 401)
+    if resp.status_code == 403:
+        raise VintedError("FORBIDDEN", "Access forbidden (bot detection?)", 403)
+    if resp.status_code == 429:
+        raise VintedError("RATE_LIMITED", "Too many requests", 429)
+    if resp.status_code not in allow_statuses:
+        raise VintedError(
+            "HTTP_ERROR",
+            f"HTTP {resp.status_code}: {resp.text[:300]}",
+            resp.status_code,
+        )
+    try:
+        return resp.json()
+    except Exception as e:
+        raise VintedError("PARSE_ERROR", f"Invalid JSON: {e}")
 
 
 def search(
@@ -299,3 +341,532 @@ def apply_rate_limit(
     """Apply per-request delay: base + random jitter. Configurable from Electron."""
     delay = base_interval_seconds + random.uniform(0, jitter_max_seconds)
     time.sleep(delay)
+
+
+# ─── Wardrobe & Inventory Management ────────────────────────────────────────
+
+
+def fetch_wardrobe(
+    cookie: str,
+    user_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    page: int = 1,
+    per_page: int = 20,
+) -> dict:
+    """GET /api/v2/wardrobe/{user_id}/items — fetch user's own listings."""
+    qs = urlencode({"page": page, "per_page": per_page, "order": "relevance"})
+    api_url = f"{BASE_URL}/api/v2/wardrobe/{user_id}/items?{qs}"
+
+    session = requests.Session(impersonate=IMPOSTOR)
+    headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}")
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304))
+
+
+# ─── Ontology Endpoints ─────────────────────────────────────────────────────
+
+
+def fetch_ontology_categories(
+    cookie: str,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+) -> dict:
+    """GET /api/v2/item_upload/catalogs — fetch full category tree."""
+    api_url = f"{BASE_URL}/api/v2/item_upload/catalogs"
+
+    session = requests.Session(impersonate=IMPOSTOR)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304))
+
+
+def fetch_ontology_brands(
+    cookie: str,
+    category_id: int | None = None,
+    keyword: str | None = None,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+) -> dict:
+    """GET /api/v2/item_upload/brands — fetch brands, optionally filtered."""
+    params: dict = {}
+    if category_id is not None:
+        params["category_id"] = category_id
+    if keyword:
+        params["keyword"] = keyword
+    qs = urlencode(params) if params else ""
+    api_url = f"{BASE_URL}/api/v2/item_upload/brands"
+    if qs:
+        api_url += f"?{qs}"
+
+    session = requests.Session(impersonate=IMPOSTOR)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304))
+
+
+def fetch_ontology_colors(
+    cookie: str,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+) -> dict:
+    """GET /api/v2/item_upload/colors — fetch all color options."""
+    api_url = f"{BASE_URL}/api/v2/item_upload/colors"
+
+    session = requests.Session(impersonate=IMPOSTOR)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304))
+
+
+def fetch_ontology_conditions(
+    cookie: str,
+    catalog_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+) -> dict:
+    """GET /api/v2/item_upload/conditions?catalog_id={id} — conditions for category."""
+    qs = urlencode({"catalog_id": catalog_id})
+    api_url = f"{BASE_URL}/api/v2/item_upload/conditions?{qs}"
+
+    session = requests.Session(impersonate=IMPOSTOR)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304))
+
+
+# ─── Photo Upload ────────────────────────────────────────────────────────────
+
+
+def upload_photo(
+    cookie: str,
+    image_bytes: bytes,
+    temp_uuid: str | None = None,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    session: requests.Session | None = None,
+) -> dict:
+    """
+    POST /api/v2/photos — upload image as multipart/form-data.
+    Fields: photo[type]="item", photo[file]=(binary), photo[temp_uuid]=(uuid)
+    Returns photo object with id, url, thumbnails, etc.
+    """
+    api_url = f"{BASE_URL}/api/v2/photos"
+    photo_uuid = temp_uuid or str(uuid.uuid4())
+
+    if session is None:
+        session = requests.Session(impersonate=IMPOSTOR)
+
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    # Remove Content-Type — curl_cffi sets it with boundary for multipart
+    headers.pop("Content-Type", None)
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    # multipart fields matching Vinted's expected format
+    multipart = [
+        ("photo[type]", (None, "item")),
+        ("photo[file]", ("photo.jpg", image_bytes, "image/jpeg")),
+        ("photo[temp_uuid]", (None, photo_uuid)),
+    ]
+
+    req_kwargs: dict = {
+        "url": api_url,
+        "headers": headers,
+        "multipart": multipart,
+        "timeout": 60,
+    }
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.post(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 201))
+
+
+# ─── Listing CRUD ────────────────────────────────────────────────────────────
+
+
+def create_listing(
+    cookie: str,
+    item_data: dict,
+    upload_session_id: str | None = None,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    session: requests.Session | None = None,
+) -> dict:
+    """
+    POST /api/v2/item_upload/items — create and publish a new listing.
+    item_data should contain all listing fields (title, description, price, etc.).
+    """
+    api_url = f"{BASE_URL}/api/v2/item_upload/items"
+    session_id = upload_session_id or str(uuid.uuid4())
+
+    if session is None:
+        session = requests.Session(impersonate=IMPOSTOR)
+
+    headers = _build_write_headers(
+        cookie, csrf_token, anon_id,
+        referer=f"{BASE_URL}/items/new",
+        upload_form=True,
+    )
+
+    payload = {
+        "item": {
+            "id": None,
+            **item_data,
+        },
+        "feedback_id": None,
+        "push_up": False,
+        "parcel": None,
+        "upload_session_id": session_id,
+    }
+
+    req_kwargs: dict = {
+        "url": api_url,
+        "headers": headers,
+        "json": payload,
+        "timeout": 30,
+    }
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.post(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 201))
+
+
+def edit_listing(
+    cookie: str,
+    item_id: int,
+    item_data: dict,
+    upload_session_id: str | None = None,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    session: requests.Session | None = None,
+) -> dict:
+    """
+    PUT /api/v2/item_upload/items/{item_id} — edit an existing listing.
+    """
+    api_url = f"{BASE_URL}/api/v2/item_upload/items/{item_id}"
+    session_id = upload_session_id or str(uuid.uuid4())
+
+    if session is None:
+        session = requests.Session(impersonate=IMPOSTOR)
+
+    headers = _build_write_headers(
+        cookie, csrf_token, anon_id,
+        referer=f"{BASE_URL}/items/{item_id}/edit",
+        upload_form=True,
+    )
+
+    payload = {
+        "item": {
+            "id": item_id,
+            **item_data,
+        },
+        "feedback_id": None,
+        "push_up": False,
+        "parcel": None,
+        "upload_session_id": session_id,
+    }
+
+    req_kwargs: dict = {
+        "url": api_url,
+        "headers": headers,
+        "json": payload,
+        "timeout": 30,
+    }
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.put(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200,))
+
+
+def delete_listing(
+    cookie: str,
+    item_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    session: requests.Session | None = None,
+) -> dict:
+    """
+    POST /api/v2/items/{item_id}/delete — delete a live listing.
+    Empty body; uses POST (not DELETE method).
+    """
+    api_url = f"{BASE_URL}/api/v2/items/{item_id}/delete"
+
+    if session is None:
+        session = requests.Session(impersonate=IMPOSTOR)
+
+    headers = _build_write_headers(
+        cookie, csrf_token, anon_id,
+        referer=f"{BASE_URL}/items/{item_id}",
+    )
+    # Delete has empty body — remove Content-Type
+    headers.pop("Content-Type", None)
+    headers["Content-Length"] = "0"
+
+    req_kwargs: dict = {
+        "url": api_url,
+        "headers": headers,
+        "timeout": 30,
+    }
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.post(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200,))
+
+
+def hide_listing(
+    cookie: str,
+    item_id: int,
+    hidden: bool = True,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+) -> dict:
+    """
+    PUT /api/v2/items/{item_id}/is_hidden — hide or unhide a listing.
+    """
+    api_url = f"{BASE_URL}/api/v2/items/{item_id}/is_hidden"
+
+    session = requests.Session(impersonate=IMPOSTOR)
+    headers = _build_write_headers(
+        cookie, csrf_token, anon_id,
+        referer=f"{BASE_URL}/items/{item_id}",
+    )
+
+    req_kwargs: dict = {
+        "url": api_url,
+        "headers": headers,
+        "json": {"is_hidden": hidden},
+        "timeout": 30,
+    }
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.put(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200,))
+
+
+# ─── Stealth Relist Orchestrator ─────────────────────────────────────────────
+
+
+def relist_item(
+    cookie: str,
+    old_item_id: int,
+    item_data: dict,
+    image_bytes_list: list[bytes],
+    relist_count: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+) -> dict:
+    """
+    Full stealth relist sequence under a single sticky proxy session:
+      1. Mutate & upload all images
+      2. Delete old listing
+      3. Wait 10 seconds (delete-post jitter)
+      4. Create + publish new listing with mutated text & new photo IDs
+      5. Return new item data
+
+    Args:
+        cookie: Full Vinted session cookie string.
+        old_item_id: The current live Vinted item ID to delete.
+        item_data: Listing fields (title, description, price, etc.) from local master.
+        image_bytes_list: List of raw image bytes (from local cache).
+        relist_count: Current relist count (controls mutation direction).
+        csrf_token: CSRF token for write operations.
+        anon_id: Anonymous ID header value.
+        proxy: Sticky proxy URL for the entire sequence.
+
+    Returns:
+        dict with {new_item_id, photo_ids, upload_session_id}
+    """
+    # Single session for IP consistency
+    sticky_session = requests.Session(impersonate=IMPOSTOR)
+    upload_session_id = str(uuid.uuid4())
+
+    # ── Step 1: Mutate and upload all images ──
+    photo_ids = []
+    for img_bytes in image_bytes_list:
+        mutated = mutate_image(img_bytes, relist_count)
+        photo_uuid = str(uuid.uuid4())
+        result = upload_photo(
+            cookie=cookie,
+            image_bytes=mutated,
+            temp_uuid=photo_uuid,
+            csrf_token=csrf_token,
+            anon_id=anon_id,
+            proxy=proxy,
+            session=sticky_session,
+        )
+        photo_id = result.get("id")
+        if photo_id:
+            photo_ids.append({"id": photo_id, "orientation": 0})
+        # Small delay between uploads to mimic human behavior
+        time.sleep(random.uniform(0.3, 0.8))
+
+    if not photo_ids:
+        raise VintedError("UPLOAD_FAILED", "No photos were uploaded successfully")
+
+    # ── Step 2: Delete old listing ──
+    delete_listing(
+        cookie=cookie,
+        item_id=old_item_id,
+        csrf_token=csrf_token,
+        anon_id=anon_id,
+        proxy=proxy,
+        session=sticky_session,
+    )
+
+    # ── Step 3: Wait 10 seconds (delete-post jitter) ──
+    time.sleep(10)
+
+    # ── Step 4: Create + publish new listing with mutated text ──
+    # Apply whitespace jitter to title and description
+    mutated_data = dict(item_data)
+    if "title" in mutated_data:
+        mutated_data["title"] = jitter_text(mutated_data["title"], relist_count)
+    if "description" in mutated_data:
+        mutated_data["description"] = jitter_text(
+            mutated_data["description"] or "", relist_count
+        )
+
+    # Replace photo references with newly uploaded ones
+    mutated_data["assigned_photos"] = photo_ids
+    mutated_data["temp_uuid"] = upload_session_id
+
+    result = create_listing(
+        cookie=cookie,
+        item_data=mutated_data,
+        upload_session_id=upload_session_id,
+        csrf_token=csrf_token,
+        anon_id=anon_id,
+        proxy=proxy,
+        session=sticky_session,
+    )
+
+    return {
+        "ok": True,
+        "new_item": result,
+        "photo_ids": [p["id"] for p in photo_ids],
+        "upload_session_id": upload_session_id,
+    }

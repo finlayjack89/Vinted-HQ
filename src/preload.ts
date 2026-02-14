@@ -128,4 +128,59 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.on('feed:items', handler);
     return () => ipcRenderer.removeListener('feed:items', handler);
   },
+
+  // ─── Wardrobe / Inventory Vault ─────────────────────────────────────────
+
+  getWardrobe: (filter?: { status?: string }) =>
+    ipcRenderer.invoke('wardrobe:getAll', filter),
+  getWardrobeItem: (localId: number) =>
+    ipcRenderer.invoke('wardrobe:getItem', localId),
+  upsertWardrobeItem: (data: { title: string; price: number; id?: number; [k: string]: unknown }) =>
+    ipcRenderer.invoke('wardrobe:upsertItem', data),
+  deleteWardrobeItem: (localId: number) =>
+    ipcRenderer.invoke('wardrobe:deleteItem', localId),
+  pullFromVinted: (userId: number) =>
+    ipcRenderer.invoke('wardrobe:pullFromVinted', userId),
+  pushToVinted: (localId: number, proxy?: string) =>
+    ipcRenderer.invoke('wardrobe:pushToVinted', localId, proxy),
+
+  // ─── Relist Queue (Waiting Room) ────────────────────────────────────────
+
+  getRelistQueue: () =>
+    ipcRenderer.invoke('wardrobe:getQueue'),
+  enqueueRelist: (localIds: number[]) =>
+    ipcRenderer.invoke('wardrobe:enqueueRelist', localIds),
+  dequeueRelist: (localId: number) =>
+    ipcRenderer.invoke('wardrobe:dequeueRelist', localId),
+  clearRelistQueue: () =>
+    ipcRenderer.invoke('wardrobe:clearQueue'),
+  getQueueSettings: () =>
+    ipcRenderer.invoke('wardrobe:getQueueSettings'),
+  setQueueSettings: (minDelay: number, maxDelay: number) =>
+    ipcRenderer.invoke('wardrobe:setQueueSettings', minDelay, maxDelay),
+  onQueueUpdate: (callback: (data: { queue: unknown[]; countdown: number; processing: boolean }) => void) => {
+    const handler = (_: unknown, data: { queue: unknown[]; countdown: number; processing: boolean }) => callback(data);
+    ipcRenderer.on('wardrobe:queue-update', handler);
+    return () => ipcRenderer.removeListener('wardrobe:queue-update', handler);
+  },
+
+  // ─── Ontology ───────────────────────────────────────────────────────────
+
+  refreshOntology: () =>
+    ipcRenderer.invoke('wardrobe:refreshOntology'),
+  getOntology: (entityType: string) =>
+    ipcRenderer.invoke('wardrobe:getOntology', entityType),
+  onOntologyAlert: (callback: (data: unknown) => void) => {
+    const handler = (_: unknown, data: unknown) => callback(data);
+    ipcRenderer.on('wardrobe:ontology-alert', handler);
+    return () => ipcRenderer.removeListener('wardrobe:ontology-alert', handler);
+  },
+
+  // ─── Sync Progress ─────────────────────────────────────────────────────
+
+  onSyncProgress: (callback: (data: { direction: string; stage: string; current: number; total: number }) => void) => {
+    const handler = (_: unknown, data: { direction: string; stage: string; current: number; total: number }) => callback(data);
+    ipcRenderer.on('wardrobe:sync-progress', handler);
+    return () => ipcRenderer.removeListener('wardrobe:sync-progress', handler);
+  },
 });

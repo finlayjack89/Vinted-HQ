@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Feed from './components/Feed';
+import Wardrobe from './components/Wardrobe';
 import Settings from './components/Settings';
 import Logs from './components/Logs';
 import Purchases from './components/Purchases';
@@ -25,7 +26,7 @@ import {
 } from './theme';
 import type { SniperCountdownParams } from './types/global';
 
-type Tab = 'feed' | 'settings' | 'logs' | 'purchases';
+type Tab = 'feed' | 'wardrobe' | 'settings' | 'logs' | 'purchases';
 
 /* ─── SVG Icons (inline for zero-dep) ───────────────────────── */
 
@@ -36,6 +37,13 @@ const icons: Record<Tab, JSX.Element> = {
       <rect x="14" y="3" width="7" height="7" rx="1" />
       <rect x="3" y="14" width="7" height="7" rx="1" />
       <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  ),
+  wardrobe: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3h7v18H3zM14 3h7v18h-7z" />
+      <line x1="7" y1="8" x2="7" y2="12" />
+      <line x1="17" y1="8" x2="17" y2="12" />
     </svg>
   ),
   settings: (
@@ -64,6 +72,7 @@ const icons: Record<Tab, JSX.Element> = {
 
 const tabLabels: Record<Tab, string> = {
   feed: 'Feed',
+  wardrobe: 'Wardrobe',
   settings: 'Settings',
   logs: 'Logs',
   purchases: 'Purchases',
@@ -189,7 +198,7 @@ export default function App() {
 
         {/* Nav Items */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: `0 ${spacing.sm}px` }}>
-          {(['feed', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
+          {(['feed', 'wardrobe', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
             const active = tab === t;
             return (
               <button
@@ -268,6 +277,7 @@ export default function App() {
         }}
       >
         {tab === 'feed' && <Feed />}
+        {tab === 'wardrobe' && <Wardrobe />}
         {tab === 'settings' && <Settings />}
         {tab === 'logs' && <Logs />}
         {tab === 'purchases' && <Purchases />}

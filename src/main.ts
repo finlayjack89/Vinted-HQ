@@ -8,6 +8,8 @@ import { registerIpcHandlers } from './main/ipc';
 import * as feedService from './main/feedService';
 import * as searchUrls from './main/searchUrls';
 import * as settings from './main/settings';
+import * as ontologyService from './main/ontologyService';
+import * as inventoryService from './main/inventoryService';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -89,13 +91,29 @@ app.on('ready', () => {
   registerIpcHandlers();
   settings.migrateProxySettings();
   startPythonBridge();
+
+  // Ensure image cache directory exists for Inventory Vault
+  const imageCacheDir = path.join(app.getPath('userData'), 'image_cache');
+  if (!fs.existsSync(imageCacheDir)) {
+    fs.mkdirSync(imageCacheDir, { recursive: true });
+    console.log('[Inventory] Created image cache directory:', imageCacheDir);
+  }
+
   createWindow();
   if (searchUrls.getEnabledSearchUrls().length > 0) {
     feedService.startPolling();
   }
+
+  // Run ontology diff in background after bridge has had time to start
+  setTimeout(() => {
+    ontologyService.refreshAll().catch((err) =>
+      console.warn('[Ontology] Startup refresh failed:', err)
+    );
+  }, 5000);
 });
 
 app.on('before-quit', () => {
+  inventoryService.abortQueue();
   feedService.stopPolling();
   stopPythonBridge();
   closeDb();

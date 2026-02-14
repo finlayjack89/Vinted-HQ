@@ -95,6 +95,79 @@ export type FeedItem = {
   fetched_at: number;
 };
 
+// ─── Inventory Vault Types ───
+
+export type InventoryItem = {
+  id: number;
+  title: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  category_id: number | null;
+  brand_id: number | null;
+  brand_name: string | null;
+  size_id: number | null;
+  size_label: string | null;
+  condition: string | null;
+  status_id: number | null;
+  color_ids: number[];           // parsed from JSON
+  photo_urls: string[];          // parsed from JSON
+  local_image_paths: string[];   // parsed from JSON
+  package_size_id: number | null;
+  item_attributes: { code: string; ids: number[] }[];  // parsed from JSON
+  is_unisex: boolean;
+  status: 'live' | 'local_only' | 'discrepancy' | 'action_required';
+  extra_metadata: Record<string, unknown> | null;
+  created_at: number;
+  updated_at: number;
+  // Sync fields (from inventory_sync join)
+  vinted_item_id: number | null;
+  relist_count: number;
+  last_synced_at: number | null;
+  last_relist_at: number | null;
+  sync_direction: string | null;
+};
+
+export type InventorySyncRecord = {
+  id: number;
+  local_id: number;
+  vinted_item_id: number | null;
+  relist_count: number;
+  last_synced_at: number | null;
+  last_relist_at: number | null;
+  sync_direction: string | null;
+  created_at: number;
+};
+
+export type OntologyEntity = {
+  id: number;
+  entity_type: 'category' | 'brand' | 'color' | 'condition' | 'size_group';
+  entity_id: number;
+  name: string;
+  slug: string | null;
+  parent_id: number | null;
+  extra: Record<string, unknown> | null;
+  fetched_at: number;
+};
+
+export type RelistQueueEntry = {
+  localId: number;
+  title: string;
+  jitteredTitle: string;
+  price: number;
+  thumbnailPath: string | null;
+  mutatedThumbnailPath: string | null;
+  relistCount: number;
+  status: 'pending' | 'mutating' | 'uploading' | 'done' | 'error';
+  error?: string;
+  enqueuedAt: number;
+};
+
+export type WardrobeSettings = {
+  minDelay: number;   // seconds, default 30
+  maxDelay: number;   // seconds, default 90
+};
+
 declare global {
   interface Window {
     vinted: {
@@ -148,6 +221,31 @@ declare global {
       onSessionReconnected: (callback: () => void) => () => void;
       getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) => Promise<LogEntry[]>;
       getPurchases: (limit?: number) => Promise<Purchase[]>;
+
+      // Wardrobe / Inventory Vault
+      getWardrobe: (filter?: { status?: string }) => Promise<InventoryItem[]>;
+      getWardrobeItem: (localId: number) => Promise<InventoryItem | undefined>;
+      upsertWardrobeItem: (data: { title: string; price: number; id?: number; [k: string]: unknown }) => Promise<number>;
+      deleteWardrobeItem: (localId: number) => Promise<boolean>;
+      pullFromVinted: (userId: number) => Promise<{ pulled: number; errors: string[] }>;
+      pushToVinted: (localId: number, proxy?: string) => Promise<{ ok: boolean; vintedItemId?: number; error?: string }>;
+
+      // Relist Queue (Waiting Room)
+      getRelistQueue: () => Promise<{ queue: RelistQueueEntry[]; countdown: number }>;
+      enqueueRelist: (localIds: number[]) => Promise<RelistQueueEntry[]>;
+      dequeueRelist: (localId: number) => Promise<boolean>;
+      clearRelistQueue: () => Promise<void>;
+      getQueueSettings: () => Promise<WardrobeSettings>;
+      setQueueSettings: (minDelay: number, maxDelay: number) => Promise<void>;
+      onQueueUpdate: (callback: (data: { queue: RelistQueueEntry[]; countdown: number; processing: boolean }) => void) => () => void;
+
+      // Ontology
+      refreshOntology: () => Promise<void>;
+      getOntology: (entityType: string) => Promise<OntologyEntity[]>;
+      onOntologyAlert: (callback: (data: { deletedCategories: unknown[]; affectedItems: unknown[] }) => void) => () => void;
+
+      // Sync Progress
+      onSyncProgress: (callback: (data: { direction: string; stage: string; current: number; total: number }) => void) => () => void;
     };
   }
 }
