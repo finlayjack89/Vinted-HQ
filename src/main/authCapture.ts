@@ -101,6 +101,19 @@ async function collectVintedCookies(webContents: WebContents): Promise<Electron.
   return allCookies.filter((cookie) => cookie.domain.includes('vinted.co.uk'));
 }
 
+/**
+ * Clear stale Vinted cookies from the given session so that only
+ * freshly-acquired cookies from an actual login will be detected.
+ */
+async function clearVintedCookies(session: Electron.Session): Promise<void> {
+  const existing = await session.cookies.get({});
+  const vintedCookies = existing.filter((c) => c.domain.includes('vinted.co.uk'));
+  for (const c of vintedCookies) {
+    const url = `https://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
+    await session.cookies.remove(url, c.name);
+  }
+}
+
 export async function startCookieRefresh(): Promise<CookieRefreshResult> {
   if (activeRun) {
     return { ok: false, reason: 'ALREADY_RUNNING' };
@@ -136,6 +149,19 @@ export async function startCookieRefresh(): Promise<CookieRefreshResult> {
     });
     activeWindow = win;
 
+    // Register safety handlers before any async work so window
+    // closure during init is always caught.
+    timeoutId = setTimeout(() => {
+      logger.warn('session:refresh-timeout');
+      finish({ ok: false, reason: 'TIMED_OUT' });
+    }, COOKIE_TIMEOUT_MS);
+
+    win.on('closed', () => {
+      if (!settled) {
+        finish({ ok: false, reason: 'WINDOW_CLOSED' });
+      }
+    });
+
     const tryCapture = async () => {
       try {
         const cookies = await collectVintedCookies(win.webContents);
@@ -154,39 +180,37 @@ export async function startCookieRefresh(): Promise<CookieRefreshResult> {
       }
     };
 
-    timeoutId = setTimeout(() => {
-      logger.warn('session:refresh-timeout');
-      finish({ ok: false, reason: 'TIMED_OUT' });
-    }, COOKIE_TIMEOUT_MS);
+    // Clear stale Vinted cookies from the persistent partition, then
+    // wire up capture listeners and load the login page.
+    clearVintedCookies(win.webContents.session).then(() => {
+      if (settled) return;
 
-    win.on('closed', () => {
-      if (!settled) {
-        finish({ ok: false, reason: 'WINDOW_CLOSED' });
-      }
-    });
+      cookieChangeHandler = () => {
+        void tryCapture();
+      };
+      win.webContents.session.cookies.on('changed', cookieChangeHandler);
 
-    cookieChangeHandler = () => {
-      void tryCapture();
-    };
-    win.webContents.session.cookies.on('changed', cookieChangeHandler);
-
-    win.webContents.on('did-finish-load', () => {
-      void runAutofill(win.webContents).catch((err) => {
-        logger.warn('session:refresh-autofill-failed', { error: String(err) });
+      win.webContents.on('did-finish-load', () => {
+        void runAutofill(win.webContents).catch((err) => {
+          logger.warn('session:refresh-autofill-failed', { error: String(err) });
+        });
+        void tryCapture();
       });
-      void tryCapture();
-    });
 
-    win.webContents.on('did-navigate', () => {
-      void runAutofill(win.webContents).catch((err) => {
-        logger.warn('session:refresh-autofill-failed', { error: String(err) });
+      win.webContents.on('did-navigate', () => {
+        void runAutofill(win.webContents).catch((err) => {
+          logger.warn('session:refresh-autofill-failed', { error: String(err) });
+        });
+        void tryCapture();
       });
-      void tryCapture();
-    });
 
-    win.loadURL(VINTED_LOGIN_URL).catch((err) => {
-      logger.error('session:refresh-load-failed', { error: String(err) });
-      finish({ ok: false, reason: 'LOAD_FAILED' });
+      win.loadURL(VINTED_LOGIN_URL).catch((err) => {
+        logger.error('session:refresh-load-failed', { error: String(err) });
+        finish({ ok: false, reason: 'LOAD_FAILED' });
+      });
+    }).catch((err) => {
+      logger.error('session:refresh-init-failed', { error: String(err) });
+      finish({ ok: false, reason: 'INIT_FAILED' });
     });
   });
 
