@@ -46,3 +46,24 @@ export function clearCookie(): void {
 export function hasStoredCookie(): boolean {
   return retrieveCookie() !== null;
 }
+
+/**
+ * Extract the Vinted user ID from the stored cookie string.
+ * Vinted sets a 'v_uid' cookie containing the numeric user ID.
+ */
+export function getVintedUserId(): number | null {
+  const cookie = retrieveCookie();
+  if (!cookie) return null;
+
+  // Cookie string is "name1=value1; name2=value2; ..."
+  const parts = cookie.split(';').map((p) => p.trim());
+  for (const part of parts) {
+    const [name, ...rest] = part.split('=');
+    if (name.trim() === 'v_uid') {
+      const value = rest.join('=').trim();
+      const num = parseInt(value, 10);
+      return isNaN(num) ? null : num;
+    }
+  }
+  return null;
+}

@@ -106,35 +106,91 @@ function sortByNewest(items: FeedItem[]): FeedItem[] {
   return [...items].sort((a, b) => b.fetched_at - a.fetched_at);
 }
 
-async function pollOneUrl(url: string, proxy?: string): Promise<FeedItem[]> {
+/** Result from pollOneUrl — includes items and whether proxy was FORBIDDEN. */
+interface PollResult {
+  items: FeedItem[];
+  forbidden: boolean;
+  proxyUsed?: string;
+}
+
+async function pollOneUrl(url: string, proxy?: string): Promise<PollResult> {
   const all: FeedItem[] = [];
   for (let page = 1; page <= PAGES_PER_URL; page++) {
     const result = await bridge.search(url, page, proxy);
     if (!result.ok) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:pollOneUrl',message:'Poll error details',data:{url,page,code:(result as any).code,msg:(result as any).message,proxy:proxy||'none'},timestamp:Date.now(),hypothesisId:'H1,H2,H5'})}).catch(()=>{});
+      // #endregion
+      const isForbidden = result.code === 'FORBIDDEN';
       if (sessionService.isSessionExpiredError(result)) {
         sessionService.emitSessionExpired();
       }
       logger.warn('feed:poll-error', { url, page, code: result.code, message: result.message });
-      break;
+      return { items: all, forbidden: isForbidden, proxyUsed: proxy };
     }
+    // #region agent log
+    if (page === 1) { fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:pollOneUrl:success',message:'Poll page 1 success',data:{url,itemCount:extractItems(result.data,url).length,proxyUsed:proxy||'none'},timestamp:Date.now(),hypothesisId:'H5,H9'})}).catch(()=>{}); }
+    // #endregion
     const items = extractItems(result.data, url);
     all.push(...items);
   }
-  return all;
+  return { items: all, forbidden: false, proxyUsed: proxy };
 }
 
 async function runPoll(): Promise<void> {
   const urls = searchUrls.getEnabledSearchUrls();
   if (urls.length === 0) return;
 
+  // Advance round-robin so each cycle uses the next proxy in the pool
+  proxyService.advanceScrapingCycle();
+
+  // #region agent log
+  const _proxyStatus = proxyService.getScrapingProxyStatus();
+  fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll',message:'Poll cycle starting',data:{urlCount:urls.length,proxyTotal:_proxyStatus.total,proxyCooledDown:_proxyStatus.cooledDown.length,proxyActive:_proxyStatus.active.length,activeProxies:_proxyStatus.active,cooledDownProxies:_proxyStatus.cooledDown},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
+  // #endregion
+
   const allItems: FeedItem[] = [];
 
   for (let i = 0; i < urls.length; i++) {
     const u = urls[i];
     const proxy = proxyService.getProxyForScraping(i);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll:proxySelected',message:'Proxy selected for URL',data:{urlIndex:i,url:u.url.substring(0,80),proxy:proxy||'none'},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
+    // #endregion
+
     try {
-      const items = await pollOneUrl(u.url, proxy);
-      allItems.push(...items);
+      const result = await pollOneUrl(u.url, proxy);
+
+      if (result.forbidden && proxy) {
+        // Mark this proxy as FORBIDDEN and try the next available one
+        proxyService.markProxyForbidden(proxy);
+        logger.warn('feed:proxy-forbidden', { proxy, url: u.url });
+
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll:forbidden',message:'Proxy FORBIDDEN, marked cooldown, trying next',data:{forbiddenProxy:proxy,urlIndex:i},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
+        // #endregion
+
+        // Get the next available proxy (getProxyForScraping skips cooled-down ones)
+        const nextProxy = proxyService.getProxyForScraping(i);
+        if (nextProxy && nextProxy !== proxy) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll:retry',message:'Retrying with next proxy',data:{nextProxy,urlIndex:i},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
+          // #endregion
+
+          const retryResult = await pollOneUrl(u.url, nextProxy);
+          if (retryResult.forbidden && nextProxy) {
+            proxyService.markProxyForbidden(nextProxy);
+            logger.warn('feed:proxy-forbidden', { proxy: nextProxy, url: u.url });
+          }
+          allItems.push(...retryResult.items);
+        } else {
+          // No more proxies available, add whatever we got
+          allItems.push(...result.items);
+        }
+      } else {
+        allItems.push(...result.items);
+      }
     } catch (err) {
       logger.error('feed:poll-exception', { url: u.url, error: String(err) });
     }

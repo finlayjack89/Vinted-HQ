@@ -74,14 +74,21 @@ export async function search(url: string, page: number = 1, proxy?: string): Pro
   const qs = new URLSearchParams(params).toString();
   const cookie = secureStorage.retrieveCookie();
   if (!cookie) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:search',message:'No cookie for search',data:{url,page},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie. Connect Vinted in settings.' };
   }
 
-  return fetchWithRetry(
+  const result = await fetchWithRetry(
     `${BRIDGE_BASE}/search?${qs}`,
     { method: 'GET', headers: { 'X-Vinted-Cookie': cookie } },
     (json) => !json.ok && json.code === 'RATE_LIMITED'
   );
+  // #region agent log
+  if (!result.ok) { fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:search:result',message:'Search failed',data:{url,page,code:(result as any).code,msg:(result as any).message,proxy:proxy||'none'},timestamp:Date.now(),hypothesisId:'H1,H2'})}).catch(()=>{}); }
+  // #endregion
+  return result;
 }
 
 /**
@@ -278,19 +285,34 @@ export async function fetchWardrobe(
 export async function fetchOntologyCategories(proxy?: string): Promise<BridgeResult> {
   const cookie = secureStorage.retrieveCookie();
   if (!cookie) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:fetchOntologyCategories',message:'No cookie for ontology categories',data:{},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
   const params: Record<string, string> = {};
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
+  const hdrs = authHeaders();
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:fetchOntologyCategories',message:'Calling ontology categories',data:{hasCookie:!!cookie,hasCsrf:!!hdrs['X-Csrf-Token'],hasAnonId:!!hdrs['X-Anon-Id'],proxy:proxy||'none'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+  // #endregion
+
   try {
     const res = await fetch(`${BRIDGE_BASE}/ontology/categories${qs ? '?' + qs : ''}`, {
       method: 'GET',
-      headers: authHeaders(),
+      headers: hdrs,
     });
-    return (await res.json()) as BridgeResult;
+    const json = (await res.json()) as BridgeResult;
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:fetchOntologyCategories:response',message:'Ontology categories response',data:{ok:json.ok,code:!json.ok?(json as any).code:undefined,msg:!json.ok?(json as any).message:undefined,httpStatus:res.status},timestamp:Date.now(),hypothesisId:'H2,H3,H4'})}).catch(()=>{});
+    // #endregion
+    return json;
   } catch (err) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:fetchOntologyCategories:catch',message:'Ontology categories fetch error',data:{error:String(err)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     return bridgeError(err);
   }
 }
@@ -305,6 +327,9 @@ export async function fetchOntologyBrands(
 ): Promise<BridgeResult> {
   const cookie = secureStorage.retrieveCookie();
   if (!cookie) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:fetchOntologyBrands',message:'No cookie for ontology brands',data:{},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
   const params: Record<string, string> = {};
@@ -313,13 +338,25 @@ export async function fetchOntologyBrands(
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
+  const hdrs = authHeaders();
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:fetchOntologyBrands',message:'Calling ontology brands',data:{hasCookie:!!cookie,hasCsrf:!!hdrs['X-Csrf-Token'],hasAnonId:!!hdrs['X-Anon-Id'],categoryId,proxy:proxy||'none'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+  // #endregion
+
   try {
     const res = await fetch(`${BRIDGE_BASE}/ontology/brands${qs ? '?' + qs : ''}`, {
       method: 'GET',
-      headers: authHeaders(),
+      headers: hdrs,
     });
-    return (await res.json()) as BridgeResult;
+    const json = (await res.json()) as BridgeResult;
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:fetchOntologyBrands:response',message:'Ontology brands response',data:{ok:json.ok,code:!json.ok?(json as any).code:undefined,msg:!json.ok?(json as any).message:undefined,httpStatus:res.status},timestamp:Date.now(),hypothesisId:'H2,H3,H4'})}).catch(()=>{});
+    // #endregion
+    return json;
   } catch (err) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bridge.ts:fetchOntologyBrands:catch',message:'Ontology brands fetch error',data:{error:String(err)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     return bridgeError(err);
   }
 }

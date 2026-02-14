@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('vinted', {
   hasCookie: () => ipcRenderer.invoke('session:hasCookie'),
   clearCookie: () => ipcRenderer.invoke('session:clearCookie'),
   isEncryptionAvailable: () => ipcRenderer.invoke('session:isEncryptionAvailable'),
+  getVintedUserId: () => ipcRenderer.invoke('session:getVintedUserId') as Promise<number | null>,
   startCookieRefresh: () => ipcRenderer.invoke('session:startCookieRefresh'),
   saveLoginCredentials: (username: string, password: string) =>
     ipcRenderer.invoke('session:saveLoginCredentials', username, password),

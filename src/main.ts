@@ -19,7 +19,44 @@ if (started) {
 const PYTHON_BRIDGE_PORT = 37421;
 let pythonBridgeProcess: ChildProcess | null = null;
 
+/**
+ * Kill any existing process listening on the bridge port.
+ * Prevents stale bridge processes from a previous app launch
+ * from occupying the port and serving outdated routes.
+ */
+function killStaleBridge(): void {
+  try {
+    const { execSync } = require('node:child_process');
+    if (process.platform === 'win32') {
+      // Windows: find PID on port and kill it
+      const result = execSync(`netstat -ano | findstr :${PYTHON_BRIDGE_PORT}`, { encoding: 'utf8', timeout: 5000 });
+      const lines = result.split('\n').filter((l: string) => l.includes('LISTENING'));
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && /^\d+$/.test(pid)) {
+          execSync(`taskkill /F /PID ${pid}`, { timeout: 5000 });
+          console.log(`[Python Bridge] Killed stale process PID ${pid} on port ${PYTHON_BRIDGE_PORT}`);
+        }
+      }
+    } else {
+      // macOS/Linux: use lsof to find and kill
+      const result = execSync(`lsof -ti :${PYTHON_BRIDGE_PORT}`, { encoding: 'utf8', timeout: 5000 });
+      const pids = result.trim().split('\n').filter((p: string) => p.length > 0);
+      for (const pid of pids) {
+        execSync(`kill -9 ${pid}`, { timeout: 5000 });
+        console.log(`[Python Bridge] Killed stale process PID ${pid} on port ${PYTHON_BRIDGE_PORT}`);
+      }
+    }
+  } catch {
+    // No process on port — expected on clean start
+  }
+}
+
 function startPythonBridge(): void {
+  // Kill any stale bridge process from a previous app session
+  killStaleBridge();
+
   const bridgeDir = path.join(app.getAppPath(), 'python-bridge');
   const serverPath = path.join(bridgeDir, 'server.py');
 
@@ -100,12 +137,27 @@ app.on('ready', () => {
   }
 
   createWindow();
+
+  // #region agent log
+  const _appReadyTs = Date.now();
+  fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:ready',message:'App ready, about to start polling and schedule ontology',data:{enabledUrls:searchUrls.getEnabledSearchUrls().length,bridgePid:pythonBridgeProcess?.pid},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+  // #endregion
+
   if (searchUrls.getEnabledSearchUrls().length > 0) {
     feedService.startPolling();
   }
 
   // Run ontology diff in background after bridge has had time to start
-  setTimeout(() => {
+  setTimeout(async () => {
+    // #region agent log
+    try {
+      const healthRes = await fetch('http://127.0.0.1:37421/health');
+      const healthJson = await healthRes.json();
+      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:ontologyTimeout',message:'Bridge health before ontology',data:{healthy:healthJson?.ok,elapsedMs:Date.now()-_appReadyTs},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    } catch (healthErr) {
+      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:ontologyTimeout',message:'Bridge NOT reachable before ontology',data:{error:String(healthErr),elapsedMs:Date.now()-_appReadyTs},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    }
+    // #endregion
     ontologyService.refreshAll().catch((err) =>
       console.warn('[Ontology] Startup refresh failed:', err)
     );

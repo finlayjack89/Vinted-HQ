@@ -135,9 +135,25 @@ export default function App() {
     return () => clearInterval(t);
   }, [countdown, countdownSeconds]);
 
+  const [isRefreshingSession, setIsRefreshingSession] = useState(false);
+
   const handleReconnect = async () => {
     if (!reconnectCookie.trim()) return;
     await window.vinted.storeCookie(reconnectCookie.trim());
+  };
+
+  const handleRefreshSession = async () => {
+    if (isRefreshingSession) return;
+    setIsRefreshingSession(true);
+    try {
+      const result = await window.vinted.startCookieRefresh();
+      if (result.ok) {
+        setSessionExpired(false);
+        setReconnectCookie('');
+      }
+    } finally {
+      setIsRefreshingSession(false);
+    }
   };
 
   const handleCancelCountdown = () => {
@@ -367,40 +383,60 @@ export default function App() {
               Session expired
             </h3>
             <p style={{ margin: '0 0 20px', color: colors.textSecondary, fontSize: font.size.base, lineHeight: 1.6 }}>
-              Your Vinted session has expired. Paste your cookie string from Chrome DevTools to reconnect.
+              Your Vinted session has expired. Open the login page to re-authenticate, or paste a cookie string manually.
             </p>
-            <textarea
-              placeholder="Paste cookie string here..."
-              value={reconnectCookie}
-              onChange={(e) => setReconnectCookie(e.target.value)}
-              rows={4}
-              style={{
-                ...glassTextarea,
-                width: '100%',
-                marginBottom: 16,
-              }}
-            />
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={handleRefreshSession}
+                disabled={isRefreshingSession}
+                style={{
+                  ...btnPrimary,
+                  flex: 1,
+                  opacity: isRefreshingSession ? 0.6 : 1,
+                  cursor: isRefreshingSession ? 'default' : 'pointer',
+                }}
+              >
+                {isRefreshingSession ? 'Opening login...' : 'Refresh session (open login)'}
+              </button>
+            </div>
+            <details style={{ marginBottom: 16 }}>
+              <summary style={{ color: colors.textSecondary, fontSize: font.size.sm, cursor: 'pointer', marginBottom: 8 }}>
+                Or paste cookie manually...
+              </summary>
+              <textarea
+                placeholder="Paste cookie string here..."
+                value={reconnectCookie}
+                onChange={(e) => setReconnectCookie(e.target.value)}
+                rows={4}
+                style={{
+                  ...glassTextarea,
+                  width: '100%',
+                  marginBottom: 8,
+                }}
+              />
               <button
                 type="button"
                 onClick={handleReconnect}
                 disabled={!reconnectCookie.trim()}
                 style={{
                   ...btnPrimary,
-                  flex: 1,
+                  width: '100%',
                   opacity: reconnectCookie.trim() ? 1 : 0.4,
                   cursor: reconnectCookie.trim() ? 'pointer' : 'default',
                 }}
               >
                 Reconnect
               </button>
+            </details>
+            <div style={{ display: 'flex', gap: 10 }}>
               <button
                 type="button"
                 onClick={() => {
                   setSessionExpired(false);
                   setReconnectCookie('');
                 }}
-                style={btnSecondary}
+                style={{ ...btnSecondary, flex: 1 }}
               >
                 Dismiss
               </button>

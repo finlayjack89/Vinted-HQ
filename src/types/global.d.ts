@@ -175,6 +175,7 @@ declare global {
       hasCookie: () => Promise<boolean>;
       clearCookie: () => Promise<void>;
       isEncryptionAvailable: () => Promise<boolean>;
+      getVintedUserId: () => Promise<number | null>;
       startCookieRefresh: () => Promise<{ ok: boolean; reason?: string }>;
       saveLoginCredentials: (username: string, password: string) => Promise<void>;
       hasLoginCredentials: () => Promise<boolean>;

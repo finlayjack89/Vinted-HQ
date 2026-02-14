@@ -58,32 +58,38 @@ class VintedError(Exception):
 
 
 def _parse_catalog_url(url: str) -> dict:
-    """Extract search params from a Vinted catalog URL."""
+    """Extract ALL query params from a Vinted catalog URL.
+    Preserves filter parameters (catalog[], color_ids[], brand_ids[], etc.)."""
     parsed = urlparse(url)
     if "vinted.co.uk" not in parsed.netloc:
         raise VintedError("INVALID_URL", f"Not a Vinted catalog URL: {url}")
     query = parse_qs(parsed.query)
+    # Return the full parsed query dict plus defaults for paging
     return {
-        "search_text": query.get("search_text", [""])[0],
-        "search_id": query.get("search_id", [None])[0],
+        "_raw_query": query,
         "order": query.get("order", ["newest_first"])[0],
         "page": int(query.get("page", ["1"])[0]),
         "per_page": int(query.get("per_page", ["96"])[0]),
     }
 
 
-def _build_search_params(params: dict) -> dict:
-    """Build query params for catalog/items endpoint."""
-    out = {
-        "page": params.get("page", 1),
-        "per_page": params.get("per_page", 96),
-        "order": params.get("order", "newest_first"),
-    }
-    if params.get("search_text"):
-        out["search_text"] = params["search_text"]
-    if params.get("search_id"):
-        out["search_id"] = params["search_id"]
-    return out
+def _build_search_params(params: dict) -> str:
+    """Build the full query string for catalog/items endpoint.
+    Passes through ALL filter parameters from the original URL."""
+    raw_query = params.get("_raw_query", {})
+    # Start with the raw query params (preserves catalog[], color_ids[], etc.)
+    parts: list[tuple[str, str]] = []
+    for key, values in raw_query.items():
+        # Skip page/per_page/order — we set them explicitly below
+        if key in ("page", "per_page", "order"):
+            continue
+        for val in values:
+            parts.append((key, val))
+    # Add our controlled paging/ordering params
+    parts.append(("page", str(params.get("page", 1))))
+    parts.append(("per_page", str(params.get("per_page", 96))))
+    parts.append(("order", params.get("order", "newest_first")))
+    return urlencode(parts)
 
 
 def _build_headers(cookie: str, referer: str | None = None) -> dict:
@@ -184,9 +190,19 @@ def search(
     """
     params = _parse_catalog_url(url)
     params["page"] = page
-    qs = urlencode(_build_search_params(params))
+    qs = _build_search_params(params)
     api_url = f"{BASE_URL}/api/v2/catalog/items?{qs}"
     referer = url if url.startswith("http") else f"{BASE_URL}/catalog"
+
+    # region agent log
+    import json as _json, os as _os
+    _log_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), ".cursor", "debug.log")
+    try:
+        with open(_log_path, "a") as _f:
+            _f.write(_json.dumps({"location":"vinted_client.py:search","message":"Built API URL","data":{"api_url_len":len(api_url),"has_catalog":("catalog" in qs),"has_color_ids":("color_ids" in qs),"has_brand_ids":("brand_ids" in qs),"has_size_ids":("size_ids" in qs),"page":page,"proxy_provided":bool(proxy)},"timestamp":int(time.time()*1000),"hypothesisId":"H6,H9"}) + "\n")
+    except Exception:
+        pass
+    # endregion
 
     session = _get_session(proxy)
     req_kwargs: dict = {

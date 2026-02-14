@@ -78,6 +78,10 @@ export async function pullFromVinted(userId: number): Promise<{
   let page = 1;
   let totalPages = 1;
 
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'inventoryService.ts:pullFromVinted',message:'Wardrobe pull starting',data:{userId},timestamp:Date.now(),hypothesisId:'H8'})}).catch(()=>{});
+  // #endregion
+
   emitSyncProgress('pull', 'starting', 0, 0);
 
   while (page <= totalPages) {

@@ -39,6 +39,7 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('session:isEncryptionAvailable', () => secureStorage.isEncryptionAvailable());
+  ipcMain.handle('session:getVintedUserId', () => secureStorage.getVintedUserId());
   ipcMain.handle('session:startCookieRefresh', () => authCapture.startCookieRefresh());
   ipcMain.handle('session:saveLoginCredentials', (_event, username: string, password: string) =>
     credentialStore.saveLoginCredentials({ username, password })

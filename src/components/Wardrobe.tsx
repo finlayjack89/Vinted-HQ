@@ -104,8 +104,12 @@ export default function Wardrobe() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      // TODO: Get userId from settings or session
-      const userId = 0; // Placeholder — will be filled from session
+      const userId = await window.vinted.getVintedUserId();
+      if (!userId) {
+        console.error('Sync failed: Could not determine Vinted user ID. Please refresh your session first.');
+        setSyncing(false);
+        return;
+      }
       await window.vinted.pullFromVinted(userId);
     } catch (err) {
       console.error('Sync failed:', err);
