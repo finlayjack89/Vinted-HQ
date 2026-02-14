@@ -138,6 +138,11 @@ async function runPoll(): Promise<void> {
     } catch (err) {
       logger.error('feed:poll-exception', { url: u.url, error: String(err) });
     }
+    // Inter-URL jitter: 1-2s random sleep between different search URLs
+    // to break up burst patterns. Pages within a URL fire without delay.
+    if (i < urls.length - 1) {
+      await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+    }
   }
 
   const deduped = deduplicate(allItems);
@@ -159,7 +164,7 @@ export function startPolling(): void {
   if (isPolling) return;
   isPolling = true;
   const intervalSeconds = settings.getSetting('pollingIntervalSeconds') ?? 5;
-  const ms = Math.max(1000, intervalSeconds * 1000);
+  const ms = Math.max(3000, intervalSeconds * 1000);
 
   runPoll();
 

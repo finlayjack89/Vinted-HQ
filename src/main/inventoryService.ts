@@ -37,7 +37,11 @@ async function downloadAndCacheImage(url: string, localId: number, index: number
   const filePath = path.join(dir, `${index}.jpg`);
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+      },
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const arrayBuf = await res.arrayBuffer();
     fs.writeFileSync(filePath, Buffer.from(arrayBuf));

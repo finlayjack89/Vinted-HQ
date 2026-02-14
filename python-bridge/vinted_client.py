@@ -12,10 +12,39 @@ from curl_cffi import requests
 
 from image_mutator import mutate_image, jitter_text
 
-# Impersonate Chrome for JA3/JA4 fingerprint (chrome = latest available)
-IMPOSTOR = "chrome110"  # Stable; alternatives: "chrome", "chrome131"
+# Impersonate Chrome for JA3/JA4 fingerprint ("chrome" = latest available target)
+IMPOSTOR = "chrome"
+
+# Keep UA version and Client Hints aligned with the impersonation target.
+# Update these together when changing IMPOSTOR.
+CHROME_VERSION = "136"
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    f"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION}.0.0.0 Safari/537.36"
+)
+SEC_CH_UA = f'"Chromium";v="{CHROME_VERSION}", "Google Chrome";v="{CHROME_VERSION}", "Not.A/Brand";v="24"'
 
 BASE_URL = "https://www.vinted.co.uk"
+
+
+# ─── Session Pool ────────────────────────────────────────────────────────────
+# Reuse HTTP sessions per proxy to enable HTTP/2 connection reuse and avoid
+# creating a new TLS handshake for every request (a detectable pattern).
+
+_session_pool: dict[str | None, requests.Session] = {}
+
+
+def _get_session(proxy: str | None = None) -> requests.Session:
+    """Get or create a reusable session for the given proxy."""
+    if proxy not in _session_pool:
+        _session_pool[proxy] = requests.Session(impersonate=IMPOSTOR)
+    return _session_pool[proxy]
+
+
+def reset_session(proxy: str | None = None) -> None:
+    """Drop a cached session (e.g. after a Datadome challenge).
+    The next call to _get_session will create a fresh one."""
+    _session_pool.pop(proxy, None)
 
 
 class VintedError(Exception):
@@ -58,16 +87,20 @@ def _build_search_params(params: dict) -> dict:
 
 
 def _build_headers(cookie: str, referer: str | None = None) -> dict:
-    """Build request headers matching browser fingerprint."""
+    """Build request headers matching a real Chrome browser fingerprint."""
     headers = {
         "Accept": "application/json, text/plain, */*",
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-        ),
+        "Accept-Encoding": "gzip, deflate, br, zstd",
         "Accept-Language": "en-GB,en;q=0.9",
         "Origin": BASE_URL,
         "Referer": referer or f"{BASE_URL}/catalog",
+        "Sec-Ch-Ua": SEC_CH_UA,
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"macOS"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": USER_AGENT,
     }
     if cookie:
         headers["Cookie"] = cookie
@@ -100,7 +133,24 @@ def _build_write_headers(
     return headers
 
 
-def _handle_response(resp, allow_statuses: tuple = (200,)) -> dict:
+def _detect_challenge(resp, proxy: str | None = None) -> None:
+    """Detect Datadome/Cloudflare HTML challenge pages returned instead of JSON.
+    These often come back as HTTP 200 with text/html content, so status-code
+    checks alone miss them.  Resets the cached session for the proxy so the
+    next request after a browser refresh gets a clean TLS connection."""
+    content_type = resp.headers.get("content-type", "")
+    if "text/html" in content_type:
+        body_start = resp.text[:500].lower()
+        if "datadome" in body_start or "<!doctype" in body_start or "<html" in body_start:
+            reset_session(proxy)
+            raise VintedError(
+                "DATADOME_CHALLENGE",
+                "Bot challenge detected -- refresh session in browser",
+                403,
+            )
+
+
+def _handle_response(resp, allow_statuses: tuple = (200,), proxy: str | None = None) -> dict:
     """Common response status handling. Raises VintedError on failure."""
     if resp.status_code == 401:
         raise VintedError("SESSION_EXPIRED", "Session expired or invalid cookie", 401)
@@ -114,6 +164,8 @@ def _handle_response(resp, allow_statuses: tuple = (200,)) -> dict:
             f"HTTP {resp.status_code}: {resp.text[:300]}",
             resp.status_code,
         )
+    # Detect HTML challenge pages that slip through with a 200 status
+    _detect_challenge(resp, proxy)
     try:
         return resp.json()
     except Exception as e:
@@ -136,7 +188,7 @@ def search(
     api_url = f"{BASE_URL}/api/v2/catalog/items?{qs}"
     referer = url if url.startswith("http") else f"{BASE_URL}/catalog"
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     req_kwargs: dict = {
         "url": api_url,
         "headers": _build_headers(cookie, referer),
@@ -170,6 +222,7 @@ def search(
             resp.status_code,
         )
 
+    _detect_challenge(resp, proxy)
     try:
         return resp.json()
     except Exception as e:
@@ -187,7 +240,7 @@ def checkout_build(
     api_url = f"{BASE_URL}/api/v2/purchases/checkout/build"
     payload = {"purchase_items": [{"id": order_id, "type": "transaction"}]}
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     headers = _build_headers(cookie)
     headers["Content-Type"] = "application/json"
 
@@ -223,6 +276,7 @@ def checkout_build(
             resp.status_code,
         )
 
+    _detect_challenge(resp, proxy)
     try:
         return resp.json()
     except Exception as e:
@@ -241,7 +295,7 @@ def checkout_put(
     api_url = f"{BASE_URL}/api/v2/purchases/{purchase_id}/checkout"
     payload = {"components": components}
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     headers = _build_headers(cookie)
     headers["Content-Type"] = "application/json"
 
@@ -277,6 +331,7 @@ def checkout_put(
             resp.status_code,
         )
 
+    _detect_challenge(resp, proxy)
     try:
         return resp.json()
     except Exception as e:
@@ -303,7 +358,7 @@ def nearby_pickup_points(
     qs = urlencode(params)
     full_url = f"{api_url}?{qs}"
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     req_kwargs: dict = {
         "url": full_url,
         "headers": _build_headers(cookie),
@@ -328,6 +383,7 @@ def nearby_pickup_points(
             resp.status_code,
         )
 
+    _detect_challenge(resp, proxy)
     try:
         return resp.json()
     except Exception as e:
@@ -359,7 +415,7 @@ def fetch_wardrobe(
     qs = urlencode({"page": page, "per_page": per_page, "order": "relevance"})
     api_url = f"{BASE_URL}/api/v2/wardrobe/{user_id}/items?{qs}"
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}")
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
@@ -377,7 +433,7 @@ def fetch_wardrobe(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200, 304))
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
 
 
 # ─── Ontology Endpoints ─────────────────────────────────────────────────────
@@ -392,7 +448,7 @@ def fetch_ontology_categories(
     """GET /api/v2/item_upload/catalogs — fetch full category tree."""
     api_url = f"{BASE_URL}/api/v2/item_upload/catalogs"
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     headers = _build_headers(cookie, f"{BASE_URL}/items/new")
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
@@ -410,7 +466,7 @@ def fetch_ontology_categories(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200, 304))
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
 
 
 def fetch_ontology_brands(
@@ -432,7 +488,7 @@ def fetch_ontology_brands(
     if qs:
         api_url += f"?{qs}"
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     headers = _build_headers(cookie, f"{BASE_URL}/items/new")
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
@@ -450,7 +506,7 @@ def fetch_ontology_brands(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200, 304))
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
 
 
 def fetch_ontology_colors(
@@ -462,7 +518,7 @@ def fetch_ontology_colors(
     """GET /api/v2/item_upload/colors — fetch all color options."""
     api_url = f"{BASE_URL}/api/v2/item_upload/colors"
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     headers = _build_headers(cookie, f"{BASE_URL}/items/new")
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
@@ -480,7 +536,7 @@ def fetch_ontology_colors(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200, 304))
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
 
 
 def fetch_ontology_conditions(
@@ -494,7 +550,7 @@ def fetch_ontology_conditions(
     qs = urlencode({"catalog_id": catalog_id})
     api_url = f"{BASE_URL}/api/v2/item_upload/conditions?{qs}"
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     headers = _build_headers(cookie, f"{BASE_URL}/items/new")
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
@@ -512,7 +568,7 @@ def fetch_ontology_conditions(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200, 304))
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
 
 
 # ─── Photo Upload ────────────────────────────────────────────────────────────
@@ -536,7 +592,7 @@ def upload_photo(
     photo_uuid = temp_uuid or str(uuid.uuid4())
 
     if session is None:
-        session = requests.Session(impersonate=IMPOSTOR)
+        session = _get_session(proxy)
 
     headers = _build_headers(cookie, f"{BASE_URL}/items/new")
     # Remove Content-Type — curl_cffi sets it with boundary for multipart
@@ -569,7 +625,7 @@ def upload_photo(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200, 201))
+    return _handle_response(resp, allow_statuses=(200, 201), proxy=proxy)
 
 
 # ─── Listing CRUD ────────────────────────────────────────────────────────────
@@ -592,7 +648,7 @@ def create_listing(
     session_id = upload_session_id or str(uuid.uuid4())
 
     if session is None:
-        session = requests.Session(impersonate=IMPOSTOR)
+        session = _get_session(proxy)
 
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
@@ -627,7 +683,7 @@ def create_listing(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200, 201))
+    return _handle_response(resp, allow_statuses=(200, 201), proxy=proxy)
 
 
 def edit_listing(
@@ -647,7 +703,7 @@ def edit_listing(
     session_id = upload_session_id or str(uuid.uuid4())
 
     if session is None:
-        session = requests.Session(impersonate=IMPOSTOR)
+        session = _get_session(proxy)
 
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
@@ -682,7 +738,7 @@ def edit_listing(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200,))
+    return _handle_response(resp, allow_statuses=(200,), proxy=proxy)
 
 
 def delete_listing(
@@ -700,7 +756,7 @@ def delete_listing(
     api_url = f"{BASE_URL}/api/v2/items/{item_id}/delete"
 
     if session is None:
-        session = requests.Session(impersonate=IMPOSTOR)
+        session = _get_session(proxy)
 
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
@@ -725,7 +781,7 @@ def delete_listing(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200,))
+    return _handle_response(resp, allow_statuses=(200,), proxy=proxy)
 
 
 def hide_listing(
@@ -741,7 +797,7 @@ def hide_listing(
     """
     api_url = f"{BASE_URL}/api/v2/items/{item_id}/is_hidden"
 
-    session = requests.Session(impersonate=IMPOSTOR)
+    session = _get_session(proxy)
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
         referer=f"{BASE_URL}/items/{item_id}",
@@ -763,7 +819,7 @@ def hide_listing(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200,))
+    return _handle_response(resp, allow_statuses=(200,), proxy=proxy)
 
 
 # ─── Stealth Relist Orchestrator ─────────────────────────────────────────────

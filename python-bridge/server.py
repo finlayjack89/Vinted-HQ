@@ -38,10 +38,16 @@ app = FastAPI(
     version="0.3.0",
 )
 
-# Allow Electron renderer to call this server
+# Allow Electron renderer to call this local bridge server.
+# Restricted to localhost origins to prevent credential theft via malicious webpages.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost",
+        "http://127.0.0.1",
+        "app://.",
+        "file://",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
