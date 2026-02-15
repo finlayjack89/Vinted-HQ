@@ -12,7 +12,7 @@ import * as sniperService from './sniperService';
 import * as sessionService from './sessionService';
 import { logger } from './logger';
 
-const PAGES_PER_URL = 3;
+const PAGES_PER_URL = 1;
 
 export interface FeedItem {
   id: number;
@@ -31,7 +31,7 @@ export interface FeedItem {
   fetched_at: number;
 }
 
-let pollInterval: ReturnType<typeof setInterval> | null = null;
+let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 let isPolling = false;
 
 /** Extract items from Vinted API response. Handles items/catalog/products structures. */
@@ -163,34 +163,19 @@ async function runPoll(): Promise<void> {
       const result = await pollOneUrl(u.url, proxy);
 
       if (result.forbidden && proxy) {
-        // Mark this proxy as FORBIDDEN and try the next available one
+        // Mark this proxy as FORBIDDEN — skip retry, next cycle will use a different proxy
         proxyService.markProxyForbidden(proxy);
         logger.warn('feed:proxy-forbidden', { proxy, url: u.url });
 
         // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll:forbidden',message:'Proxy FORBIDDEN, marked cooldown, trying next',data:{forbiddenProxy:proxy,urlIndex:i},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll:forbidden',message:'Proxy FORBIDDEN, marked cooldown, skipping retry',data:{forbiddenProxy:proxy,urlIndex:i},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
         // #endregion
-
-        // Get the next available proxy (getProxyForScraping skips cooled-down ones)
-        const nextProxy = proxyService.getProxyForScraping(i);
-        if (nextProxy && nextProxy !== proxy) {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll:retry',message:'Retrying with next proxy',data:{nextProxy,urlIndex:i},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
-          // #endregion
-
-          const retryResult = await pollOneUrl(u.url, nextProxy);
-          if (retryResult.forbidden && nextProxy) {
-            proxyService.markProxyForbidden(nextProxy);
-            logger.warn('feed:proxy-forbidden', { proxy: nextProxy, url: u.url });
-          }
-          allItems.push(...retryResult.items);
-        } else {
-          // No more proxies available, add whatever we got
-          allItems.push(...result.items);
-        }
-      } else {
-        allItems.push(...result.items);
+      } else if (!result.forbidden && proxy) {
+        // Successful poll — reset strike counter for this proxy
+        proxyService.markProxySuccess(proxy);
       }
+
+      allItems.push(...result.items);
     } catch (err) {
       logger.error('feed:poll-exception', { url: u.url, error: String(err) });
     }
@@ -216,25 +201,39 @@ async function runPoll(): Promise<void> {
   logger.info('feed:poll-complete', { urlCount: urls.length, itemCount: sorted.length });
 }
 
+/** Get a randomized poll delay with jitter to avoid fixed-interval bot fingerprinting. */
+function getJitteredDelay(): number {
+  const baseSeconds = settings.getSetting('pollingIntervalSeconds') ?? 5;
+  const baseMs = Math.max(3000, baseSeconds * 1000);
+  // Add ±30% jitter: e.g. 5s base → 3.5s–6.5s range
+  const jitter = baseMs * 0.3;
+  return baseMs - jitter + Math.random() * jitter * 2;
+}
+
+function scheduleNextPoll(): void {
+  if (!isPolling) return;
+  const delay = getJitteredDelay();
+  pollTimeout = setTimeout(async () => {
+    await runPoll();
+    scheduleNextPoll();
+  }, delay);
+}
+
 export function startPolling(): void {
   if (isPolling) return;
   isPolling = true;
   const intervalSeconds = settings.getSetting('pollingIntervalSeconds') ?? 5;
-  const ms = Math.max(3000, intervalSeconds * 1000);
 
   runPoll();
+  scheduleNextPoll();
 
-  pollInterval = setInterval(() => {
-    runPoll();
-  }, ms);
-
-  logger.info('feed:polling-started', { intervalSeconds });
+  logger.info('feed:polling-started', { intervalSeconds, jitter: '±30%' });
 }
 
 export function stopPolling(): void {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
+  if (pollTimeout) {
+    clearTimeout(pollTimeout);
+    pollTimeout = null;
   }
   isPolling = false;
   logger.info('feed:polling-stopped');

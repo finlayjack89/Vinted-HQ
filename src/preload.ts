@@ -130,6 +130,11 @@ contextBridge.exposeInMainWorld('vinted', {
     return () => ipcRenderer.removeListener('feed:items', handler);
   },
 
+  // ─── Proxy Status ──────────────────────────────────────────────────────
+
+  getProxyStatus: () => ipcRenderer.invoke('proxy:getStatus'),
+  unblockProxy: (proxy: string) => ipcRenderer.invoke('proxy:unblock', proxy),
+
   // ─── Wardrobe / Inventory Vault ─────────────────────────────────────────
 
   getWardrobe: (filter?: { status?: string }) =>

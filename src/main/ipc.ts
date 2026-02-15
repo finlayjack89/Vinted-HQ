@@ -39,7 +39,15 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('session:isEncryptionAvailable', () => secureStorage.isEncryptionAvailable());
-  ipcMain.handle('session:getVintedUserId', () => secureStorage.getVintedUserId());
+  ipcMain.handle('session:getVintedUserId', () => {
+    const userId = secureStorage.getVintedUserId();
+    // #region agent log
+    const cookie = secureStorage.retrieveCookie();
+    const cookieKeys = cookie ? cookie.split(';').map((p: string) => p.trim().split('=')[0]) : [];
+    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ipc.ts:getVintedUserId',message:'getVintedUserId called',data:{userId,hasCookie:!!cookie,cookieKeyCount:cookieKeys.length,cookieKeys:cookieKeys,hasVuid:cookieKeys.includes('v_uid')},timestamp:Date.now(),hypothesisId:'H11'})}).catch(()=>{});
+    // #endregion
+    return userId;
+  });
   ipcMain.handle('session:startCookieRefresh', () => authCapture.startCookieRefresh());
   ipcMain.handle('session:saveLoginCredentials', (_event, username: string, password: string) =>
     credentialStore.saveLoginCredentials({ username, password })
@@ -134,6 +142,15 @@ export function registerIpcHandlers(): void {
       return result;
     }
   );
+
+  // ─── Proxy Status ──────────────────────────────────────────────────────
+
+  ipcMain.handle('proxy:getStatus', () => proxyService.getDetailedProxyStatus());
+  ipcMain.handle('proxy:unblock', (_event, proxy: string) => {
+    proxyService.unblockProxy(proxy);
+    logger.info('proxy:unblocked', { proxy });
+    return true;
+  });
 
   // ─── Wardrobe / Inventory Vault ─────────────────────────────────────────
 

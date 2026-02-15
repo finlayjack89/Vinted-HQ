@@ -1,6 +1,9 @@
 /**
  * Proxy Service — resolves proxy for items based on source URL.
- * Implements round-robin rotation across poll cycles with FORBIDDEN cooldown.
+ * Implements round-robin rotation with escalating cooldown:
+ *   - Strike 1: 5 min cooldown (temporary rate-limit)
+ *   - Strike 2: 15 min cooldown (repeated detection)
+ *   - Strike 3+: Blocked (likely IP blacklisted, removed from rotation until manual reset)
  * Per initial consultation: residential proxies are supported via http:// or socks5:// URLs.
  */
 
@@ -8,9 +11,21 @@ import * as searchUrls from './searchUrls';
 import * as settings from './settings';
 import type { FeedItem } from './feedService';
 
-/* ── Cooldown tracking ── */
-const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown for FORBIDDEN proxies
-const cooledDown = new Map<string, number>(); // normalized proxy → unblock timestamp
+/* ── Escalating cooldown config ── */
+const COOLDOWN_STRIKE_1_MS = 5 * 60 * 1000;  // 5 minutes — temporary rate-limit
+const COOLDOWN_STRIKE_2_MS = 15 * 60 * 1000; // 15 minutes — repeated detection
+const BLOCKED_STRIKE_THRESHOLD = 3;           // 3+ consecutive strikes → blocked
+
+/* ── Per-proxy state tracking ── */
+interface ProxyState {
+  strikes: number;          // consecutive FORBIDDEN count
+  cooldownUntil: number;    // timestamp when cooldown expires (0 = not cooling down)
+  lastForbiddenAt: number;  // timestamp of last FORBIDDEN
+  blocked: boolean;         // true = permanently blocked until manual reset
+  lastSuccessAt: number;    // timestamp of last successful request (resets strikes)
+}
+
+const proxyStates = new Map<string, ProxyState>(); // normalized proxy → state
 
 /* ── Round-robin counter for scraping proxies ── */
 let scrapingCycle = 0;
@@ -42,24 +57,195 @@ function normalizeProxy(raw: string): string {
   return raw;
 }
 
-/** Check if a proxy is currently in cooldown (was recently FORBIDDEN). */
-function isProxyCooledDown(proxy: string): boolean {
-  const until = cooledDown.get(proxy);
-  if (!until) return false;
-  if (Date.now() >= until) {
-    cooledDown.delete(proxy); // Cooldown expired, remove it
-    return false;
+/** Extract provider name from proxy hostname. */
+function extractProvider(normalizedProxy: string): string {
+  try {
+    const url = new URL(normalizedProxy);
+    const host = url.hostname.toLowerCase();
+    if (host.includes('oxylabs')) return 'Oxylabs';
+    if (host.includes('decodo')) return 'Decodo';
+    if (host.includes('smartproxy')) return 'Smartproxy';
+    if (host.includes('brightdata') || host.includes('luminati')) return 'Bright Data';
+    if (host.includes('iproyal')) return 'IPRoyal';
+    if (host.includes('proxy-seller')) return 'Proxy-Seller';
+    if (host.includes('webshare')) return 'Webshare';
+    // Return the first segment of the domain
+    const parts = host.split('.');
+    return parts.length >= 2 ? parts[parts.length - 2] : host;
+  } catch {
+    return 'Unknown';
   }
-  return true;
+}
+
+/** Extract port from proxy URL. */
+function extractPort(normalizedProxy: string): string {
+  try {
+    const url = new URL(normalizedProxy);
+    return url.port || (url.protocol === 'https:' ? '443' : '80');
+  } catch {
+    return '?';
+  }
+}
+
+/** Extract host from proxy URL. */
+function extractHost(normalizedProxy: string): string {
+  try {
+    const url = new URL(normalizedProxy);
+    return url.hostname;
+  } catch {
+    return normalizedProxy;
+  }
+}
+
+/** Get or create state for a proxy. */
+function getState(proxy: string): ProxyState {
+  let state = proxyStates.get(proxy);
+  if (!state) {
+    state = { strikes: 0, cooldownUntil: 0, lastForbiddenAt: 0, blocked: false, lastSuccessAt: 0 };
+    proxyStates.set(proxy, state);
+  }
+  return state;
+}
+
+/** Check if a proxy is currently unavailable (in cooldown or blocked). */
+function isProxyUnavailable(proxy: string): boolean {
+  const state = getState(proxy);
+  if (state.blocked) return true;
+  if (state.cooldownUntil > 0 && Date.now() < state.cooldownUntil) return true;
+  // Cooldown expired — clear it
+  if (state.cooldownUntil > 0 && Date.now() >= state.cooldownUntil) {
+    state.cooldownUntil = 0;
+  }
+  return false;
 }
 
 /**
- * Mark a proxy as FORBIDDEN — puts it in cooldown for COOLDOWN_MS.
+ * Mark a proxy as FORBIDDEN — escalating cooldown with strike tracking.
  * Called by feedService when a poll returns FORBIDDEN.
+ *   - Strike 1: 5 min cooldown
+ *   - Strike 2: 15 min cooldown
+ *   - Strike 3+: Blocked permanently until manual reset
  */
 export function markProxyForbidden(proxy: string): void {
   if (!proxy) return;
-  cooledDown.set(proxy, Date.now() + COOLDOWN_MS);
+  const state = getState(proxy);
+  state.strikes++;
+  state.lastForbiddenAt = Date.now();
+
+  if (state.strikes >= BLOCKED_STRIKE_THRESHOLD) {
+    state.blocked = true;
+    state.cooldownUntil = 0; // No need for cooldown, it's blocked
+  } else if (state.strikes === 2) {
+    state.cooldownUntil = Date.now() + COOLDOWN_STRIKE_2_MS;
+  } else {
+    state.cooldownUntil = Date.now() + COOLDOWN_STRIKE_1_MS;
+  }
+}
+
+/**
+ * Mark a proxy as having completed a successful request.
+ * Resets the strike counter — the proxy is working fine.
+ */
+export function markProxySuccess(proxy: string): void {
+  if (!proxy) return;
+  const state = getState(proxy);
+  if (state.strikes > 0 && !state.blocked) {
+    state.strikes = 0;
+    state.cooldownUntil = 0;
+  }
+  state.lastSuccessAt = Date.now();
+}
+
+/**
+ * Manually unblock a proxy (user action from UI).
+ * Resets strikes and blocked state.
+ */
+export function unblockProxy(proxy: string): void {
+  const state = getState(proxy);
+  state.strikes = 0;
+  state.cooldownUntil = 0;
+  state.blocked = false;
+}
+
+/** Detailed status for a single proxy — used by the UI. */
+export interface ProxyStatusEntry {
+  proxy: string;
+  provider: string;
+  host: string;
+  port: string;
+  status: 'active' | 'cooldown' | 'blocked';
+  strikes: number;
+  cooldownUntil: number | null;
+  cooldownRemaining: number;  // seconds remaining, 0 if not cooling down
+  lastForbiddenAt: number | null;
+  lastSuccessAt: number | null;
+  pool: 'scraping' | 'checkout';
+}
+
+/**
+ * Get detailed status for all proxies — scraping + checkout.
+ * Used by the renderer to display the proxy tracker UI.
+ */
+export function getDetailedProxyStatus(): ProxyStatusEntry[] {
+  const entries: ProxyStatusEntry[] = [];
+  const now = Date.now();
+
+  const scrapers = settings.getSetting('scrapingProxies') ?? [];
+  const scrapingPool = scrapers.length > 0 ? scrapers : (settings.getSetting('proxyUrls') ?? []);
+
+  for (const raw of scrapingPool) {
+    const norm = normalizeProxy(raw);
+    const state = getState(norm);
+
+    let status: 'active' | 'cooldown' | 'blocked' = 'active';
+    let cooldownRemaining = 0;
+
+    if (state.blocked) {
+      status = 'blocked';
+    } else if (state.cooldownUntil > 0 && now < state.cooldownUntil) {
+      status = 'cooldown';
+      cooldownRemaining = Math.ceil((state.cooldownUntil - now) / 1000);
+    } else if (state.cooldownUntil > 0 && now >= state.cooldownUntil) {
+      // Cooldown just expired — clean up
+      state.cooldownUntil = 0;
+    }
+
+    entries.push({
+      proxy: norm,
+      provider: extractProvider(norm),
+      host: extractHost(norm),
+      port: extractPort(norm),
+      status,
+      strikes: state.strikes,
+      cooldownUntil: state.cooldownUntil > 0 ? state.cooldownUntil : null,
+      cooldownRemaining,
+      lastForbiddenAt: state.lastForbiddenAt > 0 ? state.lastForbiddenAt : null,
+      lastSuccessAt: state.lastSuccessAt > 0 ? state.lastSuccessAt : null,
+      pool: 'scraping',
+    });
+  }
+
+  const checkoutProxies = settings.getSetting('checkoutProxies') ?? [];
+  for (const raw of checkoutProxies) {
+    const norm = normalizeProxy(raw);
+    const state = getState(norm);
+
+    entries.push({
+      proxy: norm,
+      provider: extractProvider(norm),
+      host: extractHost(norm),
+      port: extractPort(norm),
+      status: 'active', // Checkout proxies don't go through the cooldown system
+      strikes: state.strikes,
+      cooldownUntil: null,
+      cooldownRemaining: 0,
+      lastForbiddenAt: state.lastForbiddenAt > 0 ? state.lastForbiddenAt : null,
+      lastSuccessAt: state.lastSuccessAt > 0 ? state.lastSuccessAt : null,
+      pool: 'checkout',
+    });
+  }
+
+  return entries;
 }
 
 /**
@@ -81,6 +267,25 @@ export function getScrapingProxyCount(): number {
 }
 
 /**
+ * Get ANY scraping proxy, ignoring cooldown state.
+ * Used for one-off operations (wardrobe sync, ontology fetch) that shouldn't
+ * be blocked by the polling cooldown system.
+ */
+export function getAnyScrapingProxy(): string | undefined {
+  const scrapers = settings.getSetting('scrapingProxies') ?? [];
+  if (scrapers.length > 0) {
+    const raw = scrapers[scrapingCycle % scrapers.length];
+    return raw ? normalizeProxy(raw) : undefined;
+  }
+  const legacy = settings.getSetting('proxyUrls') ?? [];
+  if (legacy.length > 0) {
+    const raw = legacy[scrapingCycle % legacy.length];
+    return raw ? normalizeProxy(raw) : undefined;
+  }
+  return undefined;
+}
+
+/**
  * Get the cooldown state of all scraping proxies (for logging).
  */
 export function getScrapingProxyStatus(): { total: number; cooledDown: string[]; active: string[] } {
@@ -90,7 +295,7 @@ export function getScrapingProxyStatus(): { total: number; cooledDown: string[];
   const activeList: string[] = [];
   for (const raw of pool) {
     const norm = normalizeProxy(raw);
-    if (isProxyCooledDown(norm)) {
+    if (isProxyUnavailable(norm)) {
       cooledList.push(norm);
     } else {
       activeList.push(norm);
@@ -143,7 +348,7 @@ export function getProxyForScraping(urlIndex: number): string | undefined {
       const raw = scrapers[idx];
       if (!raw) continue;
       const norm = normalizeProxy(raw);
-      if (!isProxyCooledDown(norm)) return norm;
+      if (!isProxyUnavailable(norm)) return norm;
     }
     // All scrapers are in cooldown — return undefined (no proxy)
     return undefined;

@@ -150,6 +150,20 @@ export type OntologyEntity = {
   fetched_at: number;
 };
 
+export type ProxyStatusEntry = {
+  proxy: string;
+  provider: string;
+  host: string;
+  port: string;
+  status: 'active' | 'cooldown' | 'blocked';
+  strikes: number;
+  cooldownUntil: number | null;
+  cooldownRemaining: number;
+  lastForbiddenAt: number | null;
+  lastSuccessAt: number | null;
+  pool: 'scraping' | 'checkout';
+};
+
 export type RelistQueueEntry = {
   localId: number;
   title: string;
@@ -222,6 +236,10 @@ declare global {
       onSessionReconnected: (callback: () => void) => () => void;
       getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) => Promise<LogEntry[]>;
       getPurchases: (limit?: number) => Promise<Purchase[]>;
+
+      // Proxy Status
+      getProxyStatus: () => Promise<ProxyStatusEntry[]>;
+      unblockProxy: (proxy: string) => Promise<boolean>;
 
       // Wardrobe / Inventory Vault
       getWardrobe: (filter?: { status?: string }) => Promise<InventoryItem[]>;

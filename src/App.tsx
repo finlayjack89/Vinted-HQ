@@ -9,6 +9,7 @@ import Wardrobe from './components/Wardrobe';
 import Settings from './components/Settings';
 import Logs from './components/Logs';
 import Purchases from './components/Purchases';
+import ProxyStatus from './components/ProxyStatus';
 import {
   colors,
   font,
@@ -26,7 +27,7 @@ import {
 } from './theme';
 import type { SniperCountdownParams } from './types/global';
 
-type Tab = 'feed' | 'wardrobe' | 'settings' | 'logs' | 'purchases';
+type Tab = 'feed' | 'wardrobe' | 'proxies' | 'settings' | 'logs' | 'purchases';
 
 /* ─── SVG Icons (inline for zero-dep) ───────────────────────── */
 
@@ -44,6 +45,19 @@ const icons: Record<Tab, JSX.Element> = {
       <path d="M3 3h7v18H3zM14 3h7v18h-7z" />
       <line x1="7" y1="8" x2="7" y2="12" />
       <line x1="17" y1="8" x2="17" y2="12" />
+    </svg>
+  ),
+  proxies: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="4" cy="6" r="2" />
+      <circle cx="20" cy="6" r="2" />
+      <circle cx="4" cy="18" r="2" />
+      <circle cx="20" cy="18" r="2" />
+      <line x1="6" y1="7" x2="10" y2="11" />
+      <line x1="18" y1="7" x2="14" y2="11" />
+      <line x1="6" y1="17" x2="10" y2="13" />
+      <line x1="18" y1="17" x2="14" y2="13" />
     </svg>
   ),
   settings: (
@@ -73,6 +87,7 @@ const icons: Record<Tab, JSX.Element> = {
 const tabLabels: Record<Tab, string> = {
   feed: 'Feed',
   wardrobe: 'Wardrobe',
+  proxies: 'Proxies',
   settings: 'Settings',
   logs: 'Logs',
   purchases: 'Purchases',
@@ -214,7 +229,7 @@ export default function App() {
 
         {/* Nav Items */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: `0 ${spacing.sm}px` }}>
-          {(['feed', 'wardrobe', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
+          {(['feed', 'wardrobe', 'proxies', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
             const active = tab === t;
             return (
               <button
@@ -294,6 +309,7 @@ export default function App() {
       >
         {tab === 'feed' && <Feed />}
         {tab === 'wardrobe' && <Wardrobe />}
+        {tab === 'proxies' && <ProxyStatus />}
         {tab === 'settings' && <Settings />}
         {tab === 'logs' && <Logs />}
         {tab === 'purchases' && <Purchases />}
