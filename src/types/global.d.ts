@@ -37,6 +37,7 @@ export type AppSettings = {
   autobuyEnabled: boolean;
   sessionAutofillEnabled: boolean;
   sessionAutoSubmitEnabled: boolean;
+  transportMode: 'PROXY' | 'DIRECT';
 };
 
 export type BridgeResult<T = unknown> =
@@ -236,6 +237,11 @@ declare global {
       onSessionReconnected: (callback: () => void) => () => void;
       getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) => Promise<LogEntry[]>;
       getPurchases: (limit?: number) => Promise<Purchase[]>;
+
+      // Transport Mode (Hybrid Transport)
+      getTransportMode: () => Promise<'PROXY' | 'DIRECT'>;
+      setTransportMode: (mode: 'PROXY' | 'DIRECT') => Promise<{ ok: boolean; error?: string }>;
+      isCheckoutActive: () => Promise<boolean>;
 
       // Proxy Status
       getProxyStatus: () => Promise<ProxyStatusEntry[]>;

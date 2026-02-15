@@ -21,10 +21,13 @@ export type AppSettings = {
   verificationThresholdPounds: number;
   authRequiredForPurchase: boolean;
   proxyUrls: string[];
+  scrapingProxies: string[];
+  checkoutProxies: string[];
   simulationMode: boolean;
   autobuyEnabled: boolean;
   sessionAutofillEnabled: boolean;
   sessionAutoSubmitEnabled: boolean;
+  transportMode: 'PROXY' | 'DIRECT';
 };
 
 contextBridge.exposeInMainWorld('vinted', {
@@ -129,6 +132,13 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.on('feed:items', handler);
     return () => ipcRenderer.removeListener('feed:items', handler);
   },
+
+  // ─── Transport Mode (Hybrid Transport) ──────────────────────────────────
+
+  getTransportMode: () => ipcRenderer.invoke('transport:getMode') as Promise<'PROXY' | 'DIRECT'>,
+  setTransportMode: (mode: 'PROXY' | 'DIRECT') =>
+    ipcRenderer.invoke('transport:setMode', mode) as Promise<{ ok: boolean; error?: string }>,
+  isCheckoutActive: () => ipcRenderer.invoke('transport:isCheckoutActive') as Promise<boolean>,
 
   // ─── Proxy Status ──────────────────────────────────────────────────────
 

@@ -60,6 +60,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('settings:set', (_event, key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => {
     settings.setSetting(key, value);
+    // Keep in-memory transport mode in sync when persisted via settings
+    if (key === 'transportMode' && (value === 'PROXY' || value === 'DIRECT')) {
+      proxyService.setTransportMode(value as proxyService.TransportMode);
+    }
     logger.info('settings:updated', { key });
   });
 
@@ -143,6 +147,23 @@ export function registerIpcHandlers(): void {
     }
   );
 
+  // ─── Transport Mode (Hybrid Transport) ──────────────────────────────────
+
+  ipcMain.handle('transport:getMode', () => proxyService.getTransportMode());
+
+  ipcMain.handle('transport:setMode', (_event, mode: string) => {
+    const transportMode = mode === 'DIRECT' ? proxyService.TransportMode.DIRECT : proxyService.TransportMode.PROXY;
+    const result = proxyService.setTransportMode(transportMode);
+    if (result.ok) {
+      // Persist to settings DB
+      settings.setSetting('transportMode', mode === 'DIRECT' ? 'DIRECT' : 'PROXY');
+      logger.info('transport:modeChanged', { mode: transportMode });
+    }
+    return result;
+  });
+
+  ipcMain.handle('transport:isCheckoutActive', () => proxyService.isCheckoutActive());
+
   // ─── Proxy Status ──────────────────────────────────────────────────────
 
   ipcMain.handle('proxy:getStatus', () => proxyService.getDetailedProxyStatus());
@@ -154,9 +175,16 @@ export function registerIpcHandlers(): void {
 
   // ─── Wardrobe / Inventory Vault ─────────────────────────────────────────
 
-  ipcMain.handle('wardrobe:getAll', (_event, filter?: { status?: string }) =>
-    inventoryDb.getAllInventoryItems(filter)
-  );
+  ipcMain.handle('wardrobe:getAll', (_event, filter?: { status?: string }) => {
+    const rows = inventoryDb.getAllInventoryItems(filter);
+    // #region agent log
+    if (rows.length > 0) {
+      const sample = rows[0];
+      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ipc.ts:wardrobe:getAll',message:'Raw DB rows sample',data:{totalRows:rows.length,firstItem_photoUrls_type:typeof sample.photo_urls,firstItem_photoUrls_value:String(sample.photo_urls).substring(0,200),firstItem_localImagePaths_type:typeof sample.local_image_paths,firstItem_localImagePaths_value:String(sample.local_image_paths).substring(0,200),firstItem_colorIds_type:typeof sample.color_ids,firstItem_colorIds_value:String(sample.color_ids).substring(0,100)},timestamp:Date.now(),hypothesisId:'H17'})}).catch(()=>{});
+    }
+    // #endregion
+    return rows;
+  });
 
   ipcMain.handle('wardrobe:getItem', (_event, localId: number) =>
     inventoryDb.getInventoryItem(localId)

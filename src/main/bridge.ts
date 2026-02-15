@@ -4,8 +4,14 @@
  */
 
 import * as secureStorage from './secureStorage';
+import { getTransportMode } from './proxyService';
 
 const BRIDGE_BASE = 'http://127.0.0.1:37421';
+
+/** Read current transport mode as a query-param-ready string. */
+function _transportMode(): string {
+  return getTransportMode(); // 'PROXY' or 'DIRECT'
+}
 
 export interface BridgeSearchResult {
   ok: true;
@@ -68,6 +74,7 @@ export async function search(url: string, page: number = 1, proxy?: string): Pro
     page: String(page),
     base_interval: '0',
     jitter: '1',
+    transport_mode: _transportMode(),
   };
   if (proxy) params.proxy = proxy;
 
@@ -95,7 +102,7 @@ export async function search(url: string, page: number = 1, proxy?: string): Pro
  * Initiate checkout build.
  */
 export async function checkoutBuild(orderId: number, proxy?: string): Promise<BridgeResult> {
-  const params: Record<string, string> = { base_interval: '0', jitter: '1' };
+  const params: Record<string, string> = { base_interval: '0', jitter: '1', transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -129,7 +136,7 @@ export async function checkoutPut(
   components: Record<string, unknown>,
   proxy?: string
 ): Promise<BridgeResult> {
-  const params: Record<string, string> = { base_interval: '0', jitter: '1' };
+  const params: Record<string, string> = { base_interval: '0', jitter: '1', transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -172,6 +179,7 @@ export async function nearbyPickupPoints(
     country_code: countryCode,
     base_interval: '0',
     jitter: '1',
+    transport_mode: _transportMode(),
   };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
@@ -264,6 +272,7 @@ export async function fetchWardrobe(
     user_id: String(userId),
     page: String(page),
     per_page: String(perPage),
+    transport_mode: _transportMode(),
   };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
@@ -290,7 +299,7 @@ export async function fetchOntologyCategories(proxy?: string): Promise<BridgeRes
     // #endregion
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -332,7 +341,7 @@ export async function fetchOntologyBrands(
     // #endregion
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { transport_mode: _transportMode() };
   if (categoryId !== undefined) params.category_id = String(categoryId);
   if (keyword) params.keyword = keyword;
   if (proxy) params.proxy = proxy;
@@ -369,7 +378,7 @@ export async function fetchOntologyColors(proxy?: string): Promise<BridgeResult>
   if (!cookie) {
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -392,7 +401,7 @@ export async function fetchOntologyConditions(catalogId: number, proxy?: string)
   if (!cookie) {
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = { catalog_id: String(catalogId) };
+  const params: Record<string, string> = { catalog_id: String(catalogId), transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -443,7 +452,7 @@ export async function createListing(
   if (!cookie) {
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -472,7 +481,7 @@ export async function editListing(
   if (!cookie) {
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -496,7 +505,7 @@ export async function deleteListing(itemId: number, proxy?: string): Promise<Bri
   if (!cookie) {
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -523,7 +532,7 @@ export async function toggleListingVisibility(
   if (!cookie) {
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -553,7 +562,7 @@ export async function relistItem(
   if (!cookie) {
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { transport_mode: _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 

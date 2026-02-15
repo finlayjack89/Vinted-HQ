@@ -11,6 +11,52 @@ import * as searchUrls from './searchUrls';
 import * as settings from './settings';
 import type { FeedItem } from './feedService';
 
+/* ── Transport Mode (Hybrid Transport) ── */
+
+export enum TransportMode {
+  PROXY = 'PROXY',
+  DIRECT = 'DIRECT',
+}
+
+let currentTransportMode: TransportMode = TransportMode.PROXY;
+let checkoutActive = false; // Sticky Lock — prevents mode changes during checkout
+
+/** Get the current transport mode. */
+export function getTransportMode(): TransportMode {
+  return currentTransportMode;
+}
+
+/**
+ * Set the transport mode. Rejects if a checkout is in progress (Sticky Lock).
+ * Returns { ok: true } on success, { ok: false, error } on rejection.
+ */
+export function setTransportMode(mode: TransportMode): { ok: boolean; error?: string } {
+  if (checkoutActive) {
+    return { ok: false, error: 'Cannot change transport mode during active checkout.' };
+  }
+  currentTransportMode = mode;
+  return { ok: true };
+}
+
+/** Mark checkout as active/inactive. Used by checkoutService for the Sticky Lock. */
+export function setCheckoutActive(active: boolean): void {
+  checkoutActive = active;
+}
+
+/** Whether a checkout is currently in progress. */
+export function isCheckoutActive(): boolean {
+  return checkoutActive;
+}
+
+/**
+ * Initialize transport mode from persisted settings.
+ * Called once at app startup.
+ */
+export function initTransportMode(): void {
+  const persisted = settings.getSetting('transportMode');
+  currentTransportMode = persisted === 'DIRECT' ? TransportMode.DIRECT : TransportMode.PROXY;
+}
+
 /* ── Escalating cooldown config ── */
 const COOLDOWN_STRIKE_1_MS = 5 * 60 * 1000;  // 5 minutes — temporary rate-limit
 const COOLDOWN_STRIKE_2_MS = 15 * 60 * 1000; // 15 minutes — repeated detection
@@ -272,6 +318,7 @@ export function getScrapingProxyCount(): number {
  * be blocked by the polling cooldown system.
  */
 export function getAnyScrapingProxy(): string | undefined {
+  if (currentTransportMode === TransportMode.DIRECT) return undefined;
   const scrapers = settings.getSetting('scrapingProxies') ?? [];
   if (scrapers.length > 0) {
     const raw = scrapers[scrapingCycle % scrapers.length];
@@ -310,6 +357,7 @@ export function getScrapingProxyStatus(): { total: number; cooledDown: string[];
  * Uses one proxy per search URL (index-based); supports residential proxies.
  */
 export function getProxyForItem(item: FeedItem): string | undefined {
+  if (currentTransportMode === TransportMode.DIRECT) return undefined;
   const sourceUrl = item.source_urls?.[0];
   if (!sourceUrl) return undefined;
 
@@ -340,6 +388,7 @@ export function getProxyForUrlIndex(idx: number): string | undefined {
  * Returns undefined if ALL proxies are in cooldown.
  */
 export function getProxyForScraping(urlIndex: number): string | undefined {
+  if (currentTransportMode === TransportMode.DIRECT) return undefined;
   const scrapers = settings.getSetting('scrapingProxies') ?? [];
   if (scrapers.length > 0) {
     // Try each proxy starting from current rotation offset, skip cooled-down ones
@@ -364,6 +413,7 @@ export function getProxyForScraping(urlIndex: number): string | undefined {
  * Falls back to legacy proxy selection if checkoutProxies is empty.
  */
 export function getProxyForCheckout(item: FeedItem): string | undefined {
+  if (currentTransportMode === TransportMode.DIRECT) return undefined;
   const residential = settings.getSetting('checkoutProxies') ?? [];
   if (residential.length > 0) {
     const hash = item.id % residential.length;

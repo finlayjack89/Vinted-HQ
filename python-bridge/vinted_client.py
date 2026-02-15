@@ -24,6 +24,15 @@ USER_AGENT = (
 )
 SEC_CH_UA = f'"Chromium";v="{CHROME_VERSION}", "Google Chrome";v="{CHROME_VERSION}", "Not.A/Brand";v="24"'
 
+# DIRECT mode: Chrome 110 Android mobile — aligned with impersonate="chrome110"
+# TLS fingerprint and header versions MUST match to avoid DataDome mismatch flags.
+DIRECT_IMPOSTOR = "chrome110"
+DIRECT_USER_AGENT = (
+    "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Mobile Safari/537.36"
+)
+DIRECT_SEC_CH_UA = '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"'
+
 BASE_URL = "https://www.vinted.co.uk"
 
 
@@ -31,20 +40,25 @@ BASE_URL = "https://www.vinted.co.uk"
 # Reuse HTTP sessions per proxy to enable HTTP/2 connection reuse and avoid
 # creating a new TLS handshake for every request (a detectable pattern).
 
-_session_pool: dict[str | None, requests.Session] = {}
+_session_pool: dict[tuple[str | None, str | None], requests.Session] = {}
 
 
-def _get_session(proxy: str | None = None) -> requests.Session:
-    """Get or create a reusable session for the given proxy."""
-    if proxy not in _session_pool:
-        _session_pool[proxy] = requests.Session(impersonate=IMPOSTOR)
-    return _session_pool[proxy]
+def _get_session(proxy: str | None = None, transport_mode: str | None = None) -> requests.Session:
+    """Get or create a reusable session for the given proxy and transport mode.
+    Different modes use different impersonate targets (PROXY=chrome, DIRECT=chrome110),
+    so the pool key is (proxy, transport_mode) to prevent session collisions."""
+    imp = DIRECT_IMPOSTOR if transport_mode == "DIRECT" else IMPOSTOR
+    key = (proxy, transport_mode)
+    if key not in _session_pool:
+        _session_pool[key] = requests.Session(impersonate=imp)
+    return _session_pool[key]
 
 
-def reset_session(proxy: str | None = None) -> None:
+def reset_session(proxy: str | None = None, transport_mode: str | None = None) -> None:
     """Drop a cached session (e.g. after a Datadome challenge).
     The next call to _get_session will create a fresh one."""
-    _session_pool.pop(proxy, None)
+    key = (proxy, transport_mode)
+    _session_pool.pop(key, None)
 
 
 class VintedError(Exception):
@@ -75,25 +89,42 @@ def _parse_catalog_url(url: str) -> dict:
 
 def _build_search_params(params: dict) -> str:
     """Build the full query string for catalog/items endpoint.
-    Passes through ALL filter parameters from the original URL."""
+    Passes through ALL filter parameters from the original URL.
+    Maps frontend URL param names to Vinted API param names where they differ."""
+
+    # Frontend URL → API endpoint parameter name mapping.
+    # The Vinted website uses 'catalog[]' in browser URLs but the API
+    # endpoint /api/v2/catalog/items expects 'catalog_ids[]'.
+    PARAM_REMAP: dict[str, str] = {
+        "catalog[]": "catalog_ids[]",
+    }
+
     raw_query = params.get("_raw_query", {})
-    # Start with the raw query params (preserves catalog[], color_ids[], etc.)
+    # Start with the raw query params (preserves color_ids[], brand_ids[], etc.)
     parts: list[tuple[str, str]] = []
     for key, values in raw_query.items():
         # Skip page/per_page/order — we set them explicitly below
         if key in ("page", "per_page", "order"):
             continue
+        # Remap parameter names where frontend and API differ
+        api_key = PARAM_REMAP.get(key, key)
         for val in values:
-            parts.append((key, val))
+            parts.append((api_key, val))
     # Add our controlled paging/ordering params
     parts.append(("page", str(params.get("page", 1))))
     parts.append(("per_page", str(params.get("per_page", 96))))
     parts.append(("order", params.get("order", "newest_first")))
-    return urlencode(parts)
+    # urlencode encodes [] as %5B%5D; replace back to raw brackets
+    # since Vinted's API expects unencoded brackets in array params
+    qs = urlencode(parts)
+    qs = qs.replace("%5B%5D", "[]")
+    return qs
 
 
-def _build_headers(cookie: str, referer: str | None = None) -> dict:
-    """Build request headers matching a real Chrome browser fingerprint."""
+def _build_headers(cookie: str, referer: str | None = None, transport_mode: str | None = None) -> dict:
+    """Build request headers matching a real Chrome browser fingerprint.
+    In DIRECT mode, overlays Chrome 110 mobile headers while preserving
+    Cookie, Accept, Referer, and Sec-Fetch headers."""
     headers = {
         "Accept": "application/json, text/plain, */*",
         "Accept-Encoding": "gzip, deflate, br, zstd",
@@ -110,6 +141,15 @@ def _build_headers(cookie: str, referer: str | None = None) -> dict:
     }
     if cookie:
         headers["Cookie"] = cookie
+
+    # DIRECT mode: overlay Chrome 110 mobile headers.
+    # Merged (not replaced) so Cookie/Accept/Referer/Sec-Fetch are preserved.
+    if transport_mode == "DIRECT":
+        headers["User-Agent"] = DIRECT_USER_AGENT
+        headers["Sec-Ch-Ua"] = DIRECT_SEC_CH_UA
+        headers["Sec-Ch-Ua-Mobile"] = "?1"
+        headers["Sec-Ch-Ua-Platform"] = '"Android"'
+
     return headers
 
 
@@ -126,9 +166,10 @@ def _build_write_headers(
     anon_id: str | None = None,
     referer: str | None = None,
     upload_form: bool = False,
+    transport_mode: str | None = None,
 ) -> dict:
     """Build headers for write operations (POST/PUT/DELETE) that require CSRF."""
-    headers = _build_headers(cookie, referer)
+    headers = _build_headers(cookie, referer, transport_mode=transport_mode)
     headers["Content-Type"] = "application/json"
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
@@ -139,7 +180,7 @@ def _build_write_headers(
     return headers
 
 
-def _detect_challenge(resp, proxy: str | None = None) -> None:
+def _detect_challenge(resp, proxy: str | None = None, transport_mode: str | None = None) -> None:
     """Detect Datadome/Cloudflare HTML challenge pages returned instead of JSON.
     These often come back as HTTP 200 with text/html content, so status-code
     checks alone miss them.  Resets the cached session for the proxy so the
@@ -148,7 +189,7 @@ def _detect_challenge(resp, proxy: str | None = None) -> None:
     if "text/html" in content_type:
         body_start = resp.text[:500].lower()
         if "datadome" in body_start or "<!doctype" in body_start or "<html" in body_start:
-            reset_session(proxy)
+            reset_session(proxy, transport_mode)
             raise VintedError(
                 "DATADOME_CHALLENGE",
                 "Bot challenge detected -- refresh session in browser",
@@ -183,6 +224,7 @@ def search(
     cookie: str,
     proxy: str | None = None,
     page: int = 1,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     Fetch catalog items from a Vinted search/catalog URL.
@@ -198,19 +240,23 @@ def search(
     import json as _json, os as _os
     _log_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), ".cursor", "debug.log")
     try:
+        # Log the full query string (first 800 chars) so we can verify exact parameter names and encoding
+        _qs_keys = [k for k, v in (p.split("=", 1) for p in qs.split("&") if "=" in p)]
+        _unique_keys = list(dict.fromkeys(_qs_keys))
         with open(_log_path, "a") as _f:
-            _f.write(_json.dumps({"location":"vinted_client.py:search","message":"Built API URL","data":{"api_url_len":len(api_url),"has_catalog":("catalog" in qs),"has_color_ids":("color_ids" in qs),"has_brand_ids":("brand_ids" in qs),"has_size_ids":("size_ids" in qs),"page":page,"proxy_provided":bool(proxy)},"timestamp":int(time.time()*1000),"hypothesisId":"H6,H9"}) + "\n")
+            _f.write(_json.dumps({"location":"vinted_client.py:search","message":"Built API URL","data":{"api_url_first800":api_url[:800],"qs_param_keys":_unique_keys,"has_catalog_bracket":("catalog%5B%5D" in qs or "catalog[]" in qs),"has_catalog_ids":("catalog_ids" in qs),"has_color_ids":("color_ids" in qs),"has_brand_ids":("brand_ids" in qs),"has_size_ids":("size_ids" in qs),"order_value":params.get("order","?"),"page":page,"proxy_provided":bool(proxy)},"timestamp":int(time.time()*1000),"hypothesisId":"H14,H15,H16"}) + "\n")
     except Exception:
         pass
     # endregion
 
-    session = _get_session(proxy)
+    session = _get_session(proxy, transport_mode)
     req_kwargs: dict = {
         "url": api_url,
-        "headers": _build_headers(cookie, referer),
+        "headers": _build_headers(cookie, referer, transport_mode),
         "timeout": 30,
     }
-    if proxy:
+    # Safety: DIRECT mode must never use a proxy, regardless of what was passed.
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -238,17 +284,40 @@ def search(
             resp.status_code,
         )
 
-    _detect_challenge(resp, proxy)
+    _detect_challenge(resp, proxy, transport_mode)
     try:
-        return resp.json()
+        _resp_data = resp.json()
     except Exception as e:
         raise VintedError("PARSE_ERROR", f"Invalid JSON: {e}")
+
+    # region agent log
+    try:
+        _items = _resp_data.get("items", [])[:2]
+        _sample = []
+        for _it in _items:
+            _sample.append({
+                "id": _it.get("id"),
+                "title": str(_it.get("title", ""))[:40],
+                "catalog_id": _it.get("catalog_id"),
+                "color1": str(_it.get("color1", "")),
+                "color2": str(_it.get("color2", "")),
+                "brand_title": str(_it.get("brand_title", "")),
+                "size_title": str(_it.get("size_title", "")),
+            })
+        with open(_log_path, "a") as _f:
+            _f.write(_json.dumps({"location":"vinted_client.py:search:response","message":"Search response sample","data":{"total_items":len(_resp_data.get("items",[])),"sample_items":_sample,"page":page},"timestamp":int(time.time()*1000),"hypothesisId":"H14,H15,H16"}) + "\n")
+    except Exception:
+        pass
+    # endregion
+
+    return _resp_data
 
 
 def checkout_build(
     order_id: int,
     cookie: str,
     proxy: str | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     Initiate checkout: POST /api/v2/purchases/checkout/build
@@ -256,8 +325,8 @@ def checkout_build(
     api_url = f"{BASE_URL}/api/v2/purchases/checkout/build"
     payload = {"purchase_items": [{"id": order_id, "type": "transaction"}]}
 
-    session = _get_session(proxy)
-    headers = _build_headers(cookie)
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, transport_mode=transport_mode)
     headers["Content-Type"] = "application/json"
 
     req_kwargs: dict = {
@@ -266,7 +335,7 @@ def checkout_build(
         "json": payload,
         "timeout": 30,
     }
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -292,7 +361,7 @@ def checkout_build(
             resp.status_code,
         )
 
-    _detect_challenge(resp, proxy)
+    _detect_challenge(resp, proxy, transport_mode)
     try:
         return resp.json()
     except Exception as e:
@@ -304,6 +373,7 @@ def checkout_put(
     components: dict,
     cookie: str,
     proxy: str | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     PUT checkout step: components (verification, pickup, payment, etc.)
@@ -311,8 +381,8 @@ def checkout_put(
     api_url = f"{BASE_URL}/api/v2/purchases/{purchase_id}/checkout"
     payload = {"components": components}
 
-    session = _get_session(proxy)
-    headers = _build_headers(cookie)
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, transport_mode=transport_mode)
     headers["Content-Type"] = "application/json"
 
     req_kwargs: dict = {
@@ -321,7 +391,7 @@ def checkout_put(
         "json": payload,
         "timeout": 30,
     }
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -347,7 +417,7 @@ def checkout_put(
             resp.status_code,
         )
 
-    _detect_challenge(resp, proxy)
+    _detect_challenge(resp, proxy, transport_mode)
     try:
         return resp.json()
     except Exception as e:
@@ -361,6 +431,7 @@ def nearby_pickup_points(
     cookie: str,
     proxy: str | None = None,
     country_code: str = "GB",
+    transport_mode: str | None = None,
 ) -> dict:
     """
     GET nearby pickup points for drop-off delivery.
@@ -374,13 +445,13 @@ def nearby_pickup_points(
     qs = urlencode(params)
     full_url = f"{api_url}?{qs}"
 
-    session = _get_session(proxy)
+    session = _get_session(proxy, transport_mode)
     req_kwargs: dict = {
         "url": full_url,
-        "headers": _build_headers(cookie),
+        "headers": _build_headers(cookie, transport_mode=transport_mode),
         "timeout": 30,
     }
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -399,7 +470,7 @@ def nearby_pickup_points(
             resp.status_code,
         )
 
-    _detect_challenge(resp, proxy)
+    _detect_challenge(resp, proxy, transport_mode)
     try:
         return resp.json()
     except Exception as e:
@@ -426,20 +497,21 @@ def fetch_wardrobe(
     proxy: str | None = None,
     page: int = 1,
     per_page: int = 20,
+    transport_mode: str | None = None,
 ) -> dict:
     """GET /api/v2/wardrobe/{user_id}/items — fetch user's own listings."""
     qs = urlencode({"page": page, "per_page": per_page, "order": "relevance"})
     api_url = f"{BASE_URL}/api/v2/wardrobe/{user_id}/items?{qs}"
 
-    session = _get_session(proxy)
-    headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}")
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}", transport_mode)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
         headers["x-anon-id"] = anon_id
 
     req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -460,19 +532,20 @@ def fetch_ontology_categories(
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/catalogs — fetch full category tree."""
     api_url = f"{BASE_URL}/api/v2/item_upload/catalogs"
 
-    session = _get_session(proxy)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
         headers["x-anon-id"] = anon_id
 
     req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -492,6 +565,7 @@ def fetch_ontology_brands(
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/brands — fetch brands, optionally filtered."""
     params: dict = {}
@@ -504,15 +578,15 @@ def fetch_ontology_brands(
     if qs:
         api_url += f"?{qs}"
 
-    session = _get_session(proxy)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
         headers["x-anon-id"] = anon_id
 
     req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -530,19 +604,20 @@ def fetch_ontology_colors(
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/colors — fetch all color options."""
     api_url = f"{BASE_URL}/api/v2/item_upload/colors"
 
-    session = _get_session(proxy)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
         headers["x-anon-id"] = anon_id
 
     req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -561,20 +636,21 @@ def fetch_ontology_conditions(
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/conditions?catalog_id={id} — conditions for category."""
     qs = urlencode({"catalog_id": catalog_id})
     api_url = f"{BASE_URL}/api/v2/item_upload/conditions?{qs}"
 
-    session = _get_session(proxy)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
         headers["x-anon-id"] = anon_id
 
     req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -598,6 +674,7 @@ def upload_photo(
     anon_id: str | None = None,
     proxy: str | None = None,
     session: requests.Session | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     POST /api/v2/photos — upload image as multipart/form-data.
@@ -608,9 +685,9 @@ def upload_photo(
     photo_uuid = temp_uuid or str(uuid.uuid4())
 
     if session is None:
-        session = _get_session(proxy)
+        session = _get_session(proxy, transport_mode)
 
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new")
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
     # Remove Content-Type — curl_cffi sets it with boundary for multipart
     headers.pop("Content-Type", None)
     if csrf_token:
@@ -631,7 +708,7 @@ def upload_photo(
         "multipart": multipart,
         "timeout": 60,
     }
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -655,6 +732,7 @@ def create_listing(
     anon_id: str | None = None,
     proxy: str | None = None,
     session: requests.Session | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     POST /api/v2/item_upload/items — create and publish a new listing.
@@ -664,12 +742,13 @@ def create_listing(
     session_id = upload_session_id or str(uuid.uuid4())
 
     if session is None:
-        session = _get_session(proxy)
+        session = _get_session(proxy, transport_mode)
 
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
         referer=f"{BASE_URL}/items/new",
         upload_form=True,
+        transport_mode=transport_mode,
     )
 
     payload = {
@@ -689,7 +768,7 @@ def create_listing(
         "json": payload,
         "timeout": 30,
     }
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -711,6 +790,7 @@ def edit_listing(
     anon_id: str | None = None,
     proxy: str | None = None,
     session: requests.Session | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     PUT /api/v2/item_upload/items/{item_id} — edit an existing listing.
@@ -719,12 +799,13 @@ def edit_listing(
     session_id = upload_session_id or str(uuid.uuid4())
 
     if session is None:
-        session = _get_session(proxy)
+        session = _get_session(proxy, transport_mode)
 
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
         referer=f"{BASE_URL}/items/{item_id}/edit",
         upload_form=True,
+        transport_mode=transport_mode,
     )
 
     payload = {
@@ -744,7 +825,7 @@ def edit_listing(
         "json": payload,
         "timeout": 30,
     }
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -764,6 +845,7 @@ def delete_listing(
     anon_id: str | None = None,
     proxy: str | None = None,
     session: requests.Session | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     POST /api/v2/items/{item_id}/delete — delete a live listing.
@@ -772,11 +854,12 @@ def delete_listing(
     api_url = f"{BASE_URL}/api/v2/items/{item_id}/delete"
 
     if session is None:
-        session = _get_session(proxy)
+        session = _get_session(proxy, transport_mode)
 
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
         referer=f"{BASE_URL}/items/{item_id}",
+        transport_mode=transport_mode,
     )
     # Delete has empty body — remove Content-Type
     headers.pop("Content-Type", None)
@@ -787,7 +870,7 @@ def delete_listing(
         "headers": headers,
         "timeout": 30,
     }
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -807,16 +890,18 @@ def hide_listing(
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     PUT /api/v2/items/{item_id}/is_hidden — hide or unhide a listing.
     """
     api_url = f"{BASE_URL}/api/v2/items/{item_id}/is_hidden"
 
-    session = _get_session(proxy)
+    session = _get_session(proxy, transport_mode)
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
         referer=f"{BASE_URL}/items/{item_id}",
+        transport_mode=transport_mode,
     )
 
     req_kwargs: dict = {
@@ -825,7 +910,7 @@ def hide_listing(
         "json": {"is_hidden": hidden},
         "timeout": 30,
     }
-    if proxy:
+    if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
     try:
@@ -850,6 +935,7 @@ def relist_item(
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
+    transport_mode: str | None = None,
 ) -> dict:
     """
     Full stealth relist sequence under a single sticky proxy session:
@@ -868,12 +954,14 @@ def relist_item(
         csrf_token: CSRF token for write operations.
         anon_id: Anonymous ID header value.
         proxy: Sticky proxy URL for the entire sequence.
+        transport_mode: 'PROXY' or 'DIRECT' for hybrid transport.
 
     Returns:
         dict with {new_item_id, photo_ids, upload_session_id}
     """
-    # Single session for IP consistency
-    sticky_session = requests.Session(impersonate=IMPOSTOR)
+    # Single session for IP consistency — use mode-appropriate impersonate target
+    imp = DIRECT_IMPOSTOR if transport_mode == "DIRECT" else IMPOSTOR
+    sticky_session = requests.Session(impersonate=imp)
     upload_session_id = str(uuid.uuid4())
 
     # ── Step 1: Mutate and upload all images ──
@@ -889,6 +977,7 @@ def relist_item(
             anon_id=anon_id,
             proxy=proxy,
             session=sticky_session,
+            transport_mode=transport_mode,
         )
         photo_id = result.get("id")
         if photo_id:
@@ -907,6 +996,7 @@ def relist_item(
         anon_id=anon_id,
         proxy=proxy,
         session=sticky_session,
+        transport_mode=transport_mode,
     )
 
     # ── Step 3: Wait 10 seconds (delete-post jitter) ──
@@ -934,6 +1024,7 @@ def relist_item(
         anon_id=anon_id,
         proxy=proxy,
         session=sticky_session,
+        transport_mode=transport_mode,
     )
 
     return {

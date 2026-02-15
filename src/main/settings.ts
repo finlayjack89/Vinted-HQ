@@ -21,6 +21,7 @@ export interface AppSettings {
   autobuyEnabled: boolean;
   sessionAutofillEnabled: boolean;
   sessionAutoSubmitEnabled: boolean;
+  transportMode: 'PROXY' | 'DIRECT';
 }
 
 const DEFAULTS: AppSettings = {
@@ -39,6 +40,7 @@ const DEFAULTS: AppSettings = {
   autobuyEnabled: false,
   sessionAutofillEnabled: true,
   sessionAutoSubmitEnabled: false,
+  transportMode: 'PROXY',
 };
 
 const SETTINGS_KEYS: (keyof AppSettings)[] = [
@@ -57,6 +59,7 @@ const SETTINGS_KEYS: (keyof AppSettings)[] = [
   'autobuyEnabled',
   'sessionAutofillEnabled',
   'sessionAutoSubmitEnabled',
+  'transportMode',
 ];
 
 function serialize(value: unknown): string {
@@ -78,6 +81,9 @@ function deserialize(key: keyof AppSettings, value: string): unknown {
     key === 'sessionAutoSubmitEnabled'
   ) {
     return value === '1';
+  }
+  if (key === 'transportMode') {
+    return value === 'DIRECT' ? 'DIRECT' : 'PROXY';
   }
   if (key === 'proxyUrls' || key === 'scrapingProxies' || key === 'checkoutProxies') {
     try {

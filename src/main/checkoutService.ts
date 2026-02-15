@@ -11,6 +11,7 @@ import * as bridge from './bridge';
 import * as settings from './settings';
 import { getDb } from './db';
 import * as sessionService from './sessionService';
+import * as proxyService from './proxyService';
 import type { FeedItem } from './feedService';
 
 export interface CheckoutResult {
@@ -122,6 +123,16 @@ function emitProgress(step: string): void {
 }
 
 export async function runCheckout(item: FeedItem, proxy?: string, sniperId?: number): Promise<CheckoutResult> {
+  // Sticky Lock: prevent transport mode changes during checkout
+  proxyService.setCheckoutActive(true);
+  try {
+    return await _executeCheckout(item, proxy, sniperId);
+  } finally {
+    proxyService.setCheckoutActive(false);
+  }
+}
+
+async function _executeCheckout(item: FeedItem, proxy?: string, sniperId?: number): Promise<CheckoutResult> {
   const orderId = item.order_id ?? item.id;
   const price = parseFloat(item.price) || 0;
   const s = settings.getAllSettings();

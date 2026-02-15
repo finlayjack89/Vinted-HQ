@@ -10,6 +10,7 @@ import * as searchUrls from './main/searchUrls';
 import * as settings from './main/settings';
 import * as ontologyService from './main/ontologyService';
 import * as inventoryService from './main/inventoryService';
+import * as proxyService from './main/proxyService';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -127,6 +128,7 @@ app.on('ready', () => {
   initDb();
   registerIpcHandlers();
   settings.migrateProxySettings();
+  proxyService.initTransportMode();
   startPythonBridge();
 
   // Ensure image cache directory exists for Inventory Vault

@@ -93,6 +93,7 @@ const defaultSettings: AppSettings = {
   autobuyEnabled: false,
   sessionAutofillEnabled: true,
   sessionAutoSubmitEnabled: false,
+  transportMode: 'PROXY',
 };
 
 /* ─── Relist Timing Section ─────────────────────────────────── */
@@ -184,6 +185,9 @@ export default function Settings() {
   const [hasLoginCredentials, setHasLoginCredentials] = useState(false);
   const [isRefreshingSession, setIsRefreshingSession] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>('idle');
+  const [transportMode, setTransportMode] = useState<'PROXY' | 'DIRECT'>('PROXY');
+  const [checkoutLocked, setCheckoutLocked] = useState(false);
+  const [transportError, setTransportError] = useState<string | null>(null);
 
   useEffect(() => {
     window.vinted.getSettings().then(setSettings);
@@ -191,6 +195,8 @@ export default function Settings() {
     window.vinted.getSearchUrls().then(setSearchUrls);
     window.vinted.getSnipers().then(setSnipers);
     window.vinted.hasLoginCredentials().then(setHasLoginCredentials);
+    window.vinted.getTransportMode().then(setTransportMode);
+    window.vinted.isCheckoutActive().then(setCheckoutLocked);
   }, []);
 
   const showSaved = () => {
@@ -269,6 +275,24 @@ export default function Settings() {
   const handleSettingsChange = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     window.vinted.setSetting(key, value);
+  };
+
+  const handleTransportModeChange = async (mode: 'PROXY' | 'DIRECT') => {
+    setTransportError(null);
+    // Re-check checkout lock before attempting
+    const active = await window.vinted.isCheckoutActive();
+    setCheckoutLocked(active);
+    if (active) {
+      setTransportError('Cannot change transport mode while a checkout is in progress.');
+      return;
+    }
+    const result = await window.vinted.setTransportMode(mode);
+    if (result.ok) {
+      setTransportMode(mode);
+      showSaved();
+    } else {
+      setTransportError(result.error ?? 'Failed to change transport mode.');
+    }
   };
 
   const handleAddProxy = () => {
@@ -550,6 +574,81 @@ export default function Settings() {
         >
           Save pasted session
         </button>
+      </Section>
+
+      {/* ─── Network Transport ──────────────────────────── */}
+      <Section
+        title="Network Transport"
+        description="Choose how requests reach Vinted. Proxy mode uses your configured ISP/residential proxies. Direct mode bypasses proxies and uses your local network interface (e.g. tethered iPhone)."
+      >
+        <div style={{ display: 'flex', gap: spacing.lg, alignItems: 'center', marginBottom: spacing.md }}>
+          <span
+            style={badge(
+              transportMode === 'PROXY' ? colors.primaryMuted : colors.successBg,
+              transportMode === 'PROXY' ? colors.primary : colors.success
+            )}
+          >
+            {transportMode === 'PROXY' ? 'Static Proxies' : 'Direct Mobile'}
+          </span>
+          {checkoutLocked && (
+            <span style={badge(colors.warningBg, colors.warning)}>
+              Checkout in progress — locked
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: spacing.sm,
+              cursor: checkoutLocked ? 'not-allowed' : 'pointer',
+              fontSize: font.size.base,
+              color: colors.textSecondary,
+              opacity: checkoutLocked ? 0.5 : 1,
+            }}
+          >
+            <input
+              type="radio"
+              name="transportMode"
+              checked={transportMode === 'PROXY'}
+              onChange={() => handleTransportModeChange('PROXY')}
+              disabled={checkoutLocked}
+            />
+            Static Proxies (ISP/Resi)
+          </label>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: spacing.sm,
+              cursor: checkoutLocked ? 'not-allowed' : 'pointer',
+              fontSize: font.size.base,
+              color: colors.textSecondary,
+              opacity: checkoutLocked ? 0.5 : 1,
+            }}
+          >
+            <input
+              type="radio"
+              name="transportMode"
+              checked={transportMode === 'DIRECT'}
+              onChange={() => handleTransportModeChange('DIRECT')}
+              disabled={checkoutLocked}
+            />
+            Direct Mobile (Tethered)
+          </label>
+        </div>
+        {transportError && (
+          <p style={{ color: colors.warning, fontSize: font.size.sm, marginTop: spacing.sm, marginBottom: 0 }}>
+            {transportError}
+          </p>
+        )}
+        {transportMode === 'DIRECT' && (
+          <p style={{ fontSize: font.size.sm, color: colors.textMuted, marginTop: spacing.md, marginBottom: 0 }}>
+            Direct mode uses Chrome 110 mobile fingerprint (Android/Pixel 7). Ensure your tethered device has a clean IP.
+            Your configured proxies will be ignored while this mode is active.
+          </p>
+        )}
       </Section>
 
       {/* ─── Search URLs ──────────────────────────────── */}
