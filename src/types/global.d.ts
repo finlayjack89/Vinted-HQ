@@ -117,7 +117,7 @@ export type InventoryItem = {
   package_size_id: number | null;
   item_attributes: { code: string; ids: number[] }[];  // parsed from JSON
   is_unisex: boolean;
-  status: 'live' | 'local_only' | 'discrepancy' | 'action_required';
+  status: 'live' | 'local_only' | 'discrepancy' | 'action_required' | 'sold' | 'hidden' | 'reserved';
   extra_metadata: Record<string, unknown> | null;
   created_at: number;
   updated_at: number;
@@ -254,6 +254,7 @@ declare global {
       deleteWardrobeItem: (localId: number) => Promise<boolean>;
       pullFromVinted: (userId: number) => Promise<{ pulled: number; errors: string[] }>;
       pushToVinted: (localId: number, proxy?: string) => Promise<{ ok: boolean; vintedItemId?: number; error?: string }>;
+      editLiveItem: (localId: number, updates: Record<string, unknown>, proxy?: string) => Promise<{ ok: boolean; error?: string }>;
 
       // Relist Queue (Waiting Room)
       getRelistQueue: () => Promise<{ queue: RelistQueueEntry[]; countdown: number }>;
@@ -267,6 +268,13 @@ declare global {
       // Ontology
       refreshOntology: () => Promise<void>;
       getOntology: (entityType: string) => Promise<OntologyEntity[]>;
+      getSizes: (catalogId: number) => Promise<BridgeResult>;
+      getMaterials: (catalogId: number) => Promise<BridgeResult>;
+      getPackageSizes: (catalogId: number, itemId?: number) => Promise<BridgeResult>;
+      getConditions: (catalogId: number) => Promise<BridgeResult>;
+      searchBrands: (keyword: string, categoryId?: number) => Promise<BridgeResult>;
+      getModels: (catalogId: number, brandId: number) => Promise<BridgeResult>;
+      getItemDetail: (itemId: number) => Promise<BridgeResult>;
       onOntologyAlert: (callback: (data: { deletedCategories: unknown[]; affectedItems: unknown[] }) => void) => () => void;
 
       // Sync Progress

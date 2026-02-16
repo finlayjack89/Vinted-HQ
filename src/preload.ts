@@ -159,6 +159,8 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:pullFromVinted', userId),
   pushToVinted: (localId: number, proxy?: string) =>
     ipcRenderer.invoke('wardrobe:pushToVinted', localId, proxy),
+  editLiveItem: (localId: number, updates: Record<string, unknown>, proxy?: string) =>
+    ipcRenderer.invoke('wardrobe:editLiveItem', localId, updates, proxy),
 
   // ─── Relist Queue (Waiting Room) ────────────────────────────────────────
 
@@ -186,6 +188,20 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:refreshOntology'),
   getOntology: (entityType: string) =>
     ipcRenderer.invoke('wardrobe:getOntology', entityType),
+  getSizes: (catalogId: number) =>
+    ipcRenderer.invoke('wardrobe:getSizes', catalogId),
+  getMaterials: (catalogId: number) =>
+    ipcRenderer.invoke('wardrobe:getMaterials', catalogId),
+  getPackageSizes: (catalogId: number, itemId?: number) =>
+    ipcRenderer.invoke('wardrobe:getPackageSizes', catalogId, itemId),
+  getConditions: (catalogId: number) =>
+    ipcRenderer.invoke('wardrobe:getConditions', catalogId),
+  searchBrands: (keyword: string, categoryId?: number) =>
+    ipcRenderer.invoke('wardrobe:searchBrands', keyword, categoryId),
+  getModels: (catalogId: number, brandId: number) =>
+    ipcRenderer.invoke('wardrobe:getModels', catalogId, brandId),
+  getItemDetail: (itemId: number) =>
+    ipcRenderer.invoke('wardrobe:getItemDetail', itemId),
   onOntologyAlert: (callback: (data: unknown) => void) => {
     const handler = (_: unknown, data: unknown) => callback(data);
     ipcRenderer.on('wardrobe:ontology-alert', handler);

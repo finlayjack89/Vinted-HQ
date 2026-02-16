@@ -29,6 +29,14 @@ export interface InventoryMasterRow {
   is_unisex: number;
   status: string;
   extra_metadata: string | null;     // JSON
+  isbn: string | null;
+  measurement_length: number | null;
+  measurement_width: number | null;
+  model_metadata: string | null;     // JSON: { collection_id, model_id }
+  manufacturer: string | null;
+  manufacturer_labelling: string | null;
+  video_game_rating_id: number | null;
+  shipment_prices: string | null;    // JSON: { domestic, international }
   created_at: number;
   updated_at: number;
 }
@@ -71,6 +79,33 @@ function db(): Database.Database {
   return d;
 }
 
+/**
+ * Parse JSON string fields from a raw SQLite row into proper JS arrays/objects.
+ * SQLite stores these as TEXT; the renderer expects parsed values.
+ */
+function parseJsonFields<T extends Partial<InventoryMasterRow>>(row: T): T {
+  const r = { ...row };
+  const jsonStringFields: (keyof InventoryMasterRow)[] = [
+    'color_ids', 'photo_urls', 'local_image_paths', 'item_attributes', 'extra_metadata',
+  ];
+  for (const key of jsonStringFields) {
+    const val = (r as Record<string, unknown>)[key];
+    if (typeof val === 'string') {
+      try {
+        (r as Record<string, unknown>)[key] = JSON.parse(val);
+      } catch {
+        // leave as-is if malformed JSON
+      }
+    } else if (val === null || val === undefined) {
+      // For array-type fields, default to empty array so the renderer doesn't need null checks
+      if (key === 'color_ids' || key === 'photo_urls' || key === 'local_image_paths' || key === 'item_attributes') {
+        (r as Record<string, unknown>)[key] = [];
+      }
+    }
+  }
+  return r;
+}
+
 // ─── Inventory Master + Sync ───
 
 const JOIN_QUERY = `
@@ -84,32 +119,37 @@ const JOIN_QUERY = `
  * Get all inventory items, optionally filtered by status.
  */
 export function getAllInventoryItems(filter?: { status?: string }): InventoryItemJoined[] {
+  let rows: InventoryItemJoined[];
   if (filter?.status) {
-    return db()
+    rows = db()
       .prepare(`${JOIN_QUERY} WHERE m.status = ? ORDER BY m.updated_at DESC`)
       .all(filter.status) as InventoryItemJoined[];
+  } else {
+    rows = db()
+      .prepare(`${JOIN_QUERY} ORDER BY m.updated_at DESC`)
+      .all() as InventoryItemJoined[];
   }
-  return db()
-    .prepare(`${JOIN_QUERY} ORDER BY m.updated_at DESC`)
-    .all() as InventoryItemJoined[];
+  return rows.map(parseJsonFields);
 }
 
 /**
  * Get a single inventory item by local ID.
  */
 export function getInventoryItem(localId: number): InventoryItemJoined | undefined {
-  return db()
+  const row = db()
     .prepare(`${JOIN_QUERY} WHERE m.id = ?`)
     .get(localId) as InventoryItemJoined | undefined;
+  return row ? parseJsonFields(row) : undefined;
 }
 
 /**
  * Get inventory items linked to a specific Vinted item ID.
  */
 export function getInventoryItemByVintedId(vintedItemId: number): InventoryItemJoined | undefined {
-  return db()
+  const row = db()
     .prepare(`${JOIN_QUERY} WHERE s.vinted_item_id = ?`)
     .get(vintedItemId) as InventoryItemJoined | undefined;
+  return row ? parseJsonFields(row) : undefined;
 }
 
 /**
@@ -177,6 +217,14 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
   );
 
   return Number(result.lastInsertRowid);
+}
+
+/**
+ * Update only the local_image_paths field without touching other columns.
+ */
+export function updateLocalImagePaths(localId: number, pathsJson: string): void {
+  db().prepare('UPDATE inventory_master SET local_image_paths = ?, updated_at = unixepoch() WHERE id = ?')
+    .run(pathsJson, localId);
 }
 
 /**

@@ -125,6 +125,22 @@ function migrate(database: Database.Database): void {
   if (!cols.some((c) => c.name === 'sniper_id')) {
     database.prepare('ALTER TABLE purchases ADD COLUMN sniper_id INTEGER').run();
   }
+
+  // Migration: add niche listing fields to inventory_master
+  const invCols = database.prepare("PRAGMA table_info(inventory_master)").all() as { name: string }[];
+  const addIfMissing = (col: string, type: string) => {
+    if (!invCols.some((c) => c.name === col)) {
+      database.prepare(`ALTER TABLE inventory_master ADD COLUMN ${col} ${type}`).run();
+    }
+  };
+  addIfMissing('isbn', 'TEXT');
+  addIfMissing('measurement_length', 'REAL');
+  addIfMissing('measurement_width', 'REAL');
+  addIfMissing('model_metadata', 'TEXT'); // JSON: { collection_id, model_id }
+  addIfMissing('manufacturer', 'TEXT');
+  addIfMissing('manufacturer_labelling', 'TEXT');
+  addIfMissing('video_game_rating_id', 'INTEGER');
+  addIfMissing('shipment_prices', 'TEXT'); // JSON: { domestic, international }
 }
 
 export function getDb(): Database.Database | null {

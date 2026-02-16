@@ -13,6 +13,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import * as bridge from './bridge';
 import * as inventoryDb from './inventoryDb';
+import * as proxyService from './proxyService';
 import { logger } from './logger';
 import * as settings from './settings';
 
@@ -78,14 +79,13 @@ export async function pullFromVinted(userId: number): Promise<{
   let page = 1;
   let totalPages = 1;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'inventoryService.ts:pullFromVinted',message:'Wardrobe pull starting',data:{userId},timestamp:Date.now(),hypothesisId:'H8'})}).catch(()=>{});
-  // #endregion
+  // Use any scraping proxy, ignoring cooldown (one-off operation, not polling)
+  const proxy = proxyService.getAnyScrapingProxy();
 
   emitSyncProgress('pull', 'starting', 0, 0);
 
   while (page <= totalPages) {
-    const result = await bridge.fetchWardrobe(userId, page, 20);
+    const result = await bridge.fetchWardrobe(userId, page, 20, proxy);
     if (!result.ok) {
       errors.push(`Page ${page}: ${(result as { message?: string }).message}`);
       break;
@@ -101,7 +101,25 @@ export async function pullFromVinted(userId: number): Promise<{
 
     for (const vintedItem of data.items) {
       try {
+        // First pass: upsert from wardrobe list (limited fields)
         const localId = upsertFromVintedItem(vintedItem);
+        const vintedId = Number(vintedItem.id);
+
+        // Second pass: fetch full item detail to capture ALL fields
+        // (description, catalog_id, brand_id, size_id, status_id, color_ids,
+        //  package_size_id, item_attributes, isbn, measurements, model, etc.)
+        // NOTE: No proxy — this endpoint is geo-sensitive (non-UK proxies → wrong domain)
+        try {
+          const detailResult = await bridge.fetchItemDetail(vintedId);
+          if (detailResult.ok) {
+            const detailData = (detailResult as { data: unknown }).data as Record<string, unknown>;
+            const itemDetail = (detailData.item ?? detailData) as Record<string, unknown>;
+            // Re-upsert with full detail data — this fills in all the missing fields
+            upsertFromVintedItem(itemDetail);
+          }
+        } catch {
+          // Item detail fetch failed — wardrobe list data is still saved
+        }
 
         // Download and cache photos
         const photos = (vintedItem.photos as Record<string, unknown>[] | undefined) ?? [];
@@ -115,14 +133,9 @@ export async function pullFromVinted(userId: number): Promise<{
           }
         }
 
-        // Update local image paths
+        // Update local image paths (targeted update — don't overwrite other fields)
         if (localPaths.length > 0) {
-          inventoryDb.upsertInventoryItem({
-            id: localId,
-            title: String(vintedItem.title),
-            price: parseFloat(String((vintedItem.price as Record<string, unknown>)?.amount ?? vintedItem.price ?? 0)),
-            local_image_paths: JSON.stringify(localPaths),
-          });
+          inventoryDb.updateLocalImagePaths(localId, JSON.stringify(localPaths));
         }
 
         pulled++;
@@ -152,31 +165,117 @@ function upsertFromVintedItem(vintedItem: Record<string, unknown>): number {
   const photos = (vintedItem.photos as Record<string, unknown>[] | undefined) ?? [];
   const photoUrls = photos.map((p) => String(p.url || p.full_size_url || ''));
 
-  const brandObj = vintedItem.brand as Record<string, unknown> | undefined;
+  // Handle brand — wardrobe list gives brand as a string, item detail gives it as an object
+  let brandId: number | null = null;
+  let brandName: string | null = null;
+  if (vintedItem.brand && typeof vintedItem.brand === 'object') {
+    const brandObj = vintedItem.brand as Record<string, unknown>;
+    brandId = brandObj.id ? Number(brandObj.id) : null;
+    brandName = String(brandObj.title || brandObj.name || '');
+  } else if (typeof vintedItem.brand === 'string') {
+    brandName = vintedItem.brand;
+  }
+  if (vintedItem.brand_id) brandId = Number(vintedItem.brand_id);
 
   const isDraft = vintedItem.is_draft === true;
   const isHidden = vintedItem.is_hidden === true;
   const isClosed = vintedItem.is_closed === true;
+  const isReserved = vintedItem.is_reserved === true;
+  // Item is sold when it's closed but NOT a draft (drafts are also "closed" conceptually)
+  const isSold = isClosed && !isDraft;
 
   let status: string = 'live';
-  if (isDraft || isClosed) status = 'local_only';
-  if (isHidden) status = 'live'; // hidden items are still "live" on Vinted
+  if (isDraft) status = 'local_only';
+  else if (isSold) status = 'sold';
+  else if (isReserved) status = 'reserved';
+  else if (isHidden) status = 'hidden';
 
   // Check if we already have this Vinted item locally
   const existing = inventoryDb.getInventoryItemByVintedId(vintedId);
 
-  const localId = inventoryDb.upsertInventoryItem({
+  // Extract condition — wardrobe list gives status as a string (e.g. "Good"),
+  // item detail gives status_id as a number
+  const conditionMap: Record<string, number> = {
+    'New with tags': 6, 'New without tags': 1, 'Very good': 2, 'Good': 3, 'Satisfactory': 4, 'Not fully functional': 5,
+  };
+  const statusIdToCondition: Record<number, string> = {
+    6: 'New with tags', 1: 'New without tags', 2: 'Very good', 3: 'Good', 4: 'Satisfactory', 5: 'Not fully functional',
+  };
+  let statusIdNum = vintedItem.status_id ? Number(vintedItem.status_id) : null;
+  let conditionText: string | null = null;
+  if (statusIdNum) {
+    conditionText = statusIdToCondition[statusIdNum] ?? null;
+  } else if (typeof vintedItem.status === 'string' && conditionMap[vintedItem.status as string]) {
+    statusIdNum = conditionMap[vintedItem.status as string];
+    conditionText = vintedItem.status as string;
+  }
+
+  // Extract item_attributes if available (materials, etc.)
+  const itemAttributes = vintedItem.item_attributes
+    ? JSON.stringify(vintedItem.item_attributes)
+    : (vintedItem.attributes ? JSON.stringify(vintedItem.attributes) : null);
+
+  // Extract package_size_id — flat field, or nested package_size object (SSR)
+  let packageSizeId: number | null = vintedItem.package_size_id ? Number(vintedItem.package_size_id) : null;
+  if (!packageSizeId && vintedItem.package_size && typeof vintedItem.package_size === 'object') {
+    const pkgObj = vintedItem.package_size as Record<string, unknown>;
+    if (pkgObj.id) packageSizeId = Number(pkgObj.id);
+  }
+
+  // Extract size — wardrobe list gives size as a string, SSR gives size as object
+  let sizeId: number | null = vintedItem.size_id ? Number(vintedItem.size_id) : null;
+  let sizeLabel: string | null = vintedItem.size_title ? String(vintedItem.size_title) : null;
+  if (vintedItem.size && typeof vintedItem.size === 'object') {
+    const sizeObj = vintedItem.size as Record<string, unknown>;
+    if (!sizeId && sizeObj.id) sizeId = Number(sizeObj.id);
+    if (!sizeLabel && (sizeObj.title || sizeObj.name)) sizeLabel = String(sizeObj.title || sizeObj.name);
+  } else if (typeof vintedItem.size === 'string') {
+    sizeLabel = vintedItem.size as string;
+  }
+
+  // Extract catalog_id — flat field, or nested category/catalog object (SSR)
+  let catalogId: number | null = vintedItem.catalog_id ? Number(vintedItem.catalog_id) : null;
+  if (!catalogId) {
+    const catField = vintedItem.category ?? vintedItem.catalog;
+    if (catField && typeof catField === 'object') {
+      const catObj = catField as Record<string, unknown>;
+      if (catObj.id) catalogId = Number(catObj.id);
+    }
+  }
+
+  // Extract color_ids — flat array, or nested colors array of objects (SSR), or color1_id/color2_id
+  let colorIds: number[] | null = null;
+  if (vintedItem.color_ids && Array.isArray(vintedItem.color_ids)) {
+    colorIds = vintedItem.color_ids as number[];
+  } else if (vintedItem.colors && Array.isArray(vintedItem.colors)) {
+    colorIds = (vintedItem.colors as Record<string, unknown>[])
+      .map((c) => Number(c.id))
+      .filter((id) => id > 0);
+  } else {
+    const c1 = vintedItem.color1_id ? Number(vintedItem.color1_id) : 0;
+    const c2 = vintedItem.color2_id ? Number(vintedItem.color2_id) : 0;
+    if (c1 || c2) {
+      colorIds = [];
+      if (c1) colorIds.push(c1);
+      if (c2) colorIds.push(c2);
+    }
+  }
+
+  // Extract status_id from nested status object (SSR)
+  if (!statusIdNum && vintedItem.status && typeof vintedItem.status === 'object') {
+    const statusObj = vintedItem.status as Record<string, unknown>;
+    if (statusObj.id) {
+      statusIdNum = Number(statusObj.id);
+      conditionText = statusIdToCondition[statusIdNum] ?? null;
+    }
+  }
+
+  // Only overwrite fields with non-null values from sync, preserving existing local data
+  const upsertData: Record<string, unknown> = {
     id: existing?.id,
     title: String(vintedItem.title || ''),
-    description: String(vintedItem.description || ''),
     price,
     currency,
-    category_id: vintedItem.catalog_id ? Number(vintedItem.catalog_id) : null,
-    brand_id: brandObj?.id ? Number(brandObj.id) : null,
-    brand_name: brandObj ? String(brandObj.title || brandObj.name || '') : null,
-    size_id: vintedItem.size_id ? Number(vintedItem.size_id) : null,
-    size_label: vintedItem.size_title ? String(vintedItem.size_title) : null,
-    color_ids: vintedItem.color_ids ? JSON.stringify(vintedItem.color_ids) : null,
     photo_urls: JSON.stringify(photoUrls),
     status,
     extra_metadata: JSON.stringify({
@@ -186,7 +285,50 @@ function upsertFromVintedItem(vintedItem: Record<string, unknown>): number {
       favourite_count: vintedItem.favourite_count,
       view_count: vintedItem.view_count,
     }),
-  });
+  };
+
+  // Only set fields that have actual values (avoid overwriting existing local data with nulls)
+  if (vintedItem.description) upsertData.description = String(vintedItem.description);
+  else if (!existing) upsertData.description = '';
+  if (catalogId) upsertData.category_id = catalogId;
+  if (brandId) upsertData.brand_id = brandId;
+  if (brandName) upsertData.brand_name = brandName;
+  if (sizeId) upsertData.size_id = sizeId;
+  if (sizeLabel) upsertData.size_label = sizeLabel;
+  if (conditionText) upsertData.condition = conditionText;
+  if (statusIdNum) upsertData.status_id = statusIdNum;
+  if (colorIds && colorIds.length > 0) upsertData.color_ids = JSON.stringify(colorIds);
+  if (packageSizeId) upsertData.package_size_id = packageSizeId;
+  if (itemAttributes) upsertData.item_attributes = itemAttributes;
+  if (vintedItem.is_unisex !== undefined) upsertData.is_unisex = vintedItem.is_unisex ? 1 : 0;
+
+  // Niche fields (from item detail endpoint)
+  if (vintedItem.isbn) upsertData.isbn = String(vintedItem.isbn);
+  if (vintedItem.measurement_length) upsertData.measurement_length = Number(vintedItem.measurement_length);
+  if (vintedItem.measurement_width) upsertData.measurement_width = Number(vintedItem.measurement_width);
+  if (vintedItem.manufacturer) upsertData.manufacturer = String(vintedItem.manufacturer);
+  if (vintedItem.manufacturer_labelling) upsertData.manufacturer_labelling = String(vintedItem.manufacturer_labelling);
+  if (vintedItem.video_game_rating_id) upsertData.video_game_rating_id = Number(vintedItem.video_game_rating_id);
+  if (vintedItem.shipment_prices) upsertData.shipment_prices = JSON.stringify(vintedItem.shipment_prices);
+  // Model metadata (from item detail: model_metadata or from item_attributes)
+  if (vintedItem.model_metadata) upsertData.model_metadata = JSON.stringify(vintedItem.model_metadata);
+
+  // Capture sold/reserved status from wardrobe list
+  if (vintedItem.is_reserved === true) {
+    upsertData.extra_metadata = JSON.stringify({
+      ...JSON.parse(upsertData.extra_metadata as string || '{}'),
+      is_reserved: true,
+    });
+  }
+  if (vintedItem.transaction_permitted === false && !isDraft && !isClosed && !isHidden) {
+    // Item is sold if it can't be transacted and isn't draft/closed/hidden
+    upsertData.extra_metadata = JSON.stringify({
+      ...JSON.parse(upsertData.extra_metadata as string || '{}'),
+      is_sold: true,
+    });
+  }
+
+  const localId = inventoryDb.upsertInventoryItem(upsertData as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
 
   // Link sync record
   inventoryDb.upsertSyncRecord(localId, vintedId, 'pull');
@@ -228,13 +370,67 @@ export async function pushToVinted(localId: number, proxy?: string): Promise<{
 }
 
 /**
+ * Edit a live Vinted listing — pushes local changes to the live listing.
+ * Saves locally first, then calls PUT /api/v2/item_upload/items/{id}.
+ */
+export async function editLiveItem(
+  localId: number,
+  updates: Record<string, unknown>,
+  proxy?: string
+): Promise<{ ok: boolean; error?: string }> {
+  // 1. Save locally
+  inventoryDb.upsertInventoryItem(updates as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
+
+  // 2. Get the full item from DB (with sync data)
+  const item = inventoryDb.getInventoryItem(localId);
+  if (!item) return { ok: false, error: 'Item not found after save' };
+
+  // 3. If not linked to a Vinted listing, just save locally
+  if (!item.vinted_item_id) {
+    logger.info('edit-saved-locally', { localId });
+    return { ok: true };
+  }
+
+  // 4. Build Vinted API payload from the updated local record
+  const itemData = buildVintedItemData(item);
+
+  // 5. For edit, we need to include the existing photo IDs (not re-upload)
+  // Parse photo IDs from photo_urls or extra_metadata
+  const photoUrls = item.photo_urls ? JSON.parse(item.photo_urls) : [];
+  // Vinted expects assigned_photos as [{id, orientation}] for existing photos
+  // We need the photo IDs, which are typically available from the item detail
+  // For now, we don't include assigned_photos (Vinted keeps existing ones unless changed)
+  delete itemData.assigned_photos;
+
+  // 6. Push to Vinted
+  const resolvedProxy = proxy ?? proxyService.getAnyScrapingProxy();
+  const result = await bridge.editListing(item.vinted_item_id, itemData, undefined, resolvedProxy);
+
+  if (!result.ok) {
+    // Mark as discrepancy since local is different from live
+    inventoryDb.setInventoryStatus(localId, 'discrepancy');
+    const errMsg = (result as { message?: string }).message ?? 'Edit push failed';
+    logger.error('edit-push-failed', { localId, vintedItemId: item.vinted_item_id, error: errMsg });
+    return { ok: false, error: errMsg };
+  }
+
+  // 7. Success — mark as live (in sync)
+  inventoryDb.setInventoryStatus(localId, 'live');
+  inventoryDb.upsertSyncRecord(localId, item.vinted_item_id, 'push');
+  logger.info('edit-pushed-to-vinted', { localId, vintedItemId: item.vinted_item_id });
+  return { ok: true };
+}
+
+/**
  * Build Vinted API item_data payload from a local inventory record.
+ * Includes ALL fields to ensure relist/edit preserves every detail of the listing.
  */
 function buildVintedItemData(item: inventoryDb.InventoryItemJoined): Record<string, unknown> {
   const colorIds = item.color_ids ? JSON.parse(item.color_ids) : [];
   const attributes = item.item_attributes ? JSON.parse(item.item_attributes) : [];
+  const shipmentPrices = item.shipment_prices ? JSON.parse(item.shipment_prices) : { domestic: null, international: null };
 
-  return {
+  const data: Record<string, unknown> = {
     currency: item.currency || 'GBP',
     temp_uuid: '',
     title: item.title,
@@ -243,21 +439,33 @@ function buildVintedItemData(item: inventoryDb.InventoryItemJoined): Record<stri
     brand: item.brand_name || '',
     size_id: item.size_id,
     catalog_id: item.category_id,
-    isbn: null,
+    isbn: item.isbn || null,
     is_unisex: item.is_unisex === 1,
     status_id: item.status_id || 2,
-    video_game_rating_id: null,
+    video_game_rating_id: item.video_game_rating_id || null,
     price: item.price,
     package_size_id: item.package_size_id || 3,
-    shipment_prices: { domestic: null, international: null },
+    shipment_prices: shipmentPrices,
     color_ids: colorIds,
-    assigned_photos: [], // Photos handled separately
-    measurement_length: null,
-    measurement_width: null,
+    assigned_photos: [], // Photos handled separately during relist/push
+    measurement_length: item.measurement_length || null,
+    measurement_width: item.measurement_width || null,
     item_attributes: attributes,
-    manufacturer: null,
-    manufacturer_labelling: null,
+    manufacturer: item.manufacturer || null,
+    manufacturer_labelling: item.manufacturer_labelling || null,
   };
+
+  // Include model metadata if present (for luxury brands)
+  if (item.model_metadata) {
+    try {
+      const modelMeta = JSON.parse(item.model_metadata);
+      if (modelMeta.collection_id || modelMeta.model_id) {
+        data.model_metadata = modelMeta;
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  return data;
 }
 
 // ─── Relist Queue ("Waiting Room") ──────────────────────────────────────────

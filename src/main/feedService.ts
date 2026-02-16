@@ -118,9 +118,6 @@ async function pollOneUrl(url: string, proxy?: string): Promise<PollResult> {
   for (let page = 1; page <= PAGES_PER_URL; page++) {
     const result = await bridge.search(url, page, proxy);
     if (!result.ok) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:pollOneUrl',message:'Poll error details',data:{url,page,code:(result as any).code,msg:(result as any).message,proxy:proxy||'none'},timestamp:Date.now(),hypothesisId:'H1,H2,H5'})}).catch(()=>{});
-      // #endregion
       const isForbidden = result.code === 'FORBIDDEN';
       if (sessionService.isSessionExpiredError(result)) {
         sessionService.emitSessionExpired();
@@ -128,9 +125,6 @@ async function pollOneUrl(url: string, proxy?: string): Promise<PollResult> {
       logger.warn('feed:poll-error', { url, page, code: result.code, message: result.message });
       return { items: all, forbidden: isForbidden, proxyUsed: proxy };
     }
-    // #region agent log
-    if (page === 1) { fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:pollOneUrl:success',message:'Poll page 1 success',data:{url,itemCount:extractItems(result.data,url).length,proxyUsed:proxy||'none'},timestamp:Date.now(),hypothesisId:'H5,H9'})}).catch(()=>{}); }
-    // #endregion
     const items = extractItems(result.data, url);
     all.push(...items);
   }
@@ -144,20 +138,11 @@ async function runPoll(): Promise<void> {
   // Advance round-robin so each cycle uses the next proxy in the pool
   proxyService.advanceScrapingCycle();
 
-  // #region agent log
-  const _proxyStatus = proxyService.getScrapingProxyStatus();
-  fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll',message:'Poll cycle starting',data:{urlCount:urls.length,proxyTotal:_proxyStatus.total,proxyCooledDown:_proxyStatus.cooledDown.length,proxyActive:_proxyStatus.active.length,activeProxies:_proxyStatus.active,cooledDownProxies:_proxyStatus.cooledDown},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
-  // #endregion
-
   const allItems: FeedItem[] = [];
 
   for (let i = 0; i < urls.length; i++) {
     const u = urls[i];
     const proxy = proxyService.getProxyForScraping(i);
-
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll:proxySelected',message:'Proxy selected for URL',data:{urlIndex:i,url:u.url.substring(0,80),proxy:proxy||'none'},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
-    // #endregion
 
     try {
       const result = await pollOneUrl(u.url, proxy);
@@ -166,10 +151,6 @@ async function runPoll(): Promise<void> {
         // Mark this proxy as FORBIDDEN — skip retry, next cycle will use a different proxy
         proxyService.markProxyForbidden(proxy);
         logger.warn('feed:proxy-forbidden', { proxy, url: u.url });
-
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'feedService.ts:runPoll:forbidden',message:'Proxy FORBIDDEN, marked cooldown, skipping retry',data:{forbiddenProxy:proxy,urlIndex:i},timestamp:Date.now(),hypothesisId:'H10'})}).catch(()=>{});
-        // #endregion
       } else if (!result.forbidden && proxy) {
         // Successful poll — reset strike counter for this proxy
         proxyService.markProxySuccess(proxy);

@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, protocol, net } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { spawn, ChildProcess } from 'node:child_process';
 import started from 'electron-squirrel-startup';
 import { initDb, closeDb } from './main/db';
@@ -16,6 +17,11 @@ import * as proxyService from './main/proxyService';
 if (started) {
   app.quit();
 }
+
+// Register custom scheme for serving local images (must be before app.ready)
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'local-image', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
 
 const PYTHON_BRIDGE_PORT = 37421;
 let pythonBridgeProcess: ChildProcess | null = null;
@@ -125,6 +131,17 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
+  // Serve local images via local-image:// protocol (works in both dev and production)
+  // With standard:true, Chromium treats the first path segment as a host and lowercases it.
+  // e.g. local-image:///Users/foo/bar → host="users", pathname="/foo/bar"
+  // Reconstruct the full path: /<host><pathname>
+  protocol.handle('local-image', (request) => {
+    const parsed = new URL(request.url);
+    const filePath = decodeURIComponent('/' + parsed.host + parsed.pathname);
+    const fileUrl = pathToFileURL(filePath).href;
+    return net.fetch(fileUrl);
+  });
+
   initDb();
   registerIpcHandlers();
   settings.migrateProxySettings();
@@ -140,26 +157,12 @@ app.on('ready', () => {
 
   createWindow();
 
-  // #region agent log
-  const _appReadyTs = Date.now();
-  fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:ready',message:'App ready, about to start polling and schedule ontology',data:{enabledUrls:searchUrls.getEnabledSearchUrls().length,bridgePid:pythonBridgeProcess?.pid},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
-
   if (searchUrls.getEnabledSearchUrls().length > 0) {
     feedService.startPolling();
   }
 
   // Run ontology diff in background after bridge has had time to start
   setTimeout(async () => {
-    // #region agent log
-    try {
-      const healthRes = await fetch('http://127.0.0.1:37421/health');
-      const healthJson = await healthRes.json();
-      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:ontologyTimeout',message:'Bridge health before ontology',data:{healthy:healthJson?.ok,elapsedMs:Date.now()-_appReadyTs},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-    } catch (healthErr) {
-      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.ts:ontologyTimeout',message:'Bridge NOT reachable before ontology',data:{error:String(healthErr),elapsedMs:Date.now()-_appReadyTs},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-    }
-    // #endregion
     ontologyService.refreshAll().catch((err) =>
       console.warn('[Ontology] Startup refresh failed:', err)
     );

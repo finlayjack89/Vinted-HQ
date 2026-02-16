@@ -3,7 +3,7 @@
  * Sub-tabs: Live | Local Only | Discrepancies | Queue (Waiting Room)
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   colors,
   font,
@@ -28,12 +28,12 @@ import {
 } from '../theme';
 import type { InventoryItem, RelistQueueEntry, OntologyEntity } from '../types/global';
 
-type SubTab = 'live' | 'local' | 'discrepancy' | 'queue';
+type SubTab = 'all' | 'live' | 'local' | 'discrepancy' | 'queue';
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function Wardrobe() {
-  const [subTab, setSubTab] = useState<SubTab>('live');
+  const [subTab, setSubTab] = useState<SubTab>('all');
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [queue, setQueue] = useState<RelistQueueEntry[]>([]);
   const [countdown, setCountdown] = useState(0);
@@ -96,9 +96,10 @@ export default function Wardrobe() {
   }, [loadItems]);
 
   // ── Derived lists ──
-  const liveItems = items.filter((i) => i.status === 'live' || i.status === 'discrepancy');
+  const liveItems = items.filter((i) => ['live', 'discrepancy', 'hidden', 'reserved'].includes(i.status));
   const localItems = items.filter((i) => i.status === 'local_only');
   const discrepancyItems = items.filter((i) => i.status === 'discrepancy' || i.status === 'action_required');
+  const soldItems = items.filter((i) => i.status === 'sold');
 
   // ── Actions ──
   const handleSync = async () => {
@@ -137,12 +138,25 @@ export default function Wardrobe() {
   };
 
   const handleSaveEdit = async (data: Record<string, unknown>) => {
-    await window.vinted.upsertWardrobeItem(data as { title: string; price: number; id?: number });
+    const localId = data.id as number | undefined;
+    const item = editingItem;
+    // If the item is linked to a live Vinted listing, push changes to Vinted
+    if (localId && item?.vinted_item_id) {
+      const result = await window.vinted.editLiveItem(localId, data);
+      if (!result.ok) {
+        console.error('Failed to push edit to Vinted:', result.error);
+        // Still saved locally — status will be 'discrepancy'
+      }
+    } else {
+      // Local-only item — just save locally
+      await window.vinted.upsertWardrobeItem(data as { title: string; price: number; id?: number });
+    }
     setEditingItem(null);
     loadItems();
   };
 
   const subTabCounts: Record<SubTab, number> = {
+    all: items.length,
     live: liveItems.length,
     local: localItems.length,
     discrepancy: discrepancyItems.length,
@@ -150,6 +164,7 @@ export default function Wardrobe() {
   };
 
   const subTabLabels: Record<SubTab, string> = {
+    all: 'All Items',
     live: 'Live',
     local: 'Local Only',
     discrepancy: 'Discrepancies',
@@ -201,7 +216,7 @@ export default function Wardrobe() {
           border: `1px solid ${colors.glassBorder}`,
         }}
       >
-        {(['live', 'local', 'discrepancy', 'queue'] as SubTab[]).map((t) => {
+        {(['all', 'live', 'local', 'discrepancy', 'queue'] as SubTab[]).map((t) => {
           const active = subTab === t;
           return (
             <button
@@ -252,6 +267,16 @@ export default function Wardrobe() {
         </div>
       ) : (
         <>
+          {subTab === 'all' && (
+            <ItemTable
+              items={items}
+              onRelist={(id) => handleRelist([id])}
+              onEdit={(item) => setEditingItem(item)}
+              onDelete={handleDelete}
+              showDiscrepancyBadge
+              emptyMessage="No items in your wardrobe. Sync from Vinted or create new listings."
+            />
+          )}
           {subTab === 'live' && (
             <ItemTable
               items={liveItems}
@@ -419,8 +444,11 @@ function ItemRow({
 }) {
   const [hovered, setHovered] = useState(false);
 
-  const photoUrl = item.photo_urls?.[0] ?? item.local_image_paths?.[0] ?? '';
+  const photoUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
+  const localPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
+  const photoUrl = localPaths[0] ?? photoUrls[0] ?? '';
   const isLocalPath = photoUrl.startsWith('/') || photoUrl.startsWith('C:');
+  const imgSrc = isLocalPath ? `local-image://${encodeURI(photoUrl)}` : photoUrl;
 
   return (
     <tr
@@ -435,10 +463,12 @@ function ItemRow({
         }}>
           {photoUrl && (
             <img
-              src={isLocalPath ? `file://${photoUrl}` : photoUrl}
+              src={imgSrc}
               alt=""
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
             />
           )}
         </div>
@@ -517,8 +547,11 @@ const actionBtn: React.CSSProperties = {
 
 function StatusBadge({ status, showDiscrepancy }: { status: string; showDiscrepancy?: boolean }) {
   if (status === 'action_required') return <span style={badge(colors.errorBg, colors.error)}>Action Required</span>;
-  if (status === 'discrepancy' && showDiscrepancy) return <span style={badge(colors.warningBg, colors.warning)}>Discrepancy</span>;
-  if (status === 'live') return <span style={badge(colors.successBg, colors.success)}>Live</span>;
+  if (status === 'discrepancy' && showDiscrepancy) return <span style={badge(colors.warningBg, colors.warning)}>Edited</span>;
+  if (status === 'live') return <span style={badge(colors.successBg, colors.success)}>Active</span>;
+  if (status === 'sold') return <span style={badge('rgba(99,102,241,0.15)', 'rgb(99,102,241)')}>Sold</span>;
+  if (status === 'hidden') return <span style={badge('rgba(245,158,11,0.15)', 'rgb(245,158,11)')}>Hidden</span>;
+  if (status === 'reserved') return <span style={badge('rgba(236,72,153,0.15)', 'rgb(236,72,153)')}>Reserved</span>;
   if (status === 'local_only') return <span style={badge(colors.glassBg, colors.textMuted)}>Local</span>;
   return <span style={badge(colors.glassBg, colors.textMuted)}>{status}</span>;
 }
@@ -677,9 +710,9 @@ function WaitingRoom({
 function QueueRow({ entry, onRemove }: { entry: RelistQueueEntry; onRemove: (localId: number) => void }) {
   const [hovered, setHovered] = useState(false);
   const thumbSrc = entry.mutatedThumbnailPath
-    ? `file://${entry.mutatedThumbnailPath}`
+    ? `local-image://${entry.mutatedThumbnailPath}`
     : entry.thumbnailPath
-      ? `file://${entry.thumbnailPath}`
+      ? `local-image://${entry.thumbnailPath}`
       : '';
 
   const statusBadge = () => {
@@ -743,7 +776,371 @@ function QueueRow({ entry, onRemove }: { entry: RelistQueueEntry; onRemove: (loc
   );
 }
 
+// ─── Searchable Select Component ─────────────────────────────────────────────
+
+type SelectOption = { id: number; name: string; extra?: Record<string, unknown> | null };
+
+function SearchableSelect({
+  label,
+  options,
+  value,
+  onChange,
+  placeholder,
+  renderOption,
+  maxSelections = 1,
+  onSearch,
+  loading,
+}: {
+  label: string;
+  options: SelectOption[];
+  value: number | number[];
+  onChange: (value: number | number[]) => void;
+  placeholder?: string;
+  renderOption?: (opt: SelectOption, selected: boolean) => React.ReactNode;
+  maxSelections?: number;
+  onSearch?: (keyword: string) => void;
+  loading?: boolean;
+}) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const selectedIds = Array.isArray(value) ? value : (value ? [value] : []);
+  const selectedNames = selectedIds
+    .map((id) => options.find((o) => o.id === id)?.name)
+    .filter(Boolean)
+    .join(', ');
+
+  const filtered = onSearch
+    ? options
+    : (search ? options.filter((o) => o.name.toLowerCase().includes(search.toLowerCase())) : options);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSearch = (val: string) => {
+    setSearch(val);
+    if (onSearch) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => { if (val.length >= 2) onSearch(val); }, 300);
+    }
+  };
+
+  const toggle = (id: number, name?: string) => {
+    if (maxSelections === 1) {
+      onChange(id);
+      setOpen(false);
+      setSearch('');
+      if (name) setSearch('');
+    } else {
+      const arr = Array.isArray(value) ? value : [];
+      if (arr.includes(id)) {
+        onChange(arr.filter((v) => v !== id));
+      } else if (arr.length < maxSelections) {
+        onChange([...arr, id]);
+      }
+    }
+  };
+
+  const clear = () => {
+    onChange(maxSelections === 1 ? 0 : []);
+    setSearch('');
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <label style={labelStyle}>{label}</label>
+      <div
+        onClick={() => setOpen(true)}
+        style={{
+          ...glassInput,
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          cursor: 'pointer',
+          minHeight: 38,
+        }}
+      >
+        {open ? (
+          <input
+            autoFocus
+            type="text"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder={placeholder ?? `Search ${label.toLowerCase()}...`}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: colors.textPrimary,
+              fontSize: font.size.sm,
+              width: '100%',
+              padding: 0,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span style={{ color: selectedNames ? colors.textPrimary : colors.textMuted, fontSize: font.size.sm, flex: 1 }}>
+            {selectedNames || placeholder || `Select ${label.toLowerCase()}...`}
+          </span>
+        )}
+        {selectedIds.length > 0 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); clear(); }}
+            style={{ background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: '0 4px', fontSize: 14 }}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          right: 0,
+          maxHeight: 200,
+          overflow: 'auto',
+          background: colors.bgElevated,
+          border: `1px solid ${colors.glassBorder}`,
+          borderRadius: radius.md,
+          marginTop: 4,
+          zIndex: 1000,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}>
+          {loading ? (
+            <div style={{ padding: '10px 12px', color: colors.textMuted, fontSize: font.size.sm }}>Searching...</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: '10px 12px', color: colors.textMuted, fontSize: font.size.sm }}>
+              {onSearch && search.length < 2 ? 'Type at least 2 characters...' : 'No results'}
+            </div>
+          ) : (
+            filtered.slice(0, 100).map((opt) => {
+              const sel = selectedIds.includes(opt.id);
+              return (
+                <div
+                  key={opt.id}
+                  onClick={() => toggle(opt.id, opt.name)}
+                  style={{
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    background: sel ? colors.primaryMuted : 'transparent',
+                    color: sel ? colors.primary : colors.textPrimary,
+                    fontSize: font.size.sm,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: transition.fast,
+                  }}
+                  onMouseEnter={(e) => { if (!sel) (e.target as HTMLElement).style.background = colors.glassBgHover; }}
+                  onMouseLeave={(e) => { if (!sel) (e.target as HTMLElement).style.background = 'transparent'; }}
+                >
+                  {renderOption ? renderOption(opt, sel) : opt.name}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Hierarchical Category Select ────────────────────────────────────────────
+
+function HierarchicalCategorySelect({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: OntologyEntity[];
+  value: number;
+  onChange: (id: number) => void;
+}) {
+  // Build tree: top-level (parent_id null) → children
+  const topLevel = categories.filter((c) => !c.parent_id);
+  const getChildren = (parentId: number) => categories.filter((c) => c.parent_id === parentId);
+
+  // Find the chain from root to current value
+  const findChain = (targetId: number): number[] => {
+    const chain: number[] = [];
+    let current = categories.find((c) => c.entity_id === targetId);
+    while (current) {
+      chain.unshift(current.entity_id);
+      current = current.parent_id ? categories.find((c) => c.entity_id === current!.parent_id) : undefined;
+    }
+    return chain;
+  };
+
+  const chain = value ? findChain(value) : [];
+
+  // Build levels: level 0 = top-level, level 1 = children of chain[0], etc.
+  const levels: { options: OntologyEntity[]; selected: number }[] = [
+    { options: topLevel, selected: chain[0] ?? 0 },
+  ];
+  for (let i = 0; i < chain.length; i++) {
+    const children = getChildren(chain[i]);
+    if (children.length > 0) {
+      levels.push({ options: children, selected: chain[i + 1] ?? 0 });
+    }
+  }
+
+  const handleChange = (levelIndex: number, entityId: number) => {
+    // When a level changes, clear all deeper levels and set the new value
+    const children = getChildren(entityId);
+    // If no children, this is the leaf — set as the selected category
+    if (children.length === 0) {
+      onChange(entityId);
+    } else {
+      // Has children — set this as intermediate, but also set as current value
+      // until user picks a child
+      onChange(entityId);
+    }
+  };
+
+  const levelLabels = ['Category', 'Subcategory', 'Type', 'Subtype'];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+      <label style={labelStyle}>Category</label>
+      {levels.map((level, i) => (
+        <select
+          key={i}
+          value={level.selected}
+          onChange={(e) => handleChange(i, Number(e.target.value))}
+          style={{ ...glassSelect, width: '100%' }}
+        >
+          <option value={0}>— {levelLabels[i] ?? 'Select'} —</option>
+          {level.options.map((c) => (
+            <option key={c.entity_id} value={c.entity_id}>{c.name}</option>
+          ))}
+        </select>
+      ))}
+    </div>
+  );
+}
+
 // ─── Edit Item Modal ────────────────────────────────────────────────────────
+
+const FALLBACK_CONDITIONS = [
+  { id: 6, title: 'New with tags' },
+  { id: 1, title: 'New without tags' },
+  { id: 2, title: 'Very good' },
+  { id: 3, title: 'Good' },
+  { id: 4, title: 'Satisfactory' },
+];
+
+// Helper: extract array from a BridgeResult with dynamic key
+function extractArray(result: { ok: boolean; data?: unknown }, ...keys: string[]): { id: number; title: string; [k: string]: unknown }[] {
+  if (!result?.ok || !result.data) return [];
+  const data = result.data as Record<string, unknown>;
+  for (const key of keys) {
+    if (Array.isArray(data[key])) {
+      return (data[key] as unknown[]).map((e: unknown) => {
+        const obj = e as Record<string, unknown>;
+        return { id: Number(obj.id), title: String(obj.title || obj.name || ''), ...obj };
+      });
+    }
+  }
+  // If the data itself is an array
+  if (Array.isArray(data)) {
+    return (data as unknown[]).map((e: unknown) => {
+      const obj = e as Record<string, unknown>;
+      return { id: Number(obj.id), title: String(obj.title || obj.name || ''), ...obj };
+    });
+  }
+  return [];
+}
+
+/** Parsed niche attribute with dropdown options */
+type NicheAttribute = {
+  code: string;
+  title: string;
+  selectionType: 'single' | 'multi';
+  selectionLimit: number;
+  required: boolean;
+  displayType: string;
+  options: { id: number; title: string }[];
+};
+
+/**
+ * Extract materials, available fields, and niche attribute configs from
+ * POST /api/v2/item_upload/attributes response.
+ */
+function extractFromAttributes(result: { ok: boolean; data?: unknown }): {
+  materials: { id: number; title: string }[];
+  availableFields: string[];
+  nicheAttributes: NicheAttribute[];
+} {
+  if (!result?.ok || !result.data) return { materials: [], availableFields: [], nicheAttributes: [] };
+  const data = result.data as Record<string, unknown>;
+  const attributes = data.attributes as { code: string; configuration?: Record<string, unknown> | null }[] | undefined;
+  if (!Array.isArray(attributes)) return { materials: [], availableFields: [], nicheAttributes: [] };
+
+  const availableFields = attributes.map((a) => a.code);
+  const nicheAttributes: NicheAttribute[] = [];
+
+  // Extract materials
+  const materials: { id: number; title: string }[] = [];
+  const materialAttr = attributes.find((a) => a.code === 'material');
+  if (materialAttr?.configuration) {
+    const topOptions = (materialAttr.configuration as Record<string, unknown>).options as unknown[] | undefined;
+    if (Array.isArray(topOptions)) {
+      for (const group of topOptions) {
+        const g = group as Record<string, unknown>;
+        const subOptions = g.options as unknown[] | undefined;
+        if (Array.isArray(subOptions)) {
+          for (const opt of subOptions) {
+            const o = opt as Record<string, unknown>;
+            materials.push({ id: Number(o.id), title: String(o.title || '') });
+          }
+        }
+      }
+    }
+  }
+
+  // Extract niche attributes with config (video_game_platform, etc.)
+  const coreFields = new Set(['brand', 'condition', 'color', 'material', 'size', 'unisex', 'model', 'measurements', 'isbn']);
+  for (const attr of attributes) {
+    if (coreFields.has(attr.code)) continue;
+    const conf = attr.configuration as Record<string, unknown> | null;
+    if (!conf) continue;
+    const opts: { id: number; title: string }[] = [];
+    const topOpts = conf.options as unknown[] | undefined;
+    if (Array.isArray(topOpts)) {
+      for (const group of topOpts) {
+        const g = group as Record<string, unknown>;
+        const subOpts = g.options as unknown[] | undefined;
+        if (Array.isArray(subOpts)) {
+          for (const o of subOpts) {
+            const opt = o as Record<string, unknown>;
+            opts.push({ id: Number(opt.id), title: String(opt.title || '') });
+          }
+        } else {
+          opts.push({ id: Number(g.id), title: String(g.title || '') });
+        }
+      }
+    }
+    nicheAttributes.push({
+      code: attr.code,
+      title: String(conf.title || attr.code),
+      selectionType: String(conf.selection_type || 'single') as 'single' | 'multi',
+      selectionLimit: Number(conf.selection_limit || 1),
+      required: Boolean(conf.required),
+      displayType: String(conf.display_type || 'list'),
+      options: opts,
+    });
+  }
+
+  return { materials, availableFields, nicheAttributes };
+}
 
 function EditItemModal({
   item,
@@ -754,215 +1151,651 @@ function EditItemModal({
   onSave: (data: Record<string, unknown>) => void;
   onClose: () => void;
 }) {
+  // ── State: basic fields ──
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description ?? '');
   const [price, setPrice] = useState(String(item.price));
-  const [condition, setCondition] = useState(item.condition ?? '');
-  const [brandName, setBrandName] = useState(item.brand_name ?? '');
-  const [categories, setCategories] = useState<OntologyEntity[]>([]);
-  const [conditionOptions, setConditionOptions] = useState<OntologyEntity[]>([]);
-  const [colorOptions, setColorOptions] = useState<OntologyEntity[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState(item.category_id ?? 0);
-  const [selectedColorIds, setSelectedColorIds] = useState<number[]>(item.color_ids ?? []);
+  // Store condition as status_id (numeric) for Vinted API compatibility
+  const [selectedStatusId, setSelectedStatusId] = useState(item.status_id ?? 0);
+  const [isUnisex, setIsUnisex] = useState(Boolean(item.is_unisex));
 
+  // ── State: ontology-backed fields ──
+  const [allCategories, setAllCategories] = useState<OntologyEntity[]>([]);
+  const [allColors, setAllColors] = useState<OntologyEntity[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState(item.category_id ?? 0);
+  const [selectedBrandId, setSelectedBrandId] = useState(item.brand_id ?? 0);
+  const [selectedBrandName, setSelectedBrandName] = useState(item.brand_name ?? '');
+  const [selectedColorIds, setSelectedColorIds] = useState<number[]>(
+    Array.isArray(item.color_ids) ? item.color_ids : []
+  );
+
+  // ── State: dynamic brand search ──
+  const [brandResults, setBrandResults] = useState<SelectOption[]>([]);
+  const [brandLoading, setBrandLoading] = useState(false);
+
+  // ── State: category-specific fields (fetched from Vinted API) ──
+  const [sizeOptions, setSizeOptions] = useState<{ id: number; title: string }[]>([]);
+  const [materialOptions, setMaterialOptions] = useState<{ id: number; title: string }[]>([]);
+  const [packageSizeOptions, setPackageSizeOptions] = useState<{ id: number; title: string }[]>([]);
+  const [conditionOptions, setConditionOptions] = useState<{ id: number; title: string }[]>(FALLBACK_CONDITIONS);
+
+  const [selectedSizeId, setSelectedSizeId] = useState(item.size_id ?? 0);
+  const [packageSizeId, setPackageSizeId] = useState(item.package_size_id ?? 3);
+
+  // Track which fields are available for the selected category
+  const [availableFields, setAvailableFields] = useState<string[]>([]);
+
+  // Parse material from item_attributes
+  const parsedAttrs = Array.isArray(item.item_attributes) ? item.item_attributes : [];
+  const materialAttr = parsedAttrs.find((a: { code: string }) => a.code === 'material');
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<number[]>(() => {
+    if (materialAttr && Array.isArray(materialAttr.ids)) return materialAttr.ids;
+    return [];
+  });
+
+  // Loading state for item detail fetch
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // ── State: niche fields (models, ISBN, measurements, video game, etc.) ──
+  const [nicheAttributes, setNicheAttributes] = useState<NicheAttribute[]>([]);
+  const [nicheValues, setNicheValues] = useState<Record<string, number | number[] | string>>({});
+  const [modelOptions, setModelOptions] = useState<{ id: number; name: string; children?: { id: number; name: string }[] }[]>([]);
+  const [selectedCollectionId, setSelectedCollectionId] = useState(0);
+  const [selectedModelId, setSelectedModelId] = useState(0);
+  const [isbn, setIsbn] = useState('');
+  const [measurementLength, setMeasurementLength] = useState('');
+  const [measurementWidth, setMeasurementWidth] = useState('');
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  // ── Load static ontology data & fetch item detail for pre-filling ──
   useEffect(() => {
-    window.vinted.getOntology('category').then(setCategories).catch(() => {});
-    window.vinted.getOntology('color').then(setColorOptions).catch(() => {});
-    window.vinted.getOntology('condition').then(setConditionOptions).catch(() => {});
-  }, []);
+    window.vinted.getOntology('category').then(setAllCategories).catch(() => {});
+    window.vinted.getOntology('color').then(setAllColors).catch(() => {});
+    // Seed brand with current item's brand so it shows in the dropdown
+    if (item.brand_id && item.brand_name) {
+      setBrandResults([{ id: item.brand_id, name: item.brand_name }]);
+    }
+    // ALWAYS fetch full item detail from Vinted API when item is linked to a live listing.
+    // The wardrobe list endpoint only provides title, price, brand (string), size (string),
+    // status (string), and photos — it does NOT include description, catalog_id, brand_id,
+    // size_id, status_id, color_ids, item_attributes, package_size_id, etc.
+    if (item.vinted_item_id) {
+      setDetailLoading(true);
+      console.log('[EditModal] Fetching item detail for vinted_item_id:', item.vinted_item_id);
+      window.vinted.getItemDetail(item.vinted_item_id).then((r) => {
+        console.log('[EditModal] Item detail response:', r.ok, r.ok ? 'has data' : (r as { code?: string; message?: string }).message);
+        if (!r.ok || !r.data) return;
+        // Handle both { item: {...} } and bare {...} response shapes
+        const raw = r.data as Record<string, unknown>;
+        const d = (raw.item ?? raw) as Record<string, unknown>;
+        console.log('[EditModal] Item detail keys:', Object.keys(d));
+        console.log('[EditModal] Item detail sample values:', {
+          catalog_id: d.catalog_id, category_id: d.category_id,
+          brand_id: d.brand_id, brand_title: d.brand_title, brand: typeof d.brand === 'string' ? d.brand : (d.brand ? 'object' : undefined),
+          size_id: d.size_id, status_id: d.status_id,
+          color_ids: d.color_ids, color1_id: d.color1_id, color2_id: d.color2_id,
+          package_size_id: d.package_size_id,
+          is_unisex: d.is_unisex,
+          price: typeof d.price === 'object' ? 'price_object' : d.price,
+        });
+
+        // ── Normalize SSR data: flatten nested objects from Nuxt __NUXT_DATA__ ──
+        // The Nuxt SSR payload may use nested objects (brand: {id, title}) instead
+        // of flat fields (brand_id, brand_title) used by the Vinted API.
+        const brandObj = d.brand && typeof d.brand === 'object' ? d.brand as Record<string, unknown> : null;
+        const catObj = (d.category ?? d.catalog) as Record<string, unknown> | undefined;
+        const sizeObj = d.size && typeof d.size === 'object' ? d.size as Record<string, unknown> : null;
+        const statusObj = d.status && typeof d.status === 'object' ? d.status as Record<string, unknown> : null;
+        const pkgObj = d.package_size && typeof d.package_size === 'object' ? d.package_size as Record<string, unknown> : null;
+        const priceObj = d.price && typeof d.price === 'object' ? d.price as Record<string, unknown> : null;
+
+        // Resolve brand_id: flat field, or nested brand.id
+        const resolvedBrandId = d.brand_id ? Number(d.brand_id) : (brandObj?.id ? Number(brandObj.id) : 0);
+        const resolvedBrandName = d.brand_title ? String(d.brand_title)
+          : (brandObj?.title ? String(brandObj.title)
+            : (brandObj?.name ? String(brandObj.name)
+              : (typeof d.brand === 'string' ? String(d.brand) : '')));
+
+        // Resolve catalog_id: flat field, or nested category/catalog .id
+        const resolvedCatId = d.catalog_id ? Number(d.catalog_id)
+          : (catObj && typeof catObj === 'object' && catObj.id ? Number(catObj.id) : 0);
+
+        // Resolve size_id
+        const resolvedSizeId = d.size_id ? Number(d.size_id) : (sizeObj?.id ? Number(sizeObj.id) : 0);
+
+        // Resolve status_id (condition)
+        const resolvedStatusId = d.status_id ? Number(d.status_id) : (statusObj?.id ? Number(statusObj.id) : 0);
+
+        // Resolve package_size_id
+        const resolvedPkgId = d.package_size_id ? Number(d.package_size_id) : (pkgObj?.id ? Number(pkgObj.id) : 0);
+
+        // Resolve price — may be a number, string, or { amount, currency_code }
+        const resolvedPrice = priceObj ? String(priceObj.amount ?? priceObj.price ?? d.price)
+          : (d.price ? String(d.price) : '');
+
+        // Resolve color_ids: flat array, or nested colors array of objects
+        let resolvedColorIds: number[] = [];
+        if (d.color_ids && Array.isArray(d.color_ids)) {
+          resolvedColorIds = d.color_ids as number[];
+        } else if (d.colors && Array.isArray(d.colors)) {
+          resolvedColorIds = (d.colors as Record<string, unknown>[])
+            .map((c) => Number(c.id))
+            .filter((id) => id > 0);
+        } else {
+          // Vinted SSR sometimes uses color1_id, color2_id
+          const c1 = d.color1_id ? Number(d.color1_id) : 0;
+          const c2 = d.color2_id ? Number(d.color2_id) : 0;
+          if (c1) resolvedColorIds.push(c1);
+          if (c2) resolvedColorIds.push(c2);
+        }
+
+        // ── Apply resolved values to state ──
+        if (d.description) setDescription(String(d.description));
+        if (resolvedCatId) setSelectedCategoryId(resolvedCatId);
+        if (resolvedBrandId) {
+          setSelectedBrandId(resolvedBrandId);
+          if (resolvedBrandName) {
+            setSelectedBrandName(resolvedBrandName);
+            setBrandResults((prev) => {
+              if (prev.find((b) => b.id === resolvedBrandId)) return prev;
+              return [{ id: resolvedBrandId, name: resolvedBrandName }, ...prev];
+            });
+          }
+        }
+        if (resolvedSizeId) setSelectedSizeId(resolvedSizeId);
+        if (resolvedStatusId) setSelectedStatusId(resolvedStatusId);
+        if (resolvedPkgId) setPackageSizeId(resolvedPkgId);
+        if (resolvedColorIds.length > 0) setSelectedColorIds(resolvedColorIds);
+        if (d.is_unisex !== undefined) setIsUnisex(Boolean(d.is_unisex));
+        if (resolvedPrice) setPrice(resolvedPrice);
+
+        // Parse materials from item_attributes (array of {code, ids})
+        if (d.item_attributes && Array.isArray(d.item_attributes)) {
+          const matAttr = (d.item_attributes as { code: string; ids?: number[] }[]).find((a) => a.code === 'material');
+          if (matAttr?.ids) setSelectedMaterialIds(matAttr.ids);
+        }
+        // Pre-fill niche fields
+        if (d.isbn) setIsbn(String(d.isbn));
+        if (d.measurement_length) setMeasurementLength(String(d.measurement_length));
+        if (d.measurement_width) setMeasurementWidth(String(d.measurement_width));
+      }).catch((err) => {
+        console.error('[EditModal] Item detail fetch failed:', err);
+      }).finally(() => setDetailLoading(false));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.vinted_item_id]);
+
+  // ── Fetch category-specific options when category changes ──
+  useEffect(() => {
+    if (!selectedCategoryId) return;
+    const catId = selectedCategoryId;
+
+    // Fetch size groups — response: { size_groups: [{ id, caption, sizes: [{ id, title }] }] }
+    window.vinted.getSizes(catId).then((r: { ok: boolean; data?: unknown }) => {
+      const groups = extractArray(r, 'size_groups');
+      const flat: { id: number; title: string }[] = [];
+      for (const g of groups) {
+        const subSizes = (g as Record<string, unknown>).sizes;
+        if (Array.isArray(subSizes)) {
+          for (const sub of subSizes as unknown[]) {
+            const so = sub as Record<string, unknown>;
+            flat.push({ id: Number(so.id), title: String(so.title || so.name || '') });
+          }
+        } else {
+          flat.push({ id: g.id, title: g.title });
+        }
+      }
+      setSizeOptions(flat);
+    }).catch(() => setSizeOptions([]));
+
+    // Fetch materials & attribute config via POST /attributes
+    window.vinted.getMaterials(catId).then((r: { ok: boolean; data?: unknown }) => {
+      const { materials, availableFields: fields, nicheAttributes: niche } = extractFromAttributes(r);
+      setMaterialOptions(materials);
+      if (fields.length > 0) setAvailableFields(fields);
+      setNicheAttributes(niche);
+    }).catch(() => setMaterialOptions([]));
+
+    // Fetch package sizes — response: { package_sizes: [{ id, title, ... }] }
+    const vintedItemId = item.vinted_item_id ?? undefined;
+    window.vinted.getPackageSizes(catId, vintedItemId).then((r: { ok: boolean; data?: unknown }) => {
+      const pkgs = extractArray(r, 'package_sizes');
+      if (pkgs.length > 0) setPackageSizeOptions(pkgs);
+    }).catch(() => {});
+
+    // Fetch conditions — response: { conditions: [{ id, title, explanation }] }
+    window.vinted.getConditions(catId).then((r: { ok: boolean; data?: unknown }) => {
+      const conds = extractArray(r, 'conditions');
+      if (conds.length > 0) setConditionOptions(conds);
+    }).catch(() => {});
+
+    // Fetch popular brands for this category
+    window.vinted.searchBrands('', catId).then((r) => {
+      if (r.ok) {
+        const brands = extractArray(r as { ok: boolean; data?: unknown }, 'brands');
+        const opts = brands.map((b) => ({ id: b.id, name: b.title }));
+        // Keep current brand in list if not in results
+        if (selectedBrandId && !opts.find((o) => o.id === selectedBrandId) && selectedBrandName) {
+          opts.unshift({ id: selectedBrandId, name: selectedBrandName });
+        }
+        setBrandResults(opts);
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategoryId, item.vinted_item_id]);
+
+  // ── Brand search handler ──
+  const handleBrandSearch = async (keyword: string) => {
+    setBrandLoading(true);
+    try {
+      const result = await window.vinted.searchBrands(keyword, selectedCategoryId || undefined);
+      if (result.ok) {
+        const brands = extractArray(result as { ok: boolean; data?: unknown }, 'brands');
+        const opts = brands.map((b) => ({ id: b.id, name: b.title }));
+        // Keep current brand in list if not in results
+        if (selectedBrandId && !opts.find((o) => o.id === selectedBrandId) && selectedBrandName) {
+          opts.unshift({ id: selectedBrandId, name: selectedBrandName });
+        }
+        setBrandResults(opts);
+      }
+    } catch { /* ignore */ }
+    setBrandLoading(false);
+  };
+
+  const handleBrandChange = (id: number | number[]) => {
+    const brandId = Array.isArray(id) ? id[0] : id;
+    setSelectedBrandId(brandId);
+    const brand = brandResults.find((b) => b.id === brandId);
+    setSelectedBrandName(brand?.name ?? '');
+    // Reset model selection when brand changes
+    setModelOptions([]);
+    setSelectedCollectionId(0);
+    setSelectedModelId(0);
+    // Fetch models if this brand might have them (the attributes response tells us if 'model' is available)
+    if (brandId && selectedCategoryId && availableFields.includes('model')) {
+      setModelsLoading(true);
+      window.vinted.getModels(selectedCategoryId, brandId).then((r) => {
+        if (r.ok) {
+          const data = (r as { ok: true; data: unknown }).data as Record<string, unknown>;
+          const rawModels = (data.models ?? []) as Record<string, unknown>[];
+          const opts = rawModels.map((m) => ({
+            id: Number(m.id),
+            name: String(m.name || ''),
+            children: Array.isArray(m.children)
+              ? (m.children as Record<string, unknown>[]).map((c) => ({ id: Number(c.id), name: String(c.name || '') }))
+              : undefined,
+          }));
+          setModelOptions(opts);
+        }
+      }).catch(() => {}).finally(() => setModelsLoading(false));
+    }
+  };
+
+  const handleColorChange = (ids: number | number[]) => {
+    setSelectedColorIds(Array.isArray(ids) ? ids : [ids]);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Rebuild item_attributes with updated material
+    let attrs = parsedAttrs.filter((a: { code: string }) => a.code !== 'material');
+    if (selectedMaterialIds.length > 0) {
+      attrs = [...attrs, { code: 'material', ids: selectedMaterialIds }];
+    }
+
+    // Derive condition string from status_id
+    const condOpt = conditionOptions.find((c) => c.id === selectedStatusId);
+    const conditionStr = condOpt?.title ?? item.condition ?? '';
+
+    // Add niche attributes to item_attributes
+    for (const attr of nicheAttributes) {
+      const val = nicheValues[attr.code];
+      if (val !== undefined && val !== 0 && val !== '') {
+        attrs = attrs.filter((a: { code: string }) => a.code !== attr.code);
+        if (Array.isArray(val)) {
+          attrs.push({ code: attr.code, ids: val as number[] });
+        } else if (typeof val === 'number') {
+          attrs.push({ code: attr.code, ids: [val] });
+        }
+      }
+    }
+
+    // Build model metadata if model is selected
+    const modelMetadata: Record<string, unknown> = {};
+    if (selectedCollectionId) modelMetadata.collection_id = selectedCollectionId;
+    if (selectedModelId) modelMetadata.model_id = selectedModelId;
+
     onSave({
       id: item.id,
       title: title.trim(),
       description: description.trim(),
       price: parseFloat(price) || 0,
-      condition,
-      brand_name: brandName.trim(),
-      brand_id: item.brand_id,
+      condition: conditionStr,
+      brand_id: selectedBrandId || null,
+      brand_name: selectedBrandName.trim(),
       category_id: selectedCategoryId || null,
       color_ids: JSON.stringify(selectedColorIds),
-      size_id: item.size_id,
-      size_label: item.size_label,
-      status_id: item.status_id,
-      package_size_id: item.package_size_id,
-      item_attributes: typeof item.item_attributes === 'string' ? item.item_attributes : JSON.stringify(item.item_attributes ?? []),
-      photo_urls: typeof item.photo_urls === 'string' ? item.photo_urls : JSON.stringify(item.photo_urls ?? []),
-      local_image_paths: typeof item.local_image_paths === 'string' ? item.local_image_paths : JSON.stringify(item.local_image_paths ?? []),
+      size_id: selectedSizeId || null,
+      size_label: sizeOptions.find((s) => s.id === selectedSizeId)?.title ?? item.size_label ?? '',
+      status_id: selectedStatusId || null,
+      package_size_id: packageSizeId,
+      item_attributes: JSON.stringify(attrs),
+      is_unisex: isUnisex ? 1 : 0,
+      isbn: isbn || null,
+      measurement_length: measurementLength ? parseFloat(measurementLength) : null,
+      measurement_width: measurementWidth ? parseFloat(measurementWidth) : null,
+      photo_urls: JSON.stringify(Array.isArray(item.photo_urls) ? item.photo_urls : []),
+      local_image_paths: JSON.stringify(Array.isArray(item.local_image_paths) ? item.local_image_paths : []),
       status: item.vinted_item_id ? 'discrepancy' : item.status,
+      ...(Object.keys(modelMetadata).length > 0 ? { model_metadata: JSON.stringify(modelMetadata) } : {}),
     });
   };
 
-  const toggleColor = (id: number) => {
-    setSelectedColorIds((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
-    );
-  };
+  // ── Render data ──
+  const colorSelectOpts = allColors.map((c) => ({
+    id: c.entity_id,
+    name: c.name,
+    extra: c.extra as Record<string, unknown> | null,
+  }));
+
+  const editLocalPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
+  const editPhotoUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
+  const editPhotos = editLocalPaths.length > 0 ? editLocalPaths : editPhotoUrls;
 
   return (
     <div style={modalOverlay} onClick={onClose}>
       <div
-        style={{ ...modalContent, maxWidth: 600, maxHeight: '85vh', overflow: 'auto' }}
+        style={{ ...modalContent, maxWidth: 640, maxHeight: '90vh', overflow: 'auto', padding: spacing['2xl'] }}
         onClick={(e) => e.stopPropagation()}
         className="animate-fadeInScale"
       >
-        <h3 style={{ margin: '0 0 20px', fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
+        <h3 style={{ margin: '0 0 24px', fontSize: font.size.xl, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
           Edit Listing
         </h3>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-          {/* Title */}
-          <div>
-            <label style={labelStyle}>Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              style={{ ...glassInput, width: '100%' }}
-              required
-            />
+        {detailLoading && (
+          <div style={{ textAlign: 'center', color: colors.textMuted, fontSize: font.size.sm, padding: spacing.md }}>
+            Fetching listing details from Vinted...
           </div>
+        )}
 
-          {/* Description */}
-          <div>
-            <label style={labelStyle}>Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={5}
-              style={{ ...glassTextarea, width: '100%' }}
-            />
-          </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}>
 
-          {/* Price + Brand Row */}
-          <div style={{ display: 'flex', gap: spacing.md }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Price (GBP)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                style={{ ...glassInput, width: '100%' }}
-                required
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Brand</label>
-              <input
-                type="text"
-                value={brandName}
-                onChange={(e) => setBrandName(e.target.value)}
-                style={{ ...glassInput, width: '100%' }}
-              />
-            </div>
-          </div>
-
-          {/* Category */}
-          <div>
-            <label style={labelStyle}>Category</label>
-            <select
-              value={selectedCategoryId}
-              onChange={(e) => setSelectedCategoryId(Number(e.target.value))}
-              style={{ ...glassSelect, width: '100%' }}
-            >
-              <option value={0}>— Select Category —</option>
-              {categories.map((c) => (
-                <option key={c.entity_id} value={c.entity_id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Condition */}
-          <div>
-            <label style={labelStyle}>Condition</label>
-            <select
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              style={{ ...glassSelect, width: '100%' }}
-            >
-              <option value="">— Select Condition —</option>
-              {conditionOptions.length > 0
-                ? conditionOptions.map((c) => (
-                    <option key={c.entity_id} value={c.name}>{c.name}</option>
-                  ))
-                : <>
-                    <option value="New with tags">New with tags</option>
-                    <option value="Very good">Very good</option>
-                    <option value="Good">Good</option>
-                    <option value="Satisfactory">Satisfactory</option>
-                  </>
-              }
-            </select>
-          </div>
-
-          {/* Colors */}
-          <div>
-            <label style={labelStyle}>Colors</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {colorOptions.length > 0
-                ? colorOptions.map((c) => {
-                    const selected = selectedColorIds.includes(c.entity_id);
-                    const extra = c.extra as Record<string, unknown> | null;
-                    const hex = extra?.hex as string | undefined;
-                    return (
-                      <button
-                        key={c.entity_id}
-                        type="button"
-                        onClick={() => toggleColor(c.entity_id)}
-                        style={{
-                          ...actionBtn,
-                          background: selected ? colors.primaryMuted : colors.glassHighlight,
-                          color: selected ? colors.primary : colors.textSecondary,
-                          borderColor: selected ? colors.primary : colors.glassBorder,
-                          display: 'flex', alignItems: 'center', gap: 4,
-                        }}
-                      >
-                        {hex && <span style={{ width: 10, height: 10, borderRadius: '50%', background: hex, border: '1px solid rgba(255,255,255,0.2)' }} />}
-                        {c.name}
-                      </button>
-                    );
-                  })
-                : <span style={{ color: colors.textMuted, fontSize: font.size.sm }}>
-                    Refresh ontology to load color options
-                  </span>
-              }
-            </div>
-          </div>
-
-          {/* Photos Preview */}
-          {(item.photo_urls?.length > 0 || item.local_image_paths?.length > 0) && (
+          {/* ── Photos ── */}
+          {editPhotos.length > 0 && (
             <div>
               <label style={labelStyle}>Photos</label>
               <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-                {(item.local_image_paths?.length > 0 ? item.local_image_paths : item.photo_urls).map((url, i) => (
-                  <div key={i} style={{
-                    width: 72, height: 72, borderRadius: radius.md, overflow: 'hidden',
-                    background: colors.glassBg, border: `1px solid ${colors.glassBorder}`,
-                  }}>
-                    <img
-                      src={url.startsWith('/') ? `file://${url}` : url}
-                      alt=""
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  </div>
-                ))}
+                {editPhotos.map((url: string, i: number) => {
+                  const isLocal = url.startsWith('/') || url.startsWith('C:');
+                  return (
+                    <div key={i} style={{
+                      width: 80, height: 80, borderRadius: radius.md, overflow: 'hidden',
+                      background: colors.glassBg, border: `1px solid ${colors.glassBorder}`,
+                    }}>
+                      <img
+                        src={isLocal ? `local-image://${encodeURI(url)}` : url}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Actions */}
-          <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.sm }}>
-            <button type="submit" style={{ ...btnPrimary, flex: 1 }}>
-              Save Changes
-            </button>
-            <button type="button" onClick={onClose} style={btnSecondary}>
-              Cancel
-            </button>
+          {/* ── Title ── */}
+          <div>
+            <label style={labelStyle}>Title</label>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
+              style={{ ...glassInput, width: '100%' }} required />
+          </div>
+
+          {/* ── Description ── */}
+          <div>
+            <label style={labelStyle}>Description</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)}
+              rows={5} style={{ ...glassTextarea, width: '100%' }} placeholder="Describe your item..." />
+          </div>
+
+          {/* ── Category (Hierarchical) ── */}
+          <HierarchicalCategorySelect categories={allCategories} value={selectedCategoryId} onChange={setSelectedCategoryId} />
+
+          {/* ── Brand (Live search via API) ── */}
+          <SearchableSelect
+            label="Brand"
+            options={brandResults}
+            value={selectedBrandId}
+            onChange={(v) => handleBrandChange(v)}
+            placeholder="Type to search brands..."
+            onSearch={handleBrandSearch}
+            loading={brandLoading}
+          />
+
+          {/* ── Condition ── */}
+          <div>
+            <label style={labelStyle}>Condition</label>
+            <select value={selectedStatusId} onChange={(e) => setSelectedStatusId(Number(e.target.value))} style={{ ...glassSelect, width: '100%' }}>
+              <option value={0}>— Select Condition —</option>
+              {conditionOptions.map((c) => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* ── Size (Category-specific dropdown — only shown if the category has sizes) ── */}
+          {(sizeOptions.length > 0 || !selectedCategoryId || (availableFields.length > 0 && availableFields.includes('size'))) && (
+            <div>
+              <label style={labelStyle}>Size</label>
+              {sizeOptions.length > 0 ? (
+                <select value={selectedSizeId} onChange={(e) => setSelectedSizeId(Number(e.target.value))} style={{ ...glassSelect, width: '100%' }}>
+                  <option value={0}>— Select Size —</option>
+                  {sizeOptions.map((s) => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+              ) : (
+                <div style={{ ...glassInput, width: '100%', color: colors.textMuted, fontSize: font.size.sm }}>
+                  {selectedCategoryId ? 'Loading sizes...' : 'Select a category first'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Colours (Searchable, max 2) ── */}
+          <SearchableSelect
+            label="Colours (max 2)"
+            options={colorSelectOpts}
+            value={selectedColorIds}
+            onChange={(v) => handleColorChange(v)}
+            placeholder="Search colours..."
+            maxSelections={2}
+            renderOption={(opt, sel) => {
+              const hex = opt.extra?.hex as string | undefined;
+              return (
+                <>
+                  {hex && <span style={{ width: 14, height: 14, borderRadius: '50%', background: hex, border: '1px solid rgba(255,255,255,0.2)', flexShrink: 0 }} />}
+                  <span>{opt.name}</span>
+                  {sel && <span style={{ marginLeft: 'auto', fontSize: 11, color: colors.primary }}>Selected</span>}
+                </>
+              );
+            }}
+          />
+
+          {/* ── Material (Category-specific dropdown, multi-select up to 3) ── */}
+          {materialOptions.length > 0 && (
+            <SearchableSelect
+              label="Material (max 3)"
+              options={materialOptions.map((m) => ({ id: m.id, name: m.title }))}
+              value={selectedMaterialIds}
+              onChange={(v) => setSelectedMaterialIds(Array.isArray(v) ? v : [v])}
+              placeholder="Search materials..."
+              maxSelections={3}
+            />
+          )}
+
+          {/* ── Model/Collection (Luxury brands like Chanel, LV, etc.) ── */}
+          {availableFields.includes('model') && modelOptions.length > 0 && (
+            <div>
+              <label style={labelStyle}>Model / Collection</label>
+              <select
+                value={selectedCollectionId}
+                onChange={(e) => {
+                  const cid = Number(e.target.value);
+                  setSelectedCollectionId(cid);
+                  setSelectedModelId(0);
+                }}
+                style={{ ...glassSelect, width: '100%', marginBottom: spacing.sm }}
+              >
+                <option value={0}>— Select Collection —</option>
+                {modelOptions.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              {selectedCollectionId > 0 && (() => {
+                const collection = modelOptions.find((m) => m.id === selectedCollectionId);
+                if (collection?.children && collection.children.length > 0) {
+                  return (
+                    <select
+                      value={selectedModelId}
+                      onChange={(e) => setSelectedModelId(Number(e.target.value))}
+                      style={{ ...glassSelect, width: '100%' }}
+                    >
+                      <option value={0}>— Select Model —</option>
+                      {collection.children.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  );
+                }
+                return null;
+              })()}
+              {modelsLoading && (
+                <div style={{ color: colors.textMuted, fontSize: font.size.xs, marginTop: 4 }}>Loading models...</div>
+              )}
+            </div>
+          )}
+
+          {/* ── ISBN (Books category) ── */}
+          {availableFields.includes('isbn') && (
+            <div>
+              <label style={labelStyle}>ISBN</label>
+              <input type="text" value={isbn} onChange={(e) => setIsbn(e.target.value)}
+                placeholder="Enter ISBN number..."
+                style={{ ...glassInput, width: '100%' }} />
+            </div>
+          )}
+
+          {/* ── Measurements (Sized clothing) ── */}
+          {availableFields.includes('measurements') && (
+            <div>
+              <label style={labelStyle}>Measurements (cm)</label>
+              <div style={{ display: 'flex', gap: spacing.sm }}>
+                <input type="number" step="0.1" value={measurementLength} onChange={(e) => setMeasurementLength(e.target.value)}
+                  placeholder="Length" style={{ ...glassInput, flex: 1 }} />
+                <input type="number" step="0.1" value={measurementWidth} onChange={(e) => setMeasurementWidth(e.target.value)}
+                  placeholder="Width" style={{ ...glassInput, flex: 1 }} />
+              </div>
+            </div>
+          )}
+
+          {/* ── Dynamic niche attributes (video_game_platform, etc.) ── */}
+          {nicheAttributes.map((attr) => (
+            <div key={attr.code}>
+              <label style={labelStyle}>{attr.title}{attr.required ? ' *' : ''}</label>
+              {attr.options.length > 0 ? (
+                attr.selectionType === 'single' ? (
+                  <select
+                    value={Number(nicheValues[attr.code] ?? 0)}
+                    onChange={(e) => setNicheValues((prev) => ({ ...prev, [attr.code]: Number(e.target.value) }))}
+                    style={{ ...glassSelect, width: '100%' }}
+                  >
+                    <option value={0}>— Select {attr.title} —</option>
+                    {attr.options.map((o) => (
+                      <option key={o.id} value={o.id}>{o.title}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <SearchableSelect
+                    label=""
+                    options={attr.options.map((o) => ({ id: o.id, name: o.title }))}
+                    value={Array.isArray(nicheValues[attr.code]) ? nicheValues[attr.code] as number[] : []}
+                    onChange={(v) => setNicheValues((prev) => ({ ...prev, [attr.code]: v }))}
+                    placeholder={`Search ${attr.title.toLowerCase()}...`}
+                    maxSelections={attr.selectionLimit}
+                  />
+                )
+              ) : (
+                <input type="text" value={String(nicheValues[attr.code] ?? '')}
+                  onChange={(e) => setNicheValues((prev) => ({ ...prev, [attr.code]: e.target.value }))}
+                  placeholder={`Enter ${attr.title.toLowerCase()}...`}
+                  style={{ ...glassInput, width: '100%' }} />
+              )}
+            </div>
+          ))}
+
+          {/* ── Price ── */}
+          <div>
+            <label style={labelStyle}>Price ({item.currency || 'GBP'})</label>
+            <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)}
+              style={{ ...glassInput, width: '100%' }} required />
+          </div>
+
+          {/* ── Package Size ── */}
+          <div>
+            <label style={labelStyle}>Parcel Size</label>
+            <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+              {(packageSizeOptions.length > 0 ? packageSizeOptions : [
+                { id: 1, title: 'Small' }, { id: 2, title: 'Medium' }, { id: 3, title: 'Large' },
+              ]).map((pkg) => {
+                const sel = packageSizeId === pkg.id;
+                return (
+                  <button key={pkg.id} type="button" onClick={() => setPackageSizeId(pkg.id)}
+                    style={{
+                      flex: 1, minWidth: 100, padding: '10px 12px', borderRadius: radius.md,
+                      border: `1px solid ${sel ? colors.primary : colors.glassBorder}`,
+                      background: sel ? colors.primaryMuted : colors.glassBg,
+                      color: sel ? colors.primary : colors.textSecondary,
+                      cursor: 'pointer', textAlign: 'center' as const, transition: transition.fast,
+                      fontWeight: sel ? font.weight.semibold : font.weight.medium,
+                      fontSize: font.size.sm,
+                    }}
+                  >
+                    {pkg.title}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Unisex toggle (only shown if category supports it) ── */}
+          {(availableFields.length === 0 || availableFields.includes('unisex')) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
+              <label style={{ ...labelStyle, marginBottom: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div onClick={() => setIsUnisex(!isUnisex)}
+                  style={{
+                    width: 40, height: 22, borderRadius: 11,
+                    background: isUnisex ? colors.primary : colors.glassBg,
+                    border: `1px solid ${isUnisex ? colors.primary : colors.glassBorder}`,
+                    position: 'relative', cursor: 'pointer', transition: transition.base,
+                  }}>
+                  <div style={{
+                    width: 16, height: 16, borderRadius: '50%', background: colors.white,
+                    position: 'absolute', top: 2, left: isUnisex ? 20 : 2, transition: transition.base,
+                  }} />
+                </div>
+                Unisex item
+              </label>
+            </div>
+          )}
+
+          {/* ── Actions ── */}
+          <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.sm, paddingTop: spacing.lg, borderTop: `1px solid ${colors.separator}` }}>
+            <button type="submit" style={{ ...btnPrimary, flex: 1 }}>Save Changes</button>
+            <button type="button" onClick={onClose} style={btnSecondary}>Cancel</button>
           </div>
         </form>
       </div>

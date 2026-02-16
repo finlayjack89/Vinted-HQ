@@ -39,15 +39,7 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('session:isEncryptionAvailable', () => secureStorage.isEncryptionAvailable());
-  ipcMain.handle('session:getVintedUserId', () => {
-    const userId = secureStorage.getVintedUserId();
-    // #region agent log
-    const cookie = secureStorage.retrieveCookie();
-    const cookieKeys = cookie ? cookie.split(';').map((p: string) => p.trim().split('=')[0]) : [];
-    fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ipc.ts:getVintedUserId',message:'getVintedUserId called',data:{userId,hasCookie:!!cookie,cookieKeyCount:cookieKeys.length,cookieKeys:cookieKeys,hasVuid:cookieKeys.includes('v_uid')},timestamp:Date.now(),hypothesisId:'H11'})}).catch(()=>{});
-    // #endregion
-    return userId;
-  });
+  ipcMain.handle('session:getVintedUserId', () => secureStorage.getVintedUserId());
   ipcMain.handle('session:startCookieRefresh', () => authCapture.startCookieRefresh());
   ipcMain.handle('session:saveLoginCredentials', (_event, username: string, password: string) =>
     credentialStore.saveLoginCredentials({ username, password })
@@ -175,16 +167,9 @@ export function registerIpcHandlers(): void {
 
   // ─── Wardrobe / Inventory Vault ─────────────────────────────────────────
 
-  ipcMain.handle('wardrobe:getAll', (_event, filter?: { status?: string }) => {
-    const rows = inventoryDb.getAllInventoryItems(filter);
-    // #region agent log
-    if (rows.length > 0) {
-      const sample = rows[0];
-      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ipc.ts:wardrobe:getAll',message:'Raw DB rows sample',data:{totalRows:rows.length,firstItem_photoUrls_type:typeof sample.photo_urls,firstItem_photoUrls_value:String(sample.photo_urls).substring(0,200),firstItem_localImagePaths_type:typeof sample.local_image_paths,firstItem_localImagePaths_value:String(sample.local_image_paths).substring(0,200),firstItem_colorIds_type:typeof sample.color_ids,firstItem_colorIds_value:String(sample.color_ids).substring(0,100)},timestamp:Date.now(),hypothesisId:'H17'})}).catch(()=>{});
-    }
-    // #endregion
-    return rows;
-  });
+  ipcMain.handle('wardrobe:getAll', (_event, filter?: { status?: string }) =>
+    inventoryDb.getAllInventoryItems(filter)
+  );
 
   ipcMain.handle('wardrobe:getItem', (_event, localId: number) =>
     inventoryDb.getInventoryItem(localId)
@@ -204,6 +189,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('wardrobe:pushToVinted', (_event, localId: number, proxy?: string) =>
     inventoryService.pushToVinted(localId, proxy)
+  );
+
+  ipcMain.handle('wardrobe:editLiveItem', (_event, localId: number, updates: Record<string, unknown>, proxy?: string) =>
+    inventoryService.editLiveItem(localId, updates, proxy)
   );
 
   // ─── Relist Queue (Waiting Room) ────────────────────────────────────────
@@ -239,7 +228,41 @@ export function registerIpcHandlers(): void {
     ontologyService.refreshAll()
   );
 
-  ipcMain.handle('wardrobe:getOntology', (_event, entityType: string) =>
-    inventoryDb.getOntologyEntities(entityType)
+  ipcMain.handle('wardrobe:getOntology', (_event, entityType: string) => {
+    const rows = inventoryDb.getOntologyEntities(entityType);
+    // Parse JSON `extra` field before sending to renderer
+    return rows.map((r) => ({
+      ...r,
+      extra: typeof r.extra === 'string' ? (() => { try { return JSON.parse(r.extra as string); } catch { return null; } })() : r.extra,
+    }));
+  });
+
+  // Category-specific ontology lookups (live API calls)
+  // These use the user's session cookie directly (no proxy) since:
+  // 1. They're lightweight read-only calls that match normal browser behavior
+  // 2. Non-UK proxies cause geo-redirects to wrong Vinted domains (e.g., vinted.fr)
+  ipcMain.handle('wardrobe:getSizes', (_event, catalogId: number) =>
+    bridge.fetchOntologySizes(catalogId)
   );
+  ipcMain.handle('wardrobe:getMaterials', (_event, catalogId: number) =>
+    bridge.fetchOntologyMaterials(catalogId)
+  );
+  ipcMain.handle('wardrobe:getPackageSizes', (_event, catalogId: number, itemId?: number) =>
+    bridge.fetchOntologyPackageSizes(catalogId, itemId)
+  );
+  ipcMain.handle('wardrobe:getConditions', (_event, catalogId: number) =>
+    bridge.fetchOntologyConditions(catalogId)
+  );
+  ipcMain.handle('wardrobe:searchBrands', (_event, keyword: string, categoryId?: number) =>
+    bridge.searchBrands(keyword, categoryId)
+  );
+  ipcMain.handle('wardrobe:getModels', (_event, catalogId: number, brandId: number) =>
+    bridge.fetchOntologyModels(catalogId, brandId)
+  );
+  ipcMain.handle('wardrobe:getItemDetail', (_event, itemId: number) => {
+    // Fetch item detail WITHOUT proxy — this endpoint is geo-sensitive and
+    // proxies with non-UK IPs get redirected to wrong Vinted domains (e.g. vinted.fr).
+    // Using the user's own session cookie directly is safe (normal browser behavior).
+    return bridge.fetchItemDetail(itemId);
+  });
 }

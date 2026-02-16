@@ -24,6 +24,11 @@ from vinted_client import (
     fetch_ontology_brands as vinted_fetch_brands,
     fetch_ontology_colors as vinted_fetch_colors,
     fetch_ontology_conditions as vinted_fetch_conditions,
+    fetch_ontology_sizes as vinted_fetch_sizes,
+    fetch_ontology_materials as vinted_fetch_materials,
+    fetch_ontology_package_sizes as vinted_fetch_package_sizes,
+    fetch_ontology_models as vinted_fetch_models,
+    fetch_item_detail as vinted_fetch_item_detail,
     upload_photo as vinted_upload_photo,
     create_listing as vinted_create_listing,
     edit_listing as vinted_edit_listing,
@@ -342,6 +347,140 @@ def ontology_conditions(
         data = vinted_fetch_conditions(
             cookie=x_vinted_cookie,
             catalog_id=catalog_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/ontology/sizes")
+def ontology_sizes(
+    catalog_id: int = Query(..., description="Category/catalog ID"),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+):
+    """Fetch sizes for a category."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_sizes(
+            cookie=x_vinted_cookie,
+            catalog_id=catalog_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/ontology/materials")
+def ontology_materials(
+    catalog_id: int = Query(..., description="Category/catalog ID"),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+):
+    """Fetch materials for a category."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_materials(
+            cookie=x_vinted_cookie,
+            catalog_id=catalog_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/ontology/package_sizes")
+def ontology_package_sizes(
+    catalog_id: int = Query(..., description="Category/catalog ID"),
+    item_id: Optional[int] = Query(None, description="Item ID for context-specific sizes"),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+):
+    """Fetch package sizes for a category."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_package_sizes(
+            cookie=x_vinted_cookie,
+            catalog_id=catalog_id,
+            item_id=item_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/ontology/models")
+def ontology_models(
+    catalog_id: int = Query(..., description="Category/catalog ID"),
+    brand_id: int = Query(..., description="Brand ID"),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+):
+    """Fetch models for a luxury brand + category combination."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_models(
+            cookie=x_vinted_cookie,
+            catalog_id=catalog_id,
+            brand_id=brand_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/item/{item_id}")
+def get_item_detail(
+    item_id: int,
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+):
+    """Fetch full item detail."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_item_detail(
+            cookie=x_vinted_cookie,
+            item_id=item_id,
             csrf_token=x_csrf_token,
             anon_id=x_anon_id,
             proxy=proxy,

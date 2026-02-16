@@ -3,7 +3,9 @@ Vinted UK Sniper — Stealth HTTP client using curl_cffi.
 Bypasses Cloudflare/Datadome via TLS fingerprint impersonation.
 """
 
+import json
 import random
+import re
 import time
 import uuid
 from urllib.parse import urlencode, urlparse, parse_qs
@@ -661,6 +663,535 @@ def fetch_ontology_conditions(
         raise VintedError("UNKNOWN", str(e))
 
     return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+
+
+def fetch_ontology_models(
+    cookie: str,
+    catalog_id: int,
+    brand_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+) -> dict:
+    """GET /api/v2/item_upload/models?catalog_id={cat}&brand_id={brand} — models for a luxury brand."""
+    qs = urlencode({"catalog_id": catalog_id, "brand_id": brand_id})
+    api_url = f"{BASE_URL}/api/v2/item_upload/models?{qs}"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304, 404), proxy=proxy)
+
+
+def fetch_ontology_sizes(
+    cookie: str,
+    catalog_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+) -> dict:
+    """GET /api/v2/item_upload/size_groups?catalog_ids={id} — size groups for a category."""
+    qs = urlencode({"catalog_ids": catalog_id})
+    api_url = f"{BASE_URL}/api/v2/item_upload/size_groups?{qs}"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+
+
+def fetch_ontology_materials(
+    cookie: str,
+    catalog_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+) -> dict:
+    """POST /api/v2/item_upload/attributes — fetch material options for a category.
+    The Vinted API returns materials as part of the attributes endpoint,
+    which is a POST with the category value in the request body."""
+    api_url = f"{BASE_URL}/api/v2/item_upload/attributes"
+    payload = {"attributes": [{"code": "category", "value": [catalog_id]}]}
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers["Content-Type"] = "application/json"
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "json": payload, "timeout": 30}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.post(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+
+
+def fetch_ontology_package_sizes(
+    cookie: str,
+    catalog_id: int,
+    item_id: int | None = None,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+) -> dict:
+    """GET /api/v2/catalogs/{catalog_id}/package_sizes — package sizes for a category."""
+    api_url = f"{BASE_URL}/api/v2/catalogs/{catalog_id}/package_sizes"
+    if item_id:
+        api_url += f"?item_id={item_id}"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+
+
+def fetch_item_detail(
+    cookie: str,
+    item_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+) -> dict:
+    """Fetch full item details by scraping the item page HTML.
+
+    The API endpoint /api/v2/items/{id} does not exist as a public endpoint
+    on Vinted. Item data is delivered via Nuxt.js SSR, embedded in the HTML
+    page as __NUXT_DATA__. We fetch the page and extract it.
+    """
+    page_url = f"{BASE_URL}/items/{item_id}"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/catalog", transport_mode)
+    # Request HTML (normal page navigation, not API)
+    headers["Accept"] = (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,image/apng,*/*;q=0.8"
+    )
+    headers["Sec-Fetch-Dest"] = "document"
+    headers["Sec-Fetch-Mode"] = "navigate"
+    headers["Sec-Fetch-Site"] = "same-origin"
+    headers["Sec-Fetch-User"] = "?1"
+    headers["Upgrade-Insecure-Requests"] = "1"
+
+    req_kwargs: dict = {
+        "url": page_url,
+        "headers": headers,
+        "timeout": 30,
+        "allow_redirects": True,
+    }
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    if resp.status_code == 429:
+        raise VintedError("RATE_LIMITED", "Too many requests", 429)
+    if resp.status_code == 403:
+        raise VintedError("FORBIDDEN", "Access forbidden", 403)
+    if resp.status_code == 404:
+        raise VintedError("NOT_FOUND", f"Item {item_id} not found", 404)
+    if resp.status_code not in (200,):
+        raise VintedError("HTTP_ERROR", f"HTTP {resp.status_code}", resp.status_code)
+
+    html = resp.text
+
+    # Check for DataDome/bot challenge (but NOT regular HTML since we expect HTML)
+    body_lower = html[:2000].lower()
+    if "datadome" in body_lower and "captcha" in body_lower:
+        reset_session(proxy, transport_mode)
+        raise VintedError("DATADOME_CHALLENGE", "Bot challenge on item page", 403)
+
+    item_data = _extract_item_from_html(html, item_id)
+    if not item_data:
+        raise VintedError(
+            "PARSE_ERROR",
+            f"Could not extract item data for {item_id} from page HTML (len={len(html)})",
+        )
+
+    # Normalize SSR field names to canonical Vinted API field names
+    normalized = _normalize_ssr_item(item_data)
+    return {"item": normalized}
+
+
+# ─── SSR Data Normalisation ──────────────────────────────────────────────────
+
+
+def _normalize_ssr_item(raw: dict) -> dict:
+    """Normalize Vinted SSR/Nuxt item data to canonical API field names.
+
+    The Nuxt SSR payload uses nested objects and different key names than the
+    Vinted API (PUT /api/v2/item_upload/items/{id}).  This function flattens
+    nested objects and remaps keys so the TypeScript consumer always receives
+    a consistent shape: {catalog_id, brand_id, brand_title, size_id, status_id,
+    color_ids, package_size_id, price, ...}.
+
+    Also logs the raw SSR key set for diagnostics (visible in the Python bridge
+    console) so field-name mismatches can be diagnosed.
+    """
+    import sys
+    _keys = sorted(raw.keys()) if isinstance(raw, dict) else []
+    print(f"[normalize_ssr_item] raw keys ({len(_keys)}): {_keys}", file=sys.stderr)
+
+    out: dict = {}
+
+    # ── Pass-through simple scalar fields ────────────────────────────────
+    for key in (
+        "id", "title", "description", "is_unisex", "isbn",
+        "measurement_length", "measurement_width",
+        "manufacturer", "manufacturer_labelling",
+        "video_game_rating_id", "model_metadata",
+    ):
+        if key in raw and raw[key] is not None:
+            out[key] = raw[key]
+
+    # ── Price — number, string, or {amount, currency_code} ───────────────
+    price_raw = raw.get("price")
+    if isinstance(price_raw, dict):
+        out["price"] = price_raw.get("amount", price_raw.get("price"))
+        out["currency"] = price_raw.get("currency_code", "GBP")
+    elif price_raw is not None:
+        out["price"] = price_raw
+
+    # ── catalog_id (category) ────────────────────────────────────────────
+    out["catalog_id"] = (
+        raw.get("catalog_id")
+        or raw.get("category_id")
+        or raw.get("catalogId")
+        or raw.get("categoryId")
+    )
+    for nested_key in ("category", "catalog", "catalogue"):
+        obj = raw.get(nested_key)
+        if isinstance(obj, dict) and not out.get("catalog_id"):
+            out["catalog_id"] = obj.get("id")
+
+    # ── brand_id / brand_title ───────────────────────────────────────────
+    out["brand_id"] = raw.get("brand_id") or raw.get("brandId")
+    brand_title = None
+    for bkey in ("brand_dto", "brand"):
+        bval = raw.get(bkey)
+        if isinstance(bval, dict):
+            if not out.get("brand_id"):
+                out["brand_id"] = bval.get("id")
+            brand_title = bval.get("title") or bval.get("name") or brand_title
+        elif isinstance(bval, str) and bval:
+            brand_title = bval
+    out["brand_title"] = brand_title or raw.get("brand_title") or raw.get("brandTitle")
+
+    # ── size_id ──────────────────────────────────────────────────────────
+    out["size_id"] = raw.get("size_id") or raw.get("sizeId")
+    size_val = raw.get("size")
+    if isinstance(size_val, dict) and not out.get("size_id"):
+        out["size_id"] = size_val.get("id")
+    out["size_title"] = (
+        raw.get("size_title")
+        or (size_val.get("title") if isinstance(size_val, dict) else None)
+        or (size_val if isinstance(size_val, str) else None)
+    )
+
+    # ── status_id (condition) ────────────────────────────────────────────
+    out["status_id"] = raw.get("status_id") or raw.get("statusId")
+    status_val = raw.get("status")
+    if isinstance(status_val, dict) and not out.get("status_id"):
+        out["status_id"] = status_val.get("id")
+    elif isinstance(status_val, str) and not out.get("status_id"):
+        _cond_map = {
+            "New with tags": 6, "new_with_tags": 6,
+            "New without tags": 1, "new_without_tags": 1,
+            "Very good": 2, "very_good": 2,
+            "Good": 3, "good": 3,
+            "Satisfactory": 4, "satisfactory": 4,
+            "Not fully functional": 5,
+        }
+        out["status_id"] = _cond_map.get(status_val)
+
+    # ── package_size_id ──────────────────────────────────────────────────
+    out["package_size_id"] = raw.get("package_size_id") or raw.get("packageSizeId")
+    pkg_val = raw.get("package_size")
+    if isinstance(pkg_val, dict) and not out.get("package_size_id"):
+        out["package_size_id"] = pkg_val.get("id")
+
+    # ── color_ids ────────────────────────────────────────────────────────
+    cids = raw.get("color_ids") or raw.get("colorIds")
+    if isinstance(cids, list):
+        out["color_ids"] = cids
+    else:
+        colors_arr = raw.get("colors")
+        if isinstance(colors_arr, list):
+            out["color_ids"] = [
+                c.get("id") if isinstance(c, dict) else c
+                for c in colors_arr
+                if (c.get("id") if isinstance(c, dict) else c) is not None
+            ]
+        else:
+            ids = []
+            c1 = raw.get("color1_id") or raw.get("color1Id")
+            c2 = raw.get("color2_id") or raw.get("color2Id")
+            if c1:
+                ids.append(c1)
+            if c2:
+                ids.append(c2)
+            if ids:
+                out["color_ids"] = ids
+
+    # ── item_attributes (materials, etc.) ────────────────────────────────
+    attrs = raw.get("item_attributes") or raw.get("itemAttributes") or raw.get("attributes")
+    if attrs is not None:
+        out["item_attributes"] = attrs
+
+    # ── shipment_prices ──────────────────────────────────────────────────
+    sp = raw.get("shipment_prices") or raw.get("shipmentPrices")
+    if sp is not None:
+        out["shipment_prices"] = sp
+
+    # ── is_hidden / is_closed / is_reserved / is_draft flags ─────────────
+    for flag in ("is_hidden", "is_closed", "is_reserved", "is_draft"):
+        if flag in raw:
+            out[flag] = raw[flag]
+
+    # ── photos (preserve for downstream) ─────────────────────────────────
+    photos = raw.get("photos")
+    if isinstance(photos, list):
+        out["photos"] = photos
+
+    # Strip None values to keep the output clean
+    return {k: v for k, v in out.items() if v is not None}
+
+
+# ─── Nuxt SSR Data Extraction ────────────────────────────────────────────────
+
+
+def _extract_item_from_html(html: str, item_id: int) -> dict | None:
+    """Extract item data from Vinted page HTML.
+    Tries Nuxt __NUXT_DATA__ first, then Schema.org JSON-LD."""
+
+    # Strategy 1: Nuxt 3 __NUXT_DATA__ payload
+    nuxt_matches = re.findall(
+        r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    for raw in nuxt_matches:
+        data = _parse_nuxt_payload(raw.strip())
+        if data:
+            item = _find_item_in_data(data, item_id)
+            if item:
+                return item
+
+    # Strategy 2: Schema.org JSON-LD
+    ld_matches = re.findall(
+        r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    for raw in ld_matches:
+        try:
+            ld = json.loads(raw.strip())
+            items = ld if isinstance(ld, list) else [ld]
+            for entry in items:
+                if isinstance(entry, dict) and entry.get("@type") == "Product":
+                    return _schema_org_to_item(entry, item_id)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Strategy 3: window.__NUXT__ (older Nuxt 2 format)
+    nuxt2_match = re.search(
+        r"window\.__NUXT__\s*=\s*(\{.+?\})\s*;?\s*</script>",
+        html,
+        re.DOTALL,
+    )
+    if nuxt2_match:
+        try:
+            data = json.loads(nuxt2_match.group(1))
+            item = _find_item_in_data(data, item_id)
+            if item:
+                return item
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return None
+
+
+def _parse_nuxt_payload(raw_json: str) -> dict | None:
+    """Parse Nuxt 3 __NUXT_DATA__ compressed array format into a dict."""
+    try:
+        arr = json.loads(raw_json)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    if not isinstance(arr, list) or len(arr) <= 1:
+        return None
+
+    header = arr[0]
+    if not isinstance(header, list) or len(header) < 2:
+        return None
+    if header[0] not in ("Reactive", "ShallowReactive"):
+        return None
+
+    return _resolve_nuxt_node(arr, 1, depth=0)
+
+
+def _resolve_nuxt_node(arr: list, idx: int, depth: int = 0) -> object:
+    """Recursively resolve a Nuxt compressed-array reference."""
+    if depth > 40 or idx < 0 or idx >= len(arr):
+        return None
+
+    node = arr[idx]
+
+    if isinstance(node, dict):
+        result = {}
+        for k, v in node.items():
+            if isinstance(v, int):
+                result[k] = _resolve_nuxt_node(arr, v, depth + 1)
+            else:
+                result[k] = v
+        return result
+
+    if isinstance(node, list):
+        if not node:
+            return []
+        first = node[0]
+        if isinstance(first, str):
+            if first in ("Ref", "EmptyRef", "EmptyShallowRef", "ShallowReactive", "Reactive"):
+                return _resolve_nuxt_node(arr, node[1], depth + 1) if len(node) > 1 else None
+            if first == "Set":
+                return [_resolve_nuxt_node(arr, v, depth + 1) for v in node[1:]]
+            if first == "null":
+                # dict-as-list: ["null", key1, val_idx1, key2, val_idx2, ...]
+                result = {}
+                for i in range(1, len(node) - 1, 2):
+                    k = node[i]
+                    v = node[i + 1]
+                    result[k] = _resolve_nuxt_node(arr, v, depth + 1) if isinstance(v, int) else v
+                return result
+        # Regular list — resolve each element
+        return [
+            _resolve_nuxt_node(arr, v, depth + 1) if isinstance(v, int) else v
+            for v in node
+        ]
+
+    # Leaf value (string, number, bool, null)
+    return node
+
+
+def _find_item_in_data(data: object, item_id: int, depth: int = 0) -> dict | None:
+    """Recursively search for the item object matching item_id."""
+    if depth > 25:
+        return None
+
+    if isinstance(data, dict):
+        if data.get("id") == item_id and ("title" in data or "description" in data):
+            return data
+        for v in data.values():
+            found = _find_item_in_data(v, item_id, depth + 1)
+            if found:
+                return found
+
+    elif isinstance(data, list):
+        for v in data:
+            found = _find_item_in_data(v, item_id, depth + 1)
+            if found:
+                return found
+
+    return None
+
+
+def _schema_org_to_item(schema: dict, item_id: int) -> dict:
+    """Convert Schema.org Product markup into Vinted-like item dict."""
+    item: dict = {"id": item_id, "title": schema.get("name", "")}
+
+    if schema.get("description"):
+        item["description"] = schema["description"]
+
+    offers = schema.get("offers")
+    if isinstance(offers, dict):
+        if offers.get("price"):
+            item["price"] = offers["price"]
+        item["currency"] = offers.get("priceCurrency", "GBP")
+
+    brand = schema.get("brand")
+    if isinstance(brand, dict):
+        item["brand"] = brand.get("name", "")
+
+    condition_map = {
+        "https://schema.org/NewCondition": 6,
+        "https://schema.org/UsedCondition": 3,
+        "https://schema.org/RefurbishedCondition": 2,
+    }
+    item_condition = schema.get("itemCondition", "")
+    if item_condition in condition_map:
+        item["status_id"] = condition_map[item_condition]
+
+    images = schema.get("image", [])
+    if isinstance(images, list):
+        item["photos"] = [
+            {"url": img} if isinstance(img, str) else img for img in images
+        ]
+
+    return item
 
 
 # ─── Photo Upload ────────────────────────────────────────────────────────────
