@@ -1193,8 +1193,9 @@ function EditItemModal({
     return [];
   });
 
-  // Loading state for item detail fetch
+  // Loading/error state for item detail fetch
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
 
   // ── State: niche fields (models, ISBN, measurements, video game, etc.) ──
   const [nicheAttributes, setNicheAttributes] = useState<NicheAttribute[]>([]);
@@ -1206,6 +1207,12 @@ function EditItemModal({
   const [measurementLength, setMeasurementLength] = useState('');
   const [measurementWidth, setMeasurementWidth] = useState('');
   const [modelsLoading, setModelsLoading] = useState(false);
+
+  // DOM-scraped text values from the Vinted page (used for reverse lookups)
+  const [domColours, setDomColours] = useState('');
+  const [domMaterials, setDomMaterials] = useState('');
+  const [domSize, setDomSize] = useState('');
+  const [domParcelSize, setDomParcelSize] = useState('');
 
   // ── Load static ontology data & fetch item detail for pre-filling ──
   useEffect(() => {
@@ -1224,37 +1231,51 @@ function EditItemModal({
       console.log('[EditModal] Fetching item detail for vinted_item_id:', item.vinted_item_id);
       window.vinted.getItemDetail(item.vinted_item_id).then((r) => {
         console.log('[EditModal] Item detail response:', r.ok, r.ok ? 'has data' : (r as { code?: string; message?: string }).message);
-        if (!r.ok || !r.data) return;
-        // Handle both { item: {...} } and bare {...} response shapes
+        if (!r.ok || !r.data) {
+          const errMsg = (r as { message?: string }).message || 'Failed to load item details';
+          const is404 = errMsg.includes('404') || errMsg.includes('NOT_FOUND');
+          setDetailError(is404
+            ? 'This item may have been sold or deleted on Vinted. Fields will need to be filled manually.'
+            : 'Could not load full item details. Some fields may need manual input.');
+          return;
+        }
         const raw = r.data as Record<string, unknown>;
         const d = (raw.item ?? raw) as Record<string, unknown>;
-        console.log('[EditModal] Item detail keys:', Object.keys(d));
-        console.log('[EditModal] Item detail sample values:', {
-          catalog_id: d.catalog_id, category_id: d.category_id,
-          brand_id: d.brand_id, brand_title: d.brand_title, brand: typeof d.brand === 'string' ? d.brand : (d.brand ? 'object' : undefined),
-          size_id: d.size_id, status_id: d.status_id,
-          color_ids: d.color_ids, color1_id: d.color1_id, color2_id: d.color2_id,
-          package_size_id: d.package_size_id,
-          is_unisex: d.is_unisex,
-          price: typeof d.price === 'object' ? 'price_object' : d.price,
+
+        // Log debug data from the browser-based extraction
+        const debug = raw._debug as Record<string, unknown> | undefined;
+        if (debug) {
+          console.log('[EditModal] === DEBUG: Extraction source ===', debug.source);
+          console.log('[EditModal] === DEBUG: Match count ===', debug.matchCount);
+          console.log('[EditModal] === DEBUG: Page title ===', debug.docTitle);
+        }
+
+        console.log('[EditModal] Normalized item keys:', Object.keys(d));
+        console.log('[EditModal] Normalized item values:', {
+          catalog_id: d.catalog_id, brand_id: d.brand_id, brand_title: d.brand_title,
+          size_id: d.size_id, size_title: d.size_title,
+          status_id: d.status_id, color_ids: d.color_ids,
+          package_size_id: d.package_size_id, is_unisex: d.is_unisex,
+          price: d.price, description: d.description ? 'present' : 'missing',
         });
 
-        // ── Normalize SSR data: flatten nested objects from Nuxt __NUXT_DATA__ ──
-        // The Nuxt SSR payload may use nested objects (brand: {id, title}) instead
-        // of flat fields (brand_id, brand_title) used by the Vinted API.
-        const brandObj = d.brand && typeof d.brand === 'object' ? d.brand as Record<string, unknown> : null;
+        // ── Normalize: flatten nested objects from React fiber data ──
+        // Vinted's React components use brand_dto, size_dto, etc. as nested objects
+        const brandObj = (d.brand_dto ?? d.brand) as Record<string, unknown> | string | null;
+        const brandObjDict = brandObj && typeof brandObj === 'object' ? brandObj as Record<string, unknown> : null;
         const catObj = (d.category ?? d.catalog) as Record<string, unknown> | undefined;
         const sizeObj = d.size && typeof d.size === 'object' ? d.size as Record<string, unknown> : null;
         const statusObj = d.status && typeof d.status === 'object' ? d.status as Record<string, unknown> : null;
-        const pkgObj = d.package_size && typeof d.package_size === 'object' ? d.package_size as Record<string, unknown> : null;
+        const pkgObj = (d.package_size ?? d.package_size_dto) as Record<string, unknown> | undefined;
+        const pkgObjDict = pkgObj && typeof pkgObj === 'object' ? pkgObj as Record<string, unknown> : null;
         const priceObj = d.price && typeof d.price === 'object' ? d.price as Record<string, unknown> : null;
 
-        // Resolve brand_id: flat field, or nested brand.id
-        const resolvedBrandId = d.brand_id ? Number(d.brand_id) : (brandObj?.id ? Number(brandObj.id) : 0);
+        // Resolve brand_id: flat field, brand_dto.id, or brand.id
+        const resolvedBrandId = d.brand_id ? Number(d.brand_id) : (brandObjDict?.id ? Number(brandObjDict.id) : 0);
         const resolvedBrandName = d.brand_title ? String(d.brand_title)
-          : (brandObj?.title ? String(brandObj.title)
-            : (brandObj?.name ? String(brandObj.name)
-              : (typeof d.brand === 'string' ? String(d.brand) : '')));
+          : (brandObjDict?.title ? String(brandObjDict.title)
+            : (brandObjDict?.name ? String(brandObjDict.name)
+              : (typeof brandObj === 'string' ? String(brandObj) : '')));
 
         // Resolve catalog_id: flat field, or nested category/catalog .id
         const resolvedCatId = d.catalog_id ? Number(d.catalog_id)
@@ -1318,6 +1339,83 @@ function EditItemModal({
         if (d.isbn) setIsbn(String(d.isbn));
         if (d.measurement_length) setMeasurementLength(String(d.measurement_length));
         if (d.measurement_width) setMeasurementWidth(String(d.measurement_width));
+
+        // ── Reverse-lookup brand_id from brand_title ──
+        if (!resolvedBrandId && resolvedBrandName) {
+          window.vinted.searchBrands(resolvedBrandName, resolvedCatId || undefined).then((br: { ok: boolean; data?: unknown }) => {
+            const brands = (br.ok && br.data && typeof br.data === 'object')
+              ? ((br.data as Record<string, unknown>).brands as { id: number; title: string }[] | undefined) ?? []
+              : [];
+            const exactMatch = brands.find((b) => b.title.toLowerCase() === resolvedBrandName.toLowerCase());
+            if (exactMatch) {
+              console.log('[EditModal] Reverse-lookup brand_id:', exactMatch.id, exactMatch.title);
+              setSelectedBrandId(exactMatch.id);
+              setSelectedBrandName(exactMatch.title);
+              setBrandResults((prev) => {
+                if (prev.find((b) => b.id === exactMatch.id)) return prev;
+                return [{ id: exactMatch.id, name: exactMatch.title }, ...prev];
+              });
+            }
+          }).catch(() => {});
+        }
+
+        // ── Store DOM-scraped text values for reverse lookup ──
+        // These get matched against ontology options when the category-change
+        // useEffect loads sizes, materials, colours, and package sizes.
+        const domColourStr = d._dom_colours as string | undefined;
+        const domMatStr = d._dom_materials as string | undefined;
+        const domSizeStr = d._dom_size as string | undefined;
+        const domPkgStr = d._dom_parcel_size as string | undefined;
+
+        if (domColourStr) setDomColours(domColourStr);
+        if (domMatStr) {
+          setDomMaterials(domMatStr);
+          // Pre-select materials using negative placeholder IDs (DOM-scraped, no API lookup)
+          // These get matched against real IDs when/if the materials API loads.
+          if (selectedMaterialIds.length === 0) {
+            const matNames = domMatStr.split(',').map((s: string) => s.trim()).filter(Boolean);
+            setSelectedMaterialIds(matNames.map((_: string, i: number) => -(i + 1)));
+          }
+        }
+        if (domSizeStr) setDomSize(domSizeStr);
+        if (domPkgStr) setDomParcelSize(domPkgStr);
+
+        console.log('[EditModal] DOM-scraped values:', {
+          colours: domColourStr, materials: domMatStr,
+          size: domSizeStr, parcel: domPkgStr,
+        });
+
+        // ── Immediate colour lookup from allColors (already loaded) ──
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:colorLookup',message:'Color lookup entry',data:{domColourStr,resolvedColorIdsLen:resolvedColorIds.length,willRun:!!(domColourStr && resolvedColorIds.length === 0)},timestamp:Date.now(),hypothesisId:'H1,H2'})}).catch(()=>{});
+        // #endregion
+        if (domColourStr && resolvedColorIds.length === 0) {
+          const colourNames = domColourStr.split(',').map((s: string) => s.trim()).filter(Boolean);
+          // Ontology returns objects with .name (not .title) and .entity_id (the color ID for the API)
+          window.vinted.getOntology('color').then((colors: Record<string, unknown>[]) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:colorOntologyFixed',message:'Color ontology with .name',data:{colorCount:Array.isArray(colors)?colors.length:0,firstColor:Array.isArray(colors)&&colors[0]?colors[0]:null,colourNames},timestamp:Date.now(),hypothesisId:'H1-fix'})}).catch(()=>{});
+            // #endregion
+            const matched: number[] = [];
+            for (const name of colourNames) {
+              const found = (Array.isArray(colors) ? colors : []).find((c) => {
+                const cName = String(c.name || c.title || '');
+                return cName.toLowerCase() === name.toLowerCase();
+              });
+              if (found) {
+                // Use entity_id (the Vinted color ID) if available, otherwise use id
+                matched.push(Number(found.entity_id ?? found.id));
+              }
+            }
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:colorMatchedFixed',message:'Color matching result (fixed)',data:{colourNames,matchedIds:matched},timestamp:Date.now(),hypothesisId:'H1-fix'})}).catch(()=>{});
+            // #endregion
+            if (matched.length > 0) {
+              console.log('[EditModal] Reverse-lookup color_ids:', matched);
+              setSelectedColorIds(matched);
+            }
+          }).catch(() => {});
+        }
       }).catch((err) => {
         console.error('[EditModal] Item detail fetch failed:', err);
       }).finally(() => setDetailLoading(false));
@@ -1346,21 +1444,68 @@ function EditItemModal({
         }
       }
       setSizeOptions(flat);
+      // Reverse-lookup size_id from DOM-scraped size label
+      if (domSize && !selectedSizeId) {
+        const match = flat.find((s) => s.title.toLowerCase() === domSize.toLowerCase());
+        if (match) {
+          console.log('[EditModal] Reverse-lookup size_id:', match.id, match.title);
+          setSelectedSizeId(match.id);
+        }
+      }
     }).catch(() => setSizeOptions([]));
 
     // Fetch materials & attribute config via POST /attributes
     window.vinted.getMaterials(catId).then((r: { ok: boolean; data?: unknown }) => {
+      // #region agent log
+      const rawAttrs = r?.ok && r?.data ? (r.data as Record<string,unknown>).attributes : 'NO_DATA';
+      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:getMaterials',message:'getMaterials response',data:{ok:r?.ok,hasData:!!r?.data,attrIsArray:Array.isArray(rawAttrs),attrCount:Array.isArray(rawAttrs)?rawAttrs.length:0,attrCodes:Array.isArray(rawAttrs)?rawAttrs.map((a:Record<string,unknown>)=>a.code).slice(0,10):[],rawDataKeys:r?.data?Object.keys(r.data as object).slice(0,10):[]},timestamp:Date.now(),hypothesisId:'H3-mat'})}).catch(()=>{});
+      // #endregion
       const { materials, availableFields: fields, nicheAttributes: niche } = extractFromAttributes(r);
       setMaterialOptions(materials);
       if (fields.length > 0) setAvailableFields(fields);
       setNicheAttributes(niche);
+      // Reverse-lookup material IDs from DOM-scraped material names
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:matLookup',message:'Material lookup entry',data:{domMaterials,selectedMaterialIdsLen:selectedMaterialIds.length,materialsCount:materials.length,willRun:!!(domMaterials && selectedMaterialIds.length === 0 && materials.length > 0),sampleMatTitles:materials.slice(0,5).map((m: {id:number;title:string})=>m.title)},timestamp:Date.now(),hypothesisId:'H3,H4'})}).catch(()=>{});
+      // #endregion
+      // Also try reverse-lookup if we have placeholder IDs (negative) from DOM scraping
+      if (domMaterials && materials.length > 0 && (selectedMaterialIds.length === 0 || selectedMaterialIds.some((id) => id < 0))) {
+        const matNames = domMaterials.split(',').map((s) => s.trim()).filter(Boolean);
+        const matched: number[] = [];
+        for (const name of matNames) {
+          const found = materials.find((m: {id:number;title:string}) => m.title.toLowerCase() === name.toLowerCase());
+          if (found) matched.push(found.id);
+        }
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:matMatched',message:'Material matching result',data:{matNames,matchedIds:matched},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
+        if (matched.length > 0) {
+          console.log('[EditModal] Reverse-lookup material_ids:', matched);
+          setSelectedMaterialIds(matched);
+        }
+      }
     }).catch(() => setMaterialOptions([]));
 
     // Fetch package sizes — response: { package_sizes: [{ id, title, ... }] }
     const vintedItemId = item.vinted_item_id ?? undefined;
     window.vinted.getPackageSizes(catId, vintedItemId).then((r: { ok: boolean; data?: unknown }) => {
       const pkgs = extractArray(r, 'package_sizes');
-      if (pkgs.length > 0) setPackageSizeOptions(pkgs);
+      if (pkgs.length > 0) {
+        setPackageSizeOptions(pkgs);
+        // Reverse-lookup package_size_id from DOM-scraped parcel size label
+        if (domParcelSize && packageSizeId <= 3) {
+          const match = pkgs.find((p) => p.title.toLowerCase() === domParcelSize.toLowerCase());
+          if (match) {
+            console.log('[EditModal] Reverse-lookup package_size_id:', match.id, match.title);
+            setPackageSizeId(match.id);
+          }
+        }
+        // If still default and API response has a "recommended" one, use it
+        if (packageSizeId <= 3) {
+          const recommended = pkgs.find((p: Record<string, unknown>) => (p as Record<string, unknown>).is_recommended === true);
+          if (recommended) setPackageSizeId(recommended.id);
+        }
+      }
     }).catch(() => {});
 
     // Fetch conditions — response: { conditions: [{ id, title, explanation }] }
@@ -1519,6 +1664,11 @@ function EditItemModal({
             Fetching listing details from Vinted...
           </div>
         )}
+        {detailError && (
+          <div style={{ background: 'rgba(255,180,0,0.12)', border: '1px solid rgba(255,180,0,0.3)', borderRadius: 8, padding: spacing.sm, marginBottom: spacing.md, fontSize: font.size.sm, color: '#ffb400' }}>
+            {detailError}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}>
 
@@ -1586,8 +1736,11 @@ function EditItemModal({
             </select>
           </div>
 
-          {/* ── Size (Category-specific dropdown — only shown if the category has sizes) ── */}
-          {(sizeOptions.length > 0 || !selectedCategoryId || (availableFields.length > 0 && availableFields.includes('size'))) && (
+          {/* ── Size (Category-specific dropdown — hidden if category has no size groups) ──
+               When availableFields is empty (attributes API broken), fall back to
+               checking whether the DOM scraping found a size value on the view page.
+               If domSize is empty AND availableFields is empty, the item has no size. */}
+          {(sizeOptions.length > 0 && (availableFields.includes('size') || (availableFields.length === 0 && !!domSize))) && (
             <div>
               <label style={labelStyle}>Size</label>
               {sizeOptions.length > 0 ? (
@@ -1625,11 +1778,15 @@ function EditItemModal({
             }}
           />
 
-          {/* ── Material (Category-specific dropdown, multi-select up to 3) ── */}
-          {materialOptions.length > 0 && (
+          {/* ── Material (Category-specific dropdown, multi-select up to 3) ──
+               Show if materialOptions loaded from API, OR if DOM scraping found materials */}
+          {(materialOptions.length > 0 || domMaterials) && (
             <SearchableSelect
               label="Material (max 3)"
-              options={materialOptions.map((m) => ({ id: m.id, name: m.title }))}
+              options={materialOptions.length > 0
+                ? materialOptions.map((m) => ({ id: m.id, name: m.title }))
+                : domMaterials.split(',').map((s, i) => ({ id: -(i + 1), name: s.trim() }))
+              }
               value={selectedMaterialIds}
               onChange={(v) => setSelectedMaterialIds(Array.isArray(v) ? v : [v])}
               placeholder="Search materials..."

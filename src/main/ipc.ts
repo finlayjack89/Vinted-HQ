@@ -259,10 +259,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('wardrobe:getModels', (_event, catalogId: number, brandId: number) =>
     bridge.fetchOntologyModels(catalogId, brandId)
   );
-  ipcMain.handle('wardrobe:getItemDetail', (_event, itemId: number) => {
-    // Fetch item detail WITHOUT proxy — this endpoint is geo-sensitive and
-    // proxies with non-UK IPs get redirected to wrong Vinted domains (e.g. vinted.fr).
-    // Using the user's own session cookie directly is safe (normal browser behavior).
-    return bridge.fetchItemDetail(itemId);
+  ipcMain.handle('wardrobe:getItemDetail', async (_event, itemId: number) => {
+    // Use a hidden BrowserWindow to load the Vinted item page and extract
+    // data via JS injection.  Vinted is a full SPA — the HTML contains only
+    // 6 SEO fields; all real data is loaded by JavaScript after hydration.
+    // This approach mirrors what dotb.io (Chrome extension) does.
+    const { fetchItemDetailViaBrowser } = await import('./itemDetailBrowser');
+    return fetchItemDetailViaBrowser(itemId);
   });
 }

@@ -758,12 +758,30 @@ def fetch_ontology_materials(
     if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
+    # region agent log
+    _log_path = __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.dirname(__import__('os').path.abspath(__file__))), ".cursor", "debug.log")
+    try:
+        with open(_log_path, "a") as _f:
+            _f.write(__import__('json').dumps({"location":"vinted_client.py:fetch_materials","message":"Materials POST request","data":{"catalog_id":catalog_id,"payload":payload,"has_csrf":bool(csrf_token),"has_anon":bool(anon_id),"transport_mode":transport_mode,"proxy_set":bool(proxy)},"timestamp":int(time.time()*1000),"hypothesisId":"H-mat-api"}) + "\n")
+    except Exception:
+        pass
+    # endregion
+
     try:
         resp = session.post(**req_kwargs)
     except requests.errors.RequestsError as e:
         raise VintedError("REQUEST_FAILED", str(e))
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
+
+    # region agent log
+    try:
+        _resp_text = resp.text[:500] if resp.text else "EMPTY"
+        with open(_log_path, "a") as _f:
+            _f.write(__import__('json').dumps({"location":"vinted_client.py:fetch_materials_resp","message":"Materials API response","data":{"status_code":resp.status_code,"content_type":resp.headers.get("content-type",""),"resp_len":len(resp.text) if resp.text else 0,"resp_preview":_resp_text[:300]},"timestamp":int(time.time()*1000),"hypothesisId":"H-mat-api"}) + "\n")
+    except Exception:
+        pass
+    # endregion
 
     return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
 
@@ -803,25 +821,15 @@ def fetch_ontology_package_sizes(
     return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
 
 
-def fetch_item_detail(
+def _fetch_page_html(
+    url: str,
     cookie: str,
-    item_id: int,
-    csrf_token: str | None = None,
-    anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
-) -> dict:
-    """Fetch full item details by scraping the item page HTML.
-
-    The API endpoint /api/v2/items/{id} does not exist as a public endpoint
-    on Vinted. Item data is delivered via Nuxt.js SSR, embedded in the HTML
-    page as __NUXT_DATA__. We fetch the page and extract it.
-    """
-    page_url = f"{BASE_URL}/items/{item_id}"
-
+) -> str:
+    """Fetch a Vinted page as HTML, handling errors and challenges."""
     session = _get_session(proxy, transport_mode)
     headers = _build_headers(cookie, f"{BASE_URL}/catalog", transport_mode)
-    # Request HTML (normal page navigation, not API)
     headers["Accept"] = (
         "text/html,application/xhtml+xml,application/xml;q=0.9,"
         "image/avif,image/webp,image/apng,*/*;q=0.8"
@@ -833,7 +841,7 @@ def fetch_item_detail(
     headers["Upgrade-Insecure-Requests"] = "1"
 
     req_kwargs: dict = {
-        "url": page_url,
+        "url": url,
         "headers": headers,
         "timeout": 30,
         "allow_redirects": True,
@@ -853,28 +861,147 @@ def fetch_item_detail(
     if resp.status_code == 403:
         raise VintedError("FORBIDDEN", "Access forbidden", 403)
     if resp.status_code == 404:
-        raise VintedError("NOT_FOUND", f"Item {item_id} not found", 404)
+        raise VintedError("NOT_FOUND", f"Page not found: {url}", 404)
     if resp.status_code not in (200,):
         raise VintedError("HTTP_ERROR", f"HTTP {resp.status_code}", resp.status_code)
 
     html = resp.text
-
-    # Check for DataDome/bot challenge (but NOT regular HTML since we expect HTML)
     body_lower = html[:2000].lower()
     if "datadome" in body_lower and "captcha" in body_lower:
         reset_session(proxy, transport_mode)
-        raise VintedError("DATADOME_CHALLENGE", "Bot challenge on item page", 403)
+        raise VintedError("DATADOME_CHALLENGE", "Bot challenge detected", 403)
 
-    item_data = _extract_item_from_html(html, item_id)
-    if not item_data:
+    return html
+
+
+def fetch_item_detail(
+    cookie: str,
+    item_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+) -> dict:
+    """Fetch full item details by scraping Vinted page HTML.
+
+    Tries multiple pages and extraction strategies:
+      1. Fetch the EDIT page (/items/{id}/edit) — contains ALL numeric IDs
+         because the edit form needs them (catalog_id, brand_id, size_id, etc.)
+      2. Fall back to the VIEW page (/items/{id}) — only has 6 basic fields
+      3. Supplement with regex-based field extraction from the raw HTML
+      4. Include debug data for the frontend to diagnose missing fields
+    """
+    import sys
+
+    merged: dict = {}
+    debug_info: dict = {"pages_tried": []}
+
+    # ── Try 1: EDIT page — the edit form SSR includes all numeric IDs ──
+    # The view page only has 6 fields (id, title, description, price,
+    # currency, brand).  The EDIT page needs catalog_id, brand_id, size_id,
+    # status_id, color_ids, package_size_id for its form, so the SSR
+    # payload includes them.
+    edit_url = f"{BASE_URL}/items/{item_id}/edit"
+    try:
+        edit_html = _fetch_page_html(edit_url, cookie, proxy, transport_mode)
+        edit_item = _extract_item_from_html(edit_html, item_id)
+        edit_regex = _extract_fields_regex(edit_html, item_id)
+
+        # Log __NUXT_DATA__ diagnostics for edit page
+        nuxt_raw = re.findall(
+            r'<script[^>]*(?:id=["\']?__NUXT_DATA__["\']?|data-nuxt-data)[^>]*>(.*?)</script>',
+            edit_html, re.DOTALL | re.IGNORECASE,
+        )
+        debug_info["edit_page"] = {
+            "html_len": len(edit_html),
+            "nuxt_tags": len(nuxt_raw),
+            "nuxt_first_300": nuxt_raw[0][:300] if nuxt_raw else "NONE",
+            "nuxt_total_bytes": sum(len(r) for r in nuxt_raw),
+            "item_keys": sorted(edit_item.keys()) if edit_item else [],
+            "regex_keys": sorted(edit_regex.keys()),
+        }
+        debug_info["pages_tried"].append("edit")
+        print(f"[fetch_item_detail] EDIT page: nuxt_tags={len(nuxt_raw)}, "
+              f"nuxt_bytes={sum(len(r) for r in nuxt_raw)}, "
+              f"item_keys={sorted(edit_item.keys()) if edit_item else 'None'}, "
+              f"regex_keys={sorted(edit_regex.keys())}", file=sys.stderr)
+
+        if edit_item:
+            merged.update(edit_item)
+        if edit_regex:
+            for k, v in edit_regex.items():
+                merged.setdefault(k, v)
+    except VintedError as e:
+        debug_info["edit_page"] = {"error": f"{e.code}: {e.message}"}
+        debug_info["pages_tried"].append(f"edit(failed:{e.code})")
+        print(f"[fetch_item_detail] EDIT page failed: {e.code}: {e.message}", file=sys.stderr)
+
+    # ── Try 2: VIEW page — fallback, only has basic fields ──
+    if len(merged) < 8:
+        view_url = f"{BASE_URL}/items/{item_id}"
+        try:
+            view_html = _fetch_page_html(view_url, cookie, proxy, transport_mode)
+            view_item = _extract_item_from_html(view_html, item_id)
+            view_regex = _extract_fields_regex(view_html, item_id)
+
+            nuxt_raw = re.findall(
+                r'<script[^>]*(?:id=["\']?__NUXT_DATA__["\']?|data-nuxt-data)[^>]*>(.*?)</script>',
+                view_html, re.DOTALL | re.IGNORECASE,
+            )
+            debug_info["view_page"] = {
+                "html_len": len(view_html),
+                "nuxt_tags": len(nuxt_raw),
+                "nuxt_first_300": nuxt_raw[0][:300] if nuxt_raw else "NONE",
+                "nuxt_total_bytes": sum(len(r) for r in nuxt_raw),
+                "item_keys": sorted(view_item.keys()) if view_item else [],
+                "regex_keys": sorted(view_regex.keys()),
+            }
+            debug_info["pages_tried"].append("view")
+
+            if view_item:
+                for k, v in view_item.items():
+                    merged.setdefault(k, v)
+            if view_regex:
+                for k, v in view_regex.items():
+                    merged.setdefault(k, v)
+        except VintedError as e:
+            debug_info["view_page"] = {"error": f"{e.code}: {e.message}"}
+            debug_info["pages_tried"].append(f"view(failed:{e.code})")
+
+    if not merged:
         raise VintedError(
             "PARSE_ERROR",
-            f"Could not extract item data for {item_id} from page HTML (len={len(html)})",
+            f"Could not extract item data for {item_id} from any page. "
+            f"Debug: {json.dumps(debug_info, default=str)[:500]}",
         )
 
-    # Normalize SSR field names to canonical Vinted API field names
-    normalized = _normalize_ssr_item(item_data)
-    return {"item": normalized}
+    # Normalize SSR field names to canonical API field names
+    normalized = _normalize_ssr_item(merged)
+
+    raw_keys = sorted(merged.keys())
+    debug_values: dict = {}
+    for k in raw_keys:
+        v = merged[k]
+        if isinstance(v, str) and len(v) > 80:
+            debug_values[k] = v[:80] + "..."
+        elif isinstance(v, (list, dict)):
+            s = json.dumps(v, default=str)
+            debug_values[k] = s[:120] + ("..." if len(s) > 120 else "")
+        else:
+            debug_values[k] = v
+
+    print(f"[fetch_item_detail] merged keys: {raw_keys}", file=sys.stderr)
+    print(f"[fetch_item_detail] normalized keys: {sorted(normalized.keys())}", file=sys.stderr)
+
+    return {
+        "item": normalized,
+        "_debug": {
+            **debug_info,
+            "raw_keys": raw_keys,
+            "raw_values": debug_values,
+            "normalized_keys": sorted(normalized.keys()),
+        },
+    }
 
 
 # ─── SSR Data Normalisation ──────────────────────────────────────────────────
@@ -1021,25 +1148,150 @@ def _normalize_ssr_item(raw: dict) -> dict:
     return {k: v for k, v in out.items() if v is not None}
 
 
+# ─── Regex-based Field Extraction ─────────────────────────────────────────────
+
+
+def _extract_fields_regex(html: str, item_id: int) -> dict:
+    """Extract item fields by searching the raw HTML for known field patterns.
+
+    This is a fallback strategy: it scans the HTML for JSON-like key:value
+    patterns (e.g. "catalog_id":552) and collects them.  Because the HTML
+    may contain related items, we restrict the search to a window around the
+    first occurrence of the item_id.
+    """
+    import sys
+    result: dict = {}
+
+    # Find the position of the item_id in the HTML to scope our search
+    id_pattern = rf'(?:"id"\s*:\s*{item_id}|"id"\s*,\s*{item_id})'
+    id_match = re.search(id_pattern, html)
+    if id_match:
+        # Search a generous window around the item ID
+        start = max(0, id_match.start() - 5000)
+        end = min(len(html), id_match.end() + 50000)
+        window = html[start:end]
+    else:
+        # Fall back to full HTML
+        window = html
+
+    # Integer fields — try every known naming convention
+    int_fields = [
+        ("catalog_id", r'"catalog_id"\s*[":,]\s*(\d+)'),
+        ("catalog_id", r'"category_id"\s*[":,]\s*(\d+)'),
+        ("catalog_id", r'"catalogId"\s*[":,]\s*(\d+)'),
+        ("catalog_id", r'"categoryId"\s*[":,]\s*(\d+)'),
+        ("catalog_id", r'"catalog"\s*[":,]\s*(\d+)'),
+        ("brand_id", r'"brand_id"\s*[":,]\s*(\d+)'),
+        ("brand_id", r'"brandId"\s*[":,]\s*(\d+)'),
+        ("size_id", r'"size_id"\s*[":,]\s*(\d+)'),
+        ("size_id", r'"sizeId"\s*[":,]\s*(\d+)'),
+        ("status_id", r'"status_id"\s*[":,]\s*(\d+)'),
+        ("status_id", r'"statusId"\s*[":,]\s*(\d+)'),
+        ("status_id", r'"condition_id"\s*[":,]\s*(\d+)'),
+        ("package_size_id", r'"package_size_id"\s*[":,]\s*(\d+)'),
+        ("package_size_id", r'"packageSizeId"\s*[":,]\s*(\d+)'),
+        ("package_size_id", r'"shipping_size_id"\s*[":,]\s*(\d+)'),
+        ("color1_id", r'"color1_id"\s*[":,]\s*(\d+)'),
+        ("color1_id", r'"color1Id"\s*[":,]\s*(\d+)'),
+        ("color2_id", r'"color2_id"\s*[":,]\s*(\d+)'),
+        ("color2_id", r'"color2Id"\s*[":,]\s*(\d+)'),
+    ]
+    for field, pattern in int_fields:
+        if field not in result:
+            m = re.search(pattern, window)
+            if m:
+                result[field] = int(m.group(1))
+
+    # Boolean fields
+    bool_fields = [
+        ("is_unisex", r'"is_unisex"\s*[":,]\s*(true|false)'),
+    ]
+    for field, pattern in bool_fields:
+        m = re.search(pattern, window)
+        if m:
+            result[field] = m.group(1) == "true"
+
+    # String fields — extract short quoted strings
+    str_fields = [
+        ("description", r'"description"\s*[":,]\s*"((?:[^"\\]|\\.){5,2000})"'),
+        ("title", r'"title"\s*[":,]\s*"((?:[^"\\]|\\.){3,200})"'),
+    ]
+    for field, pattern in str_fields:
+        m = re.search(pattern, window)
+        if m:
+            result[field] = m.group(1)
+
+    # Also look for brand_title in various forms
+    for bp in [r'"brand_title"\s*[":,]\s*"([^"]+)"', r'"brand"\s*[":,]\s*"([^"]{1,100})"']:
+        m = re.search(bp, window)
+        if m:
+            result.setdefault("brand_title", m.group(1))
+            break
+
+    # Look for color_ids as an array
+    cids_m = re.search(r'"color_ids"\s*[":,]\s*\[([^\]]*)\]', window)
+    if cids_m:
+        try:
+            result["color_ids"] = [int(x.strip()) for x in cids_m.group(1).split(",") if x.strip().isdigit()]
+        except ValueError:
+            pass
+
+    print(f"[regex_extract] Found fields: {sorted(result.keys())}", file=sys.stderr)
+    return result
+
+
 # ─── Nuxt SSR Data Extraction ────────────────────────────────────────────────
 
 
 def _extract_item_from_html(html: str, item_id: int) -> dict | None:
     """Extract item data from Vinted page HTML.
-    Tries Nuxt __NUXT_DATA__ first, then Schema.org JSON-LD."""
+    Tries multiple strategies: Nuxt __NUXT_DATA__, window.__NUXT__,
+    Schema.org JSON-LD, and raw JSON blobs."""
+    import sys
 
-    # Strategy 1: Nuxt 3 __NUXT_DATA__ payload
+    # ── Strategy 1a: Nuxt 3 __NUXT_DATA__ script tags ──
+    # Match various attribute orderings and quote styles
     nuxt_matches = re.findall(
-        r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)</script>',
+        r'<script[^>]*(?:id=["\']?__NUXT_DATA__["\']?|data-nuxt-data)[^>]*>(.*?)</script>',
         html,
-        re.DOTALL,
+        re.DOTALL | re.IGNORECASE,
     )
-    for raw in nuxt_matches:
-        data = _parse_nuxt_payload(raw.strip())
+    print(f"[extract_html] __NUXT_DATA__ tags found: {len(nuxt_matches)}", file=sys.stderr)
+
+    best_item: dict | None = None
+    best_key_count = 0
+
+    for i, raw in enumerate(nuxt_matches):
+        stripped = raw.strip()
+        print(f"[extract_html] Tag {i}: len={len(stripped)}, first 150 chars: {stripped[:150]}", file=sys.stderr)
+
+        # Try standard Nuxt 3 format (["Reactive", 1] or ["ShallowReactive", 1])
+        data = _parse_nuxt_payload(stripped)
         if data:
+            # Search the ENTIRE parsed tree for the item
             item = _find_item_in_data(data, item_id)
-            if item:
-                return item
+            if item and isinstance(item, dict):
+                key_count = len(item)
+                print(f"[extract_html] Nuxt payload found item with {key_count} keys: {sorted(item.keys())[:20]}", file=sys.stderr)
+                if key_count > best_key_count:
+                    best_item = item
+                    best_key_count = key_count
+
+        # Try as raw JSON (some Nuxt builds emit plain JSON, not compressed)
+        if not data:
+            try:
+                data = json.loads(stripped)
+                if isinstance(data, dict):
+                    item = _find_item_in_data(data, item_id)
+                    if item and isinstance(item, dict) and len(item) > best_key_count:
+                        print(f"[extract_html] Raw JSON found item with {len(item)} keys", file=sys.stderr)
+                        best_item = item
+                        best_key_count = len(item)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+    if best_item:
+        return best_item
 
     # Strategy 2: Schema.org JSON-LD
     ld_matches = re.findall(

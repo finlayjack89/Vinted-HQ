@@ -165,15 +165,16 @@ function upsertFromVintedItem(vintedItem: Record<string, unknown>): number {
   const photos = (vintedItem.photos as Record<string, unknown>[] | undefined) ?? [];
   const photoUrls = photos.map((p) => String(p.url || p.full_size_url || ''));
 
-  // Handle brand — wardrobe list gives brand as a string, item detail gives it as an object
+  // Handle brand — wardrobe list gives brand as a string, item detail gives brand_dto as object
   let brandId: number | null = null;
   let brandName: string | null = null;
-  if (vintedItem.brand && typeof vintedItem.brand === 'object') {
-    const brandObj = vintedItem.brand as Record<string, unknown>;
+  const brandField = vintedItem.brand_dto ?? vintedItem.brand;
+  if (brandField && typeof brandField === 'object') {
+    const brandObj = brandField as Record<string, unknown>;
     brandId = brandObj.id ? Number(brandObj.id) : null;
     brandName = String(brandObj.title || brandObj.name || '');
-  } else if (typeof vintedItem.brand === 'string') {
-    brandName = vintedItem.brand;
+  } else if (typeof brandField === 'string') {
+    brandName = brandField;
   }
   if (vintedItem.brand_id) brandId = Number(vintedItem.brand_id);
 
