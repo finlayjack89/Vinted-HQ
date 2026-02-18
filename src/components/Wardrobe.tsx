@@ -1214,6 +1214,9 @@ function EditItemModal({
   const [domSize, setDomSize] = useState('');
   const [domParcelSize, setDomParcelSize] = useState('');
 
+  // Debug popup: avoid opening twice in React StrictMode.
+  const openedDebugForItemRef = useRef<number | null>(null);
+
   // ── Load static ontology data & fetch item detail for pre-filling ──
   useEffect(() => {
     window.vinted.getOntology('category').then(setAllCategories).catch(() => {});
@@ -1227,6 +1230,13 @@ function EditItemModal({
     // status (string), and photos — it does NOT include description, catalog_id, brand_id,
     // size_id, status_id, color_ids, item_attributes, package_size_id, etc.
     if (item.vinted_item_id) {
+      // Always-on debug window for capturing full Network logs.
+      if (openedDebugForItemRef.current !== item.vinted_item_id) {
+        openedDebugForItemRef.current = item.vinted_item_id;
+        window.vinted.openEditDebugWindow(item.vinted_item_id).catch((err) => {
+          console.warn('[EditModal] openEditDebugWindow failed:', err);
+        });
+      }
       setDetailLoading(true);
       console.log('[EditModal] Fetching item detail for vinted_item_id:', item.vinted_item_id);
       window.vinted.getItemDetail(item.vinted_item_id).then((r) => {

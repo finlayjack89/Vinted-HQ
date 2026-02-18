@@ -6,7 +6,7 @@
  * - close window immediately on success
  */
 
-import { BrowserWindow, WebContents, session } from 'electron';
+import { BrowserWindow, WebContents } from 'electron';
 import * as secureStorage from './secureStorage';
 import * as credentialStore from './credentialStore';
 import * as sessionService from './sessionService';
@@ -22,9 +22,16 @@ const REQUIRED_COOKIES = ['_vinted_fr_session', 'access_token_web', 'refresh_tok
 
 /**
  * Sets up passive network interception on the given session to capture
- * authentication tokens (CSRF, User-Agent) from valid Vinted API requests.
+ * authentication tokens (CSRF, anon_id, User-Agent) from valid Vinted API requests.
  */
 export function setupNetworkInterception(ses: Electron.Session): void {
+  // Avoid installing duplicate listeners on the same session.
+  // Electron's webRequest API doesn't provide a clean way to remove a specific
+  // listener later, so we treat this as a one-time installation per session.
+  const _any = ses as unknown as { __vintedInterceptionInstalled?: boolean };
+  if (_any.__vintedInterceptionInstalled) return;
+  _any.__vintedInterceptionInstalled = true;
+
   const filter = {
     urls: [
       '*://www.vinted.co.uk/api/v2/*',
@@ -43,12 +50,15 @@ export function setupNetworkInterception(ses: Electron.Session): void {
       const headers = details.requestHeaders;
       let csrfToken: string | null = null;
       let userAgent: string | null = null;
+      let anonId: string | null = null;
 
       // Case-insensitive header lookup
       for (const key of Object.keys(headers)) {
         const lowerKey = key.toLowerCase();
         if (lowerKey === 'x-csrf-token') {
           csrfToken = headers[key];
+        } else if (lowerKey === 'x-anon-id') {
+          anonId = headers[key];
         } else if (lowerKey === 'user-agent') {
           userAgent = headers[key];
         }
@@ -59,6 +69,14 @@ export function setupNetworkInterception(ses: Electron.Session): void {
         if (csrfToken !== storedToken) {
           settings.setSetting('csrf_token', csrfToken);
           logger.info('[AuthCapture] Captured new CSRF token', { token_prefix: csrfToken.slice(0, 10) });
+        }
+      }
+
+      if (anonId) {
+        const storedAnon = settings.getSetting('anon_id');
+        if (anonId !== storedAnon) {
+          settings.setSetting('anon_id', anonId);
+          logger.info('[AuthCapture] Captured new anon_id', { anon_id: anonId });
         }
       }
 

@@ -269,7 +269,8 @@ declare global {
       refreshOntology: () => Promise<void>;
       getOntology: (entityType: string) => Promise<OntologyEntity[]>;
       getSizes: (catalogId: number) => Promise<BridgeResult>;
-      getMaterials: (catalogId: number) => Promise<BridgeResult>;
+      openEditDebugWindow: (itemId: number) => Promise<void>;
+      getMaterials: (catalogId: number, itemId?: number) => Promise<BridgeResult>;
       getPackageSizes: (catalogId: number, itemId?: number) => Promise<BridgeResult>;
       getConditions: (catalogId: number) => Promise<BridgeResult>;
       searchBrands: (keyword: string, categoryId?: number) => Promise<BridgeResult>;

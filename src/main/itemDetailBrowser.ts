@@ -254,20 +254,21 @@ async function _doFetch(
 
 
 // ── Generic Authenticated Browser Fetch ──
-// Use the authenticated browser context to make arbitrary API calls
+// Use the authenticated browser context to make arbitrary API calls.
+// Strategy: navigate to a Vinted page, wait for Vinted's own JS to make
+// API calls (which carry valid CSRF tokens), capture those tokens via
+// network interception, then make our own call with the same token.
 export async function fetchViaBrowser(
   urlPath: string,
   options: { method: string; body?: string; referer?: string }
 ): Promise<{ ok: boolean; status?: number; data?: unknown; error?: string; text?: string }> {
-  // Use the same partition as the main scraper to share cookies/session
   const ses = session.fromPartition('persist:vinted-scraper');
+  // Ensure global passive capture is installed (CSRF, anon_id, UA).
   setupNetworkInterception(ses);
   ses.setUserAgent(CHROME_UA);
 
-  // We need a window to execute the fetch in the context of the domain
-  // Reuse existing window logic but point to base URL
   const win = new BrowserWindow({
-    show: true,
+    show: false,
     width: 1024,
     height: 800,
     webPreferences: {
@@ -278,7 +279,7 @@ export async function fetchViaBrowser(
   });
 
   try {
-    // 1. Load the base domain or specific referer to establish origin context
+    // 1. Navigate to the edit page so Vinted's own JS loads and makes authenticated API calls
     const targetUrl = options.referer || VINTED_BASE;
     logger.info('browser-fetch-navigating', { url: targetUrl });
     await win.loadURL(targetUrl);
@@ -286,35 +287,67 @@ export async function fetchViaBrowser(
     // 2. Inject stealth patches
     await win.webContents.executeJavaScript(STEALTH_PATCHES, true).catch(() => {});
 
-    // 3. Construct the fetch script
-    // We need to scrape the CSRF token first, then use it in the header
+    // 3. Wait briefly for passive interception to capture CSRF + anon_id.
+    //    Important: for this endpoint Vinted expects *both* x-csrf-token and x-anon-id.
+    //    We prefer captured header values over naive cookie parsing (document.cookie can
+    //    contain multiple anon_id values with different paths).
+    let capturedCsrf = settings.getSetting('csrf_token') as string | null;
+    let capturedAnon = settings.getSetting('anon_id') as string | null;
+
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline && (!capturedCsrf || !capturedAnon)) {
+      capturedCsrf = settings.getSetting('csrf_token') as string | null;
+      capturedAnon = settings.getSetting('anon_id') as string | null;
+
+      // Fallback: if anon_id hasn't been seen in headers yet, read from cookies.
+      if (!capturedAnon) {
+        try {
+          const cookies = await ses.cookies.get({ name: 'anon_id' });
+          if (cookies.length > 0) {
+            // Prefer the cookie that will be sent to most requests.
+            const best =
+              cookies.find((c) => c.domain.includes('vinted.co.uk') && (c.path === '/' || !c.path)) ??
+              cookies[0];
+            if (best?.value) {
+              capturedAnon = best.value;
+              settings.setSetting('anon_id', capturedAnon);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
+      if (capturedCsrf && capturedAnon) break;
+      await sleep(250);
+    }
+
+    logger.info('browser-fetch-token-status', {
+      hasCsrf: !!capturedCsrf,
+      csrfPrefix: capturedCsrf ? capturedCsrf.slice(0, 10) : 'NONE',
+      hasAnon: !!capturedAnon,
+      anonPrefix: capturedAnon ? capturedAnon.slice(0, 8) : 'NONE',
+    });
+
+    // 4. Build the fetch script with the CAPTURED token injected directly
+    const csrfValue = capturedCsrf ? capturedCsrf.replace(/'/g, "\\'") : '';
+    const anonValue = capturedAnon ? capturedAnon.replace(/'/g, "\\'") : '';
+    const refValue = options.referer ? options.referer.replace(/'/g, "\\'") : '';
     const script = `
       (async function() {
-        // Scrape CSRF
-        let csrfToken = null;
-        try {
-          const meta = document.querySelector('meta[name="csrf-token"]');
-          if (meta) csrfToken = meta.content;
-          if (!csrfToken) {
-             const nextData = document.getElementById('__NEXT_DATA__');
-             if (nextData) {
-               const json = JSON.parse(nextData.textContent);
-               if (json.runtimeConfig && json.runtimeConfig.csrfToken) csrfToken = json.runtimeConfig.csrfToken;
-               if (json.props && json.props.pageProps && json.props.pageProps.csrfToken) csrfToken = json.props.pageProps.csrfToken;
-             }
-          }
-        } catch(e) {}
-
         const headers = {
           'Content-Type': 'application/json',
           'Accept': 'application/json, text/plain, */*',
+          'accept-features': 'ALL',
+          'locale': 'en-GB',
         };
-        if (csrfToken) headers['x-csrf-token'] = csrfToken;
+        ${csrfValue ? `headers['x-csrf-token'] = '${csrfValue}';` : ''}
+        ${anonValue ? `headers['x-anon-id'] = '${anonValue}';` : ''}
 
         try {
           const res = await fetch('${urlPath}', {
             method: '${options.method}',
             headers: headers,
+            credentials: 'include',
+            ${refValue ? `referrer: '${refValue}', referrerPolicy: 'strict-origin-when-cross-origin',` : ''}
             body: ${options.body ? `'${options.body.replace(/'/g, "\\'")}'` : 'null'}
           });
           
@@ -326,20 +359,15 @@ export async function fetchViaBrowser(
             ok: res.ok,
             status: res.status,
             data: json,
-            text: text.slice(0, 1000) // debug: increased capture size
+            text: text.slice(0, 1000)
           };
         } catch (err) {
           return { ok: false, error: err.toString() };
         }
       })()
     `;
-    
-    // Wait for hydration if navigating to an edit page
-    if (targetUrl.includes('/edit')) {
-       await sleep(3000); // Give the Vinted SPA a moment to hydrate
-    }
 
-    // 4. Execute
+    // 5. Execute
     const result = await withTimeout(
         win.webContents.executeJavaScript(script, true),
         15000,
@@ -353,6 +381,7 @@ export async function fetchViaBrowser(
     logger.error('browser-fetch-error', { url: urlPath, error: msg });
     return { ok: false, error: msg };
   } finally {
+    // Clean up: close the window
     try { win.close(); } catch {}
   }
 }
