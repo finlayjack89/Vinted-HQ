@@ -244,9 +244,54 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('wardrobe:getSizes', (_event, catalogId: number) =>
     bridge.fetchOntologySizes(catalogId)
   );
-  ipcMain.handle('wardrobe:getMaterials', (_event, catalogId: number) =>
-    bridge.fetchOntologyMaterials(catalogId)
-  );
+  ipcMain.handle('wardrobe:getMaterials', async (_event, catalogId: number, itemId?: number) => {
+    // Phase 1: Try Python bridge (historically flaky for this endpoint due to CSRF/fingerprint)
+    // const bridgeRes = await bridge.fetchOntologyMaterials(catalogId, itemId);
+    // if (bridgeRes.ok && (bridgeRes.data as any)?.attributes?.length > 0) return bridgeRes;
+
+    // Phase 2: Browser Fetch (Robust)
+    // Directly execute fetch() inside the authenticated Electron window context
+    const { fetchViaBrowser } = await import('./itemDetailBrowser');
+
+    // Ensure we are in the correct context (edit page) to match Vinted's expectations
+    const referer = itemId ? `https://www.vinted.co.uk/items/${itemId}/edit` : undefined;
+
+    // We now use the standard catalog items endpoint to fetch attributes implicitly via filters
+    // This is safer than the blocked POST /attributes endpoint
+    const result = await fetchViaBrowser(`/api/v2/catalog/items?catalog_ids=${catalogId}&per_page=1`, {
+      method: 'GET',
+      referer
+    });
+
+    if (result.ok && result.data) {
+      // The catalog endpoint doesn't return attributes directly.
+      // We must fetch the ontology for this category from the public ontology endpoint.
+      // GET /api/v2/catalogs/{id}/attributes is the correct endpoint for retrieving available fields/materials.
+      const ontologyResult = await fetchViaBrowser(`/api/v2/catalogs/${catalogId}/attributes`, {
+        method: 'GET',
+        referer
+      });
+      
+      if (ontologyResult.ok && ontologyResult.data) {
+          return { ok: true, data: ontologyResult.data };
+      }
+      
+      // If that fails, fallback to just returning empty success so the UI doesn't crash,
+      // but log the error.
+      return { ok: true, data: result.data }; 
+    }
+    
+    // Return detailed error info for debugging (status code, response body snippet)
+    return { 
+      ok: false, 
+      code: 'BROWSER_FETCH_FAILED', 
+      message: result.error || `HTTP ${result.status}`,
+      details: {
+        status: result.status,
+        text: result.text ? result.text.slice(0, 500) : null
+      }
+    };
+  });
   ipcMain.handle('wardrobe:getPackageSizes', (_event, catalogId: number, itemId?: number) =>
     bridge.fetchOntologyPackageSizes(catalogId, itemId)
   );

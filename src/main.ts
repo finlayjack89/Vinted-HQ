@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol, net } from 'electron';
+import { app, BrowserWindow, protocol, net, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -12,6 +12,7 @@ import * as settings from './main/settings';
 import * as ontologyService from './main/ontologyService';
 import * as inventoryService from './main/inventoryService';
 import * as proxyService from './main/proxyService';
+import { setupNetworkInterception } from './main/authCapture';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -131,6 +132,13 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
+  // Setup passive auth capture on the default session
+  try {
+    setupNetworkInterception(session.defaultSession);
+  } catch (err) {
+    console.error('[Main] Failed to setup network interception:', err);
+  }
+
   // Serve local images via local-image:// protocol (works in both dev and production)
   // With standard:true, Chromium treats the first path segment as a host and lowercases it.
   // e.g. local-image:///Users/foo/bar → host="users", pathname="/foo/bar"

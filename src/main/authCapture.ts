@@ -6,7 +6,7 @@
  * - close window immediately on success
  */
 
-import { BrowserWindow, WebContents } from 'electron';
+import { BrowserWindow, WebContents, session } from 'electron';
 import * as secureStorage from './secureStorage';
 import * as credentialStore from './credentialStore';
 import * as sessionService from './sessionService';
@@ -17,6 +17,66 @@ const VINTED_LOGIN_URL = 'https://www.vinted.co.uk/member/signup/select_type';
 const COOKIE_TIMEOUT_MS = 180_000;
 const AUTH_PARTITION = 'persist:vinted-auth';
 const REQUIRED_COOKIES = ['_vinted_fr_session', 'access_token_web', 'refresh_token_web'];
+
+// ─── Passive Network Interception ─────────────────────────────────────────────
+
+/**
+ * Sets up passive network interception on the given session to capture
+ * authentication tokens (CSRF, User-Agent) from valid Vinted API requests.
+ */
+export function setupNetworkInterception(ses: Electron.Session): void {
+  const filter = {
+    urls: [
+      '*://www.vinted.co.uk/api/v2/*',
+      '*://www.vinted.fr/api/v2/*',
+      '*://www.vinted.com/api/v2/*',
+      '*://www.vinted.de/api/v2/*',
+      '*://www.vinted.it/api/v2/*',
+      '*://www.vinted.pl/api/v2/*',
+      '*://www.vinted.es/api/v2/*',
+      '*://www.vinted.nl/api/v2/*'
+    ]
+  };
+
+  ses.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
+    try {
+      const headers = details.requestHeaders;
+      let csrfToken: string | null = null;
+      let userAgent: string | null = null;
+
+      // Case-insensitive header lookup
+      for (const key of Object.keys(headers)) {
+        const lowerKey = key.toLowerCase();
+        if (lowerKey === 'x-csrf-token') {
+          csrfToken = headers[key];
+        } else if (lowerKey === 'user-agent') {
+          userAgent = headers[key];
+        }
+      }
+
+      if (csrfToken) {
+        const storedToken = settings.getSetting('csrf_token');
+        if (csrfToken !== storedToken) {
+          settings.setSetting('csrf_token', csrfToken);
+          logger.info('[AuthCapture] Captured new CSRF token', { token_prefix: csrfToken.slice(0, 10) });
+        }
+      }
+
+      if (userAgent) {
+        const storedUA = settings.getSetting('user_agent');
+        if (userAgent !== storedUA) {
+          settings.setSetting('user_agent', userAgent);
+          logger.info('[AuthCapture] Captured new User-Agent', { ua: userAgent });
+        }
+      }
+    } catch (err) {
+      logger.warn('[AuthCapture] Error intercepting headers', { error: String(err) });
+    }
+
+    // Continue request unmodified
+    callback({ requestHeaders: details.requestHeaders });
+  });
+}
 
 export type CookieRefreshResult = {
   ok: boolean;

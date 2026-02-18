@@ -123,7 +123,12 @@ def _build_search_params(params: dict) -> str:
     return qs
 
 
-def _build_headers(cookie: str, referer: str | None = None, transport_mode: str | None = None) -> dict:
+def _build_headers(
+    cookie: str,
+    referer: str | None = None,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
     """Build request headers matching a real Chrome browser fingerprint.
     In DIRECT mode, overlays Chrome 110 mobile headers while preserving
     Cookie, Accept, Referer, and Sec-Fetch headers."""
@@ -139,7 +144,7 @@ def _build_headers(cookie: str, referer: str | None = None, transport_mode: str 
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",
-        "User-Agent": USER_AGENT,
+        "User-Agent": user_agent or USER_AGENT,
     }
     if cookie:
         headers["Cookie"] = cookie
@@ -169,9 +174,10 @@ def _build_write_headers(
     referer: str | None = None,
     upload_form: bool = False,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """Build headers for write operations (POST/PUT/DELETE) that require CSRF."""
-    headers = _build_headers(cookie, referer, transport_mode=transport_mode)
+    headers = _build_headers(cookie, referer, transport_mode=transport_mode, user_agent=user_agent)
     headers["Content-Type"] = "application/json"
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
@@ -227,6 +233,7 @@ def search(
     proxy: str | None = None,
     page: int = 1,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     Fetch catalog items from a Vinted search/catalog URL.
@@ -254,7 +261,7 @@ def search(
     session = _get_session(proxy, transport_mode)
     req_kwargs: dict = {
         "url": api_url,
-        "headers": _build_headers(cookie, referer, transport_mode),
+        "headers": _build_headers(cookie, referer, transport_mode, user_agent=user_agent),
         "timeout": 30,
     }
     # Safety: DIRECT mode must never use a proxy, regardless of what was passed.
@@ -320,6 +327,7 @@ def checkout_build(
     cookie: str,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     Initiate checkout: POST /api/v2/purchases/checkout/build
@@ -328,7 +336,7 @@ def checkout_build(
     payload = {"purchase_items": [{"id": order_id, "type": "transaction"}]}
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, transport_mode=transport_mode)
+    headers = _build_headers(cookie, transport_mode=transport_mode, user_agent=user_agent)
     headers["Content-Type"] = "application/json"
 
     req_kwargs: dict = {
@@ -376,6 +384,7 @@ def checkout_put(
     cookie: str,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     PUT checkout step: components (verification, pickup, payment, etc.)
@@ -384,7 +393,7 @@ def checkout_put(
     payload = {"components": components}
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, transport_mode=transport_mode)
+    headers = _build_headers(cookie, transport_mode=transport_mode, user_agent=user_agent)
     headers["Content-Type"] = "application/json"
 
     req_kwargs: dict = {
@@ -434,6 +443,7 @@ def nearby_pickup_points(
     proxy: str | None = None,
     country_code: str = "GB",
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     GET nearby pickup points for drop-off delivery.
@@ -450,7 +460,7 @@ def nearby_pickup_points(
     session = _get_session(proxy, transport_mode)
     req_kwargs: dict = {
         "url": full_url,
-        "headers": _build_headers(cookie, transport_mode=transport_mode),
+        "headers": _build_headers(cookie, transport_mode=transport_mode, user_agent=user_agent),
         "timeout": 30,
     }
     if proxy and transport_mode != "DIRECT":
@@ -500,13 +510,14 @@ def fetch_wardrobe(
     page: int = 1,
     per_page: int = 20,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """GET /api/v2/wardrobe/{user_id}/items — fetch user's own listings."""
     qs = urlencode({"page": page, "per_page": per_page, "order": "relevance"})
     api_url = f"{BASE_URL}/api/v2/wardrobe/{user_id}/items?{qs}"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -535,12 +546,13 @@ def fetch_ontology_categories(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/catalogs — fetch full category tree."""
     api_url = f"{BASE_URL}/api/v2/item_upload/catalogs"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -568,6 +580,7 @@ def fetch_ontology_brands(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/brands — fetch brands, optionally filtered."""
     params: dict = {}
@@ -581,7 +594,7 @@ def fetch_ontology_brands(
         api_url += f"?{qs}"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -607,12 +620,13 @@ def fetch_ontology_colors(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/colors — fetch all color options."""
     api_url = f"{BASE_URL}/api/v2/item_upload/colors"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -639,13 +653,14 @@ def fetch_ontology_conditions(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/conditions?catalog_id={id} — conditions for category."""
     qs = urlencode({"catalog_id": catalog_id})
     api_url = f"{BASE_URL}/api/v2/item_upload/conditions?{qs}"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -673,13 +688,14 @@ def fetch_ontology_models(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/models?catalog_id={cat}&brand_id={brand} — models for a luxury brand."""
     qs = urlencode({"catalog_id": catalog_id, "brand_id": brand_id})
     api_url = f"{BASE_URL}/api/v2/item_upload/models?{qs}"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -706,13 +722,14 @@ def fetch_ontology_sizes(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """GET /api/v2/item_upload/size_groups?catalog_ids={id} — size groups for a category."""
     qs = urlencode({"catalog_ids": catalog_id})
     api_url = f"{BASE_URL}/api/v2/item_upload/size_groups?{qs}"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -735,10 +752,12 @@ def fetch_ontology_sizes(
 def fetch_ontology_materials(
     cookie: str,
     catalog_id: int,
+    item_id: int | None = None,
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """POST /api/v2/item_upload/attributes — fetch material options for a category.
     The Vinted API returns materials as part of the attributes endpoint,
@@ -747,7 +766,8 @@ def fetch_ontology_materials(
     payload = {"attributes": [{"code": "category", "value": [catalog_id]}]}
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    referer = f"{BASE_URL}/items/{item_id}/edit" if item_id else f"{BASE_URL}/items/new"
+    headers = _build_headers(cookie, referer, transport_mode, user_agent=user_agent)
     headers["Content-Type"] = "application/json"
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
@@ -769,6 +789,10 @@ def fetch_ontology_materials(
 
     try:
         resp = session.post(**req_kwargs)
+        import sys
+        print(f"[fetch_ontology_materials] Status: {resp.status_code} | Body len: {len(resp.text)}", file=sys.stderr)
+        if resp.status_code == 200:
+             print(f"[fetch_ontology_materials] Body prefix: {resp.text[:500]}", file=sys.stderr)
     except requests.errors.RequestsError as e:
         raise VintedError("REQUEST_FAILED", str(e))
     except Exception as e:
@@ -794,6 +818,7 @@ def fetch_ontology_package_sizes(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """GET /api/v2/catalogs/{catalog_id}/package_sizes — package sizes for a category."""
     api_url = f"{BASE_URL}/api/v2/catalogs/{catalog_id}/package_sizes"
@@ -801,7 +826,7 @@ def fetch_ontology_package_sizes(
         api_url += f"?item_id={item_id}"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -826,10 +851,11 @@ def _fetch_page_html(
     cookie: str,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> str:
     """Fetch a Vinted page as HTML, handling errors and challenges."""
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/catalog", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/catalog", transport_mode, user_agent=user_agent)
     headers["Accept"] = (
         "text/html,application/xhtml+xml,application/xml;q=0.9,"
         "image/avif,image/webp,image/apng,*/*;q=0.8"
@@ -881,6 +907,7 @@ def fetch_item_detail(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """Fetch full item details by scraping Vinted page HTML.
 
@@ -903,7 +930,7 @@ def fetch_item_detail(
     # payload includes them.
     edit_url = f"{BASE_URL}/items/{item_id}/edit"
     try:
-        edit_html = _fetch_page_html(edit_url, cookie, proxy, transport_mode)
+        edit_html = _fetch_page_html(edit_url, cookie, proxy, transport_mode, user_agent=user_agent)
         edit_item = _extract_item_from_html(edit_html, item_id)
         edit_regex = _extract_fields_regex(edit_html, item_id)
 
@@ -940,7 +967,7 @@ def fetch_item_detail(
     if len(merged) < 8:
         view_url = f"{BASE_URL}/items/{item_id}"
         try:
-            view_html = _fetch_page_html(view_url, cookie, proxy, transport_mode)
+            view_html = _fetch_page_html(view_url, cookie, proxy, transport_mode, user_agent=user_agent)
             view_item = _extract_item_from_html(view_html, item_id)
             view_regex = _extract_fields_regex(view_html, item_id)
 
@@ -1458,6 +1485,7 @@ def upload_photo(
     proxy: str | None = None,
     session: requests.Session | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     POST /api/v2/photos — upload image as multipart/form-data.
@@ -1470,7 +1498,7 @@ def upload_photo(
     if session is None:
         session = _get_session(proxy, transport_mode)
 
-    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/items/new", transport_mode, user_agent=user_agent)
     # Remove Content-Type — curl_cffi sets it with boundary for multipart
     headers.pop("Content-Type", None)
     if csrf_token:
@@ -1516,6 +1544,7 @@ def create_listing(
     proxy: str | None = None,
     session: requests.Session | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     POST /api/v2/item_upload/items — create and publish a new listing.
@@ -1532,6 +1561,7 @@ def create_listing(
         referer=f"{BASE_URL}/items/new",
         upload_form=True,
         transport_mode=transport_mode,
+        user_agent=user_agent,
     )
 
     payload = {
@@ -1574,6 +1604,7 @@ def edit_listing(
     proxy: str | None = None,
     session: requests.Session | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     PUT /api/v2/item_upload/items/{item_id} — edit an existing listing.
@@ -1589,6 +1620,7 @@ def edit_listing(
         referer=f"{BASE_URL}/items/{item_id}/edit",
         upload_form=True,
         transport_mode=transport_mode,
+        user_agent=user_agent,
     )
 
     payload = {
@@ -1629,6 +1661,7 @@ def delete_listing(
     proxy: str | None = None,
     session: requests.Session | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     POST /api/v2/items/{item_id}/delete — delete a live listing.
@@ -1643,6 +1676,7 @@ def delete_listing(
         cookie, csrf_token, anon_id,
         referer=f"{BASE_URL}/items/{item_id}",
         transport_mode=transport_mode,
+        user_agent=user_agent,
     )
     # Delete has empty body — remove Content-Type
     headers.pop("Content-Type", None)
@@ -1674,6 +1708,7 @@ def hide_listing(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     PUT /api/v2/items/{item_id}/is_hidden — hide or unhide a listing.
@@ -1685,6 +1720,7 @@ def hide_listing(
         cookie, csrf_token, anon_id,
         referer=f"{BASE_URL}/items/{item_id}",
         transport_mode=transport_mode,
+        user_agent=user_agent,
     )
 
     req_kwargs: dict = {
@@ -1719,6 +1755,7 @@ def relist_item(
     anon_id: str | None = None,
     proxy: str | None = None,
     transport_mode: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     """
     Full stealth relist sequence under a single sticky proxy session:
@@ -1761,6 +1798,7 @@ def relist_item(
             proxy=proxy,
             session=sticky_session,
             transport_mode=transport_mode,
+            user_agent=user_agent,
         )
         photo_id = result.get("id")
         if photo_id:
@@ -1780,6 +1818,7 @@ def relist_item(
         proxy=proxy,
         session=sticky_session,
         transport_mode=transport_mode,
+        user_agent=user_agent,
     )
 
     # ── Step 3: Wait 10 seconds (delete-post jitter) ──
@@ -1808,6 +1847,7 @@ def relist_item(
         proxy=proxy,
         session=sticky_session,
         transport_mode=transport_mode,
+        user_agent=user_agent,
     )
 
     return {

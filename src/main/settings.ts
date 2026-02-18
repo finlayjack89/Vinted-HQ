@@ -22,6 +22,11 @@ export interface AppSettings {
   sessionAutofillEnabled: boolean;
   sessionAutoSubmitEnabled: boolean;
   transportMode: 'PROXY' | 'DIRECT';
+  csrf_token: string;
+  user_agent: string;
+  anon_id: string;
+  relist_min_delay: number;
+  relist_max_delay: number;
 }
 
 const DEFAULTS: AppSettings = {
@@ -41,6 +46,11 @@ const DEFAULTS: AppSettings = {
   sessionAutofillEnabled: true,
   sessionAutoSubmitEnabled: false,
   transportMode: 'PROXY',
+  csrf_token: '',
+  user_agent: '',
+  anon_id: '',
+  relist_min_delay: 30,
+  relist_max_delay: 90,
 };
 
 const SETTINGS_KEYS: (keyof AppSettings)[] = [
@@ -60,6 +70,11 @@ const SETTINGS_KEYS: (keyof AppSettings)[] = [
   'sessionAutofillEnabled',
   'sessionAutoSubmitEnabled',
   'transportMode',
+  'csrf_token',
+  'user_agent',
+  'anon_id',
+  'relist_min_delay',
+  'relist_max_delay',
 ];
 
 function serialize(value: unknown): string {
@@ -69,7 +84,7 @@ function serialize(value: unknown): string {
 }
 
 function deserialize(key: keyof AppSettings, value: string): unknown {
-  if (key === 'pollingIntervalSeconds' || key === 'latitude' || key === 'longitude' || key === 'verificationThresholdPounds') {
+  if (key === 'pollingIntervalSeconds' || key === 'latitude' || key === 'longitude' || key === 'verificationThresholdPounds' || key === 'relist_min_delay' || key === 'relist_max_delay') {
     return parseFloat(value) || DEFAULTS[key];
   }
   if (

@@ -190,8 +190,8 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:getOntology', entityType),
   getSizes: (catalogId: number) =>
     ipcRenderer.invoke('wardrobe:getSizes', catalogId),
-  getMaterials: (catalogId: number) =>
-    ipcRenderer.invoke('wardrobe:getMaterials', catalogId),
+  getMaterials: (catalogId: number, itemId?: number) =>
+    ipcRenderer.invoke('wardrobe:getMaterials', catalogId, itemId),
   getPackageSizes: (catalogId: number, itemId?: number) =>
     ipcRenderer.invoke('wardrobe:getPackageSizes', catalogId, itemId),
   getConditions: (catalogId: number) =>

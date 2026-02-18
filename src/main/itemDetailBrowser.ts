@@ -19,6 +19,8 @@
 import { BrowserWindow, session } from 'electron';
 import * as secureStorage from './secureStorage';
 import * as proxyService from './proxyService';
+import { setupNetworkInterception } from './authCapture';
+import * as settings from './settings';
 import { logger } from './logger';
 
 const VINTED_BASE = 'https://www.vinted.co.uk';
@@ -49,6 +51,7 @@ export async function fetchItemDetailViaBrowser(
   }
 
   const ses = session.fromPartition('persist:vinted-scraper');
+  setupNetworkInterception(ses);
 
   // ── Chrome user agent ──
   ses.setUserAgent(CHROME_UA);
@@ -188,6 +191,30 @@ async function _doFetch(
       'JS extraction',
     );
 
+    if (result?.csrfToken) {
+      logger.info('item-detail-browser-csrf', { csrfToken: result.csrfToken });
+      settings.setSetting('csrf_token', result.csrfToken);
+      settings.setSetting('user_agent', CHROME_UA);
+    } else {
+      logger.warn('item-detail-browser-csrf-missing', { itemId });
+    }
+
+    // Capture cookies from session and update secureStorage if changed
+    try {
+      const cookies = await ses.cookies.get({ domain: 'vinted.co.uk' });
+      const cookieHeader = cookies
+        .map((c) => `${c.name}=${c.value}`)
+        .join('; ');
+      
+      const stored = secureStorage.retrieveCookie();
+      if (cookieHeader && cookieHeader !== stored) {
+        secureStorage.storeCookie(cookieHeader);
+        logger.info('item-detail-browser-cookies-updated', { count: cookies.length });
+      }
+    } catch (err) {
+      logger.warn('item-detail-browser-cookie-sync-failed', { error: String(err) });
+    }
+
     logger.info('item-detail-browser-result', {
       itemId,
       source: result?.source,
@@ -225,6 +252,110 @@ async function _doFetch(
   }
 }
 
+
+// ── Generic Authenticated Browser Fetch ──
+// Use the authenticated browser context to make arbitrary API calls
+export async function fetchViaBrowser(
+  urlPath: string,
+  options: { method: string; body?: string; referer?: string }
+): Promise<{ ok: boolean; status?: number; data?: unknown; error?: string; text?: string }> {
+  // Use the same partition as the main scraper to share cookies/session
+  const ses = session.fromPartition('persist:vinted-scraper');
+  setupNetworkInterception(ses);
+  ses.setUserAgent(CHROME_UA);
+
+  // We need a window to execute the fetch in the context of the domain
+  // Reuse existing window logic but point to base URL
+  const win = new BrowserWindow({
+    show: true,
+    width: 1024,
+    height: 800,
+    webPreferences: {
+      session: ses,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  try {
+    // 1. Load the base domain or specific referer to establish origin context
+    const targetUrl = options.referer || VINTED_BASE;
+    logger.info('browser-fetch-navigating', { url: targetUrl });
+    await win.loadURL(targetUrl);
+    
+    // 2. Inject stealth patches
+    await win.webContents.executeJavaScript(STEALTH_PATCHES, true).catch(() => {});
+
+    // 3. Construct the fetch script
+    // We need to scrape the CSRF token first, then use it in the header
+    const script = `
+      (async function() {
+        // Scrape CSRF
+        let csrfToken = null;
+        try {
+          const meta = document.querySelector('meta[name="csrf-token"]');
+          if (meta) csrfToken = meta.content;
+          if (!csrfToken) {
+             const nextData = document.getElementById('__NEXT_DATA__');
+             if (nextData) {
+               const json = JSON.parse(nextData.textContent);
+               if (json.runtimeConfig && json.runtimeConfig.csrfToken) csrfToken = json.runtimeConfig.csrfToken;
+               if (json.props && json.props.pageProps && json.props.pageProps.csrfToken) csrfToken = json.props.pageProps.csrfToken;
+             }
+          }
+        } catch(e) {}
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*',
+        };
+        if (csrfToken) headers['x-csrf-token'] = csrfToken;
+
+        try {
+          const res = await fetch('${urlPath}', {
+            method: '${options.method}',
+            headers: headers,
+            body: ${options.body ? `'${options.body.replace(/'/g, "\\'")}'` : 'null'}
+          });
+          
+          const text = await res.text();
+          let json;
+          try { json = JSON.parse(text); } catch(e) { json = null; }
+          
+          return {
+            ok: res.ok,
+            status: res.status,
+            data: json,
+            text: text.slice(0, 1000) // debug: increased capture size
+          };
+        } catch (err) {
+          return { ok: false, error: err.toString() };
+        }
+      })()
+    `;
+    
+    // Wait for hydration if navigating to an edit page
+    if (targetUrl.includes('/edit')) {
+       await sleep(3000); // Give the Vinted SPA a moment to hydrate
+    }
+
+    // 4. Execute
+    const result = await withTimeout(
+        win.webContents.executeJavaScript(script, true),
+        15000,
+        'Browser fetch'
+    );
+    
+    return result;
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('browser-fetch-error', { url: urlPath, error: msg });
+    return { ok: false, error: msg };
+  } finally {
+    try { win.close(); } catch {}
+  }
+}
 
 // ── Stealth patches injected into the page before Vinted's JS runs ──
 // These make Electron's BrowserWindow indistinguishable from regular Chrome.
@@ -276,6 +407,21 @@ function buildExtractionScript(itemId: number): string {
       var _visited = new WeakSet();
       var _searched = 0;
       var MAX_SEARCH = 80000;
+      var _csrfToken = null;
+
+      try {
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) _csrfToken = meta.content;
+        
+        if (!_csrfToken) {
+           var nextData = document.getElementById('__NEXT_DATA__');
+           if (nextData) {
+             var json = JSON.parse(nextData.textContent);
+             if (json.runtimeConfig && json.runtimeConfig.csrfToken) _csrfToken = json.runtimeConfig.csrfToken;
+             if (json.props && json.props.pageProps && json.props.pageProps.csrfToken) _csrfToken = json.props.pageProps.csrfToken;
+           }
+        }
+      } catch(e) {}
 
       // Item-detail field names that indicate an object is item detail data.
       // These fields only appear on item detail objects, not on random UI components.
@@ -382,6 +528,7 @@ function buildExtractionScript(itemId: number): string {
         return {
           source: source,
           data: data,
+          csrfToken: _csrfToken,
           matchCount: matchCount || 1,
           globals: [],
           docTitle: document.title,
@@ -604,6 +751,7 @@ function buildExtractionScript(itemId: number): string {
       return {
         source: 'NOT_FOUND',
         data: null,
+        csrfToken: _csrfToken,
         matchCount: 0,
         globals: [],
         docTitle: document.title,

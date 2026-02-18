@@ -576,15 +576,12 @@ export function clearQueue(): void {
  * Get queue timing settings.
  */
 export function getQueueSettings(): { minDelay: number; maxDelay: number } {
-  const db = require('./db').getDb();
-  if (!db) return { minDelay: 30, maxDelay: 90 };
-
-  const minRow = db.prepare("SELECT value FROM settings WHERE key = 'relist_min_delay'").get() as { value: string } | undefined;
-  const maxRow = db.prepare("SELECT value FROM settings WHERE key = 'relist_max_delay'").get() as { value: string } | undefined;
+  const minDelay = settings.getSetting('relist_min_delay');
+  const maxDelay = settings.getSetting('relist_max_delay');
 
   return {
-    minDelay: minRow ? parseFloat(minRow.value) : 30,
-    maxDelay: maxRow ? parseFloat(maxRow.value) : 90,
+    minDelay: minDelay ?? 30,
+    maxDelay: maxDelay ?? 90,
   };
 }
 
@@ -592,10 +589,8 @@ export function getQueueSettings(): { minDelay: number; maxDelay: number } {
  * Set queue timing settings.
  */
 export function setQueueSettings(minDelay: number, maxDelay: number): void {
-  const db = require('./db').getDb();
-  if (!db) return;
-  db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('relist_min_delay', ?, unixepoch())").run(String(minDelay));
-  db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('relist_max_delay', ?, unixepoch())").run(String(maxDelay));
+  settings.setSetting('relist_min_delay', minDelay);
+  settings.setSetting('relist_max_delay', maxDelay);
 }
 
 // ─── Queue Processing Loop ──────────────────────────────────────────────────

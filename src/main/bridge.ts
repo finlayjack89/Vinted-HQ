@@ -5,6 +5,7 @@
 
 import * as secureStorage from './secureStorage';
 import { getTransportMode } from './proxyService';
+import * as settings from './settings';
 
 const BRIDGE_BASE = 'http://127.0.0.1:37421';
 
@@ -220,25 +221,13 @@ function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   if (cookie) headers['X-Vinted-Cookie'] = cookie;
   // CSRF token and anon_id stored alongside cookie in settings
-  const csrfToken = _getSettingRaw('csrf_token');
-  const anonId = _getSettingRaw('anon_id');
+  const csrfToken = settings.getSetting('csrf_token');
+  const anonId = settings.getSetting('anon_id');
+  const userAgent = settings.getSetting('user_agent');
   if (csrfToken) headers['X-Csrf-Token'] = csrfToken;
   if (anonId) headers['X-Anon-Id'] = anonId;
+  if (userAgent) headers['X-Vinted-User-Agent'] = userAgent;
   return headers;
-}
-
-/** Read a raw string setting from the DB. */
-function _getSettingRaw(key: string): string | null {
-  try {
-    // Dynamic import to avoid circular deps
-    const { getDb } = require('./db');
-    const db = getDb();
-    if (!db) return null;
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
-    return row?.value ?? null;
-  } catch {
-    return null;
-  }
 }
 
 function bridgeError(err: unknown): BridgeResult {
@@ -404,10 +393,11 @@ export async function fetchOntologySizes(catalogId: number, proxy?: string): Pro
 /**
  * Fetch materials for a category.
  */
-export async function fetchOntologyMaterials(catalogId: number, proxy?: string): Promise<BridgeResult> {
+export async function fetchOntologyMaterials(catalogId: number, itemId?: number, proxy?: string): Promise<BridgeResult> {
   const cookie = secureStorage.retrieveCookie();
   if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   const params: Record<string, string> = { catalog_id: String(catalogId), transport_mode: _transportMode() };
+  if (itemId) params.item_id = String(itemId);
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
   try {

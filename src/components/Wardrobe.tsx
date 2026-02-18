@@ -1386,16 +1386,10 @@ function EditItemModal({
         });
 
         // ── Immediate colour lookup from allColors (already loaded) ──
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:colorLookup',message:'Color lookup entry',data:{domColourStr,resolvedColorIdsLen:resolvedColorIds.length,willRun:!!(domColourStr && resolvedColorIds.length === 0)},timestamp:Date.now(),hypothesisId:'H1,H2'})}).catch(()=>{});
-        // #endregion
         if (domColourStr && resolvedColorIds.length === 0) {
           const colourNames = domColourStr.split(',').map((s: string) => s.trim()).filter(Boolean);
           // Ontology returns objects with .name (not .title) and .entity_id (the color ID for the API)
           window.vinted.getOntology('color').then((colors: Record<string, unknown>[]) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:colorOntologyFixed',message:'Color ontology with .name',data:{colorCount:Array.isArray(colors)?colors.length:0,firstColor:Array.isArray(colors)&&colors[0]?colors[0]:null,colourNames},timestamp:Date.now(),hypothesisId:'H1-fix'})}).catch(()=>{});
-            // #endregion
             const matched: number[] = [];
             for (const name of colourNames) {
               const found = (Array.isArray(colors) ? colors : []).find((c) => {
@@ -1407,9 +1401,6 @@ function EditItemModal({
                 matched.push(Number(found.entity_id ?? found.id));
               }
             }
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:colorMatchedFixed',message:'Color matching result (fixed)',data:{colourNames,matchedIds:matched},timestamp:Date.now(),hypothesisId:'H1-fix'})}).catch(()=>{});
-            // #endregion
             if (matched.length > 0) {
               console.log('[EditModal] Reverse-lookup color_ids:', matched);
               setSelectedColorIds(matched);
@@ -1427,6 +1418,9 @@ function EditItemModal({
   useEffect(() => {
     if (!selectedCategoryId) return;
     const catId = selectedCategoryId;
+
+    // Wait until detail fetch completes (if it's running) to ensure session token is captured
+    if (detailLoading) return;
 
     // Fetch size groups — response: { size_groups: [{ id, caption, sizes: [{ id, title }] }] }
     window.vinted.getSizes(catId).then((r: { ok: boolean; data?: unknown }) => {
@@ -1455,19 +1449,14 @@ function EditItemModal({
     }).catch(() => setSizeOptions([]));
 
     // Fetch materials & attribute config via POST /attributes
-    window.vinted.getMaterials(catId).then((r: { ok: boolean; data?: unknown }) => {
-      // #region agent log
-      const rawAttrs = r?.ok && r?.data ? (r.data as Record<string,unknown>).attributes : 'NO_DATA';
-      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:getMaterials',message:'getMaterials response',data:{ok:r?.ok,hasData:!!r?.data,attrIsArray:Array.isArray(rawAttrs),attrCount:Array.isArray(rawAttrs)?rawAttrs.length:0,attrCodes:Array.isArray(rawAttrs)?rawAttrs.map((a:Record<string,unknown>)=>a.code).slice(0,10):[],rawDataKeys:r?.data?Object.keys(r.data as object).slice(0,10):[]},timestamp:Date.now(),hypothesisId:'H3-mat'})}).catch(()=>{});
-      // #endregion
+    window.vinted.getMaterials(catId, item.vinted_item_id).then((r: { ok: boolean; data?: unknown }) => {
+      console.log('[EditModal] getMaterials RAW:', JSON.stringify(r));
       const { materials, availableFields: fields, nicheAttributes: niche } = extractFromAttributes(r);
+      console.log('[EditModal] getMaterials result:', { ok: r?.ok, count: materials.length, fields, niche: niche.length });
       setMaterialOptions(materials);
       if (fields.length > 0) setAvailableFields(fields);
       setNicheAttributes(niche);
       // Reverse-lookup material IDs from DOM-scraped material names
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:matLookup',message:'Material lookup entry',data:{domMaterials,selectedMaterialIdsLen:selectedMaterialIds.length,materialsCount:materials.length,willRun:!!(domMaterials && selectedMaterialIds.length === 0 && materials.length > 0),sampleMatTitles:materials.slice(0,5).map((m: {id:number;title:string})=>m.title)},timestamp:Date.now(),hypothesisId:'H3,H4'})}).catch(()=>{});
-      // #endregion
       // Also try reverse-lookup if we have placeholder IDs (negative) from DOM scraping
       if (domMaterials && materials.length > 0 && (selectedMaterialIds.length === 0 || selectedMaterialIds.some((id) => id < 0))) {
         const matNames = domMaterials.split(',').map((s) => s.trim()).filter(Boolean);
@@ -1476,15 +1465,15 @@ function EditItemModal({
           const found = materials.find((m: {id:number;title:string}) => m.title.toLowerCase() === name.toLowerCase());
           if (found) matched.push(found.id);
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/cb92deac-7f0c-4868-8f25-3eefaf2bd520',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Wardrobe.tsx:matMatched',message:'Material matching result',data:{matNames,matchedIds:matched},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
         if (matched.length > 0) {
           console.log('[EditModal] Reverse-lookup material_ids:', matched);
           setSelectedMaterialIds(matched);
         }
       }
-    }).catch(() => setMaterialOptions([]));
+    }).catch((err) => {
+      console.error('[EditModal] getMaterials failed:', err);
+      setMaterialOptions([]);
+    });
 
     // Fetch package sizes — response: { package_sizes: [{ id, title, ... }] }
     const vintedItemId = item.vinted_item_id ?? undefined;
@@ -1527,7 +1516,7 @@ function EditItemModal({
       }
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategoryId, item.vinted_item_id]);
+  }, [selectedCategoryId, item.vinted_item_id, detailLoading]);
 
   // ── Brand search handler ──
   const handleBrandSearch = async (keyword: string) => {

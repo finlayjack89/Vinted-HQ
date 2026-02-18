@@ -92,6 +92,7 @@ def search(
     base_interval: float = Query(0, ge=0, description="Base delay in seconds before request"),
     jitter: float = Query(1, ge=0, description="Max random jitter in seconds"),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """
     Fetch catalog items from a Vinted search URL.
@@ -103,7 +104,14 @@ def search(
     _rate_limit_if_needed(base_interval, jitter)
 
     try:
-        data = vinted_search(url=url, cookie=x_vinted_cookie, proxy=proxy, page=page, transport_mode=transport_mode)
+        data = vinted_search(
+            url=url,
+            cookie=x_vinted_cookie,
+            proxy=proxy,
+            page=page,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
         return {"ok": True, "data": data}
     except VintedError as e:
         status = e.status_code or 500
@@ -118,6 +126,7 @@ def checkout_build(
     base_interval: float = Query(0, ge=0),
     jitter: float = Query(1, ge=0),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """
     Initiate checkout: POST /api/v2/purchases/checkout/build
@@ -142,6 +151,7 @@ def checkout_build(
             cookie=x_vinted_cookie,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -158,6 +168,7 @@ def checkout_put(
     base_interval: float = Query(0, ge=0),
     jitter: float = Query(1, ge=0),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """
     PUT checkout step: components (verification, pickup, payment, etc.)
@@ -176,6 +187,7 @@ def checkout_put(
             cookie=x_vinted_cookie,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -194,6 +206,7 @@ def nearby_pickup_points(
     base_interval: float = Query(0, ge=0),
     jitter: float = Query(1, ge=0),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """
     Fetch nearby pickup points for drop-off delivery.
@@ -212,6 +225,7 @@ def nearby_pickup_points(
             proxy=proxy,
             country_code=country_code,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -232,6 +246,7 @@ def wardrobe(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch user's own wardrobe listings."""
     if not x_vinted_cookie:
@@ -246,6 +261,7 @@ def wardrobe(
             page=page,
             per_page=per_page,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -262,6 +278,7 @@ def ontology_categories(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch Vinted category tree."""
     if not x_vinted_cookie:
@@ -273,6 +290,7 @@ def ontology_categories(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -288,6 +306,7 @@ def ontology_brands(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch brands, optionally filtered by category or keyword."""
     if not x_vinted_cookie:
@@ -301,6 +320,7 @@ def ontology_brands(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -314,6 +334,7 @@ def ontology_colors(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch all color options."""
     if not x_vinted_cookie:
@@ -325,6 +346,7 @@ def ontology_colors(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -339,6 +361,7 @@ def ontology_conditions(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch conditions for a category."""
     if not x_vinted_cookie:
@@ -351,6 +374,7 @@ def ontology_conditions(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -365,6 +389,7 @@ def ontology_sizes(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch sizes for a category."""
     if not x_vinted_cookie:
@@ -377,6 +402,7 @@ def ontology_sizes(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -386,11 +412,13 @@ def ontology_sizes(
 @app.get("/ontology/materials")
 def ontology_materials(
     catalog_id: int = Query(..., description="Category/catalog ID"),
+    item_id: Optional[int] = Query(None, description="Item ID for context-specific materials"),
     proxy: Optional[str] = Query(None),
     transport_mode: Optional[str] = Query(None),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch materials for a category."""
     if not x_vinted_cookie:
@@ -399,10 +427,12 @@ def ontology_materials(
         data = vinted_fetch_materials(
             cookie=x_vinted_cookie,
             catalog_id=catalog_id,
+            item_id=item_id,
             csrf_token=x_csrf_token,
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -418,6 +448,7 @@ def ontology_package_sizes(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch package sizes for a category."""
     if not x_vinted_cookie:
@@ -431,6 +462,7 @@ def ontology_package_sizes(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -446,6 +478,7 @@ def ontology_models(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch models for a luxury brand + category combination."""
     if not x_vinted_cookie:
@@ -459,6 +492,7 @@ def ontology_models(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -473,6 +507,7 @@ def get_item_detail(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Fetch full item detail."""
     if not x_vinted_cookie:
@@ -485,6 +520,7 @@ def get_item_detail(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -504,6 +540,7 @@ async def upload_photo(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Mutate image via Pillow, then upload to Vinted. Returns photo metadata."""
     if not x_vinted_cookie:
@@ -521,6 +558,7 @@ async def upload_photo(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -558,6 +596,7 @@ def create_listing(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Create and publish a new listing."""
     if not x_vinted_cookie:
@@ -575,6 +614,7 @@ def create_listing(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -590,6 +630,7 @@ def update_listing(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """Edit an existing listing."""
     if not x_vinted_cookie:
@@ -608,6 +649,7 @@ def update_listing(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": data}
     except VintedError as e:
@@ -681,6 +723,7 @@ async def relist(
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
     x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """
     Full stealth relist sequence:
@@ -730,6 +773,7 @@ async def relist(
             anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
         )
         return {"ok": True, "data": result}
     except VintedError as e:
