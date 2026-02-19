@@ -37,6 +37,8 @@ export interface InventoryMasterRow {
   manufacturer_labelling: string | null;
   video_game_rating_id: number | null;
   shipment_prices: string | null;    // JSON: { domestic, international }
+  live_snapshot_hash: string | null;
+  live_snapshot_fetched_at: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -184,6 +186,8 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
           is_unisex = COALESCE(?, is_unisex),
           status = COALESCE(?, status),
           extra_metadata = ?,
+          live_snapshot_hash = COALESCE(?, live_snapshot_hash),
+          live_snapshot_fetched_at = COALESCE(?, live_snapshot_fetched_at),
           updated_at = unixepoch()
         WHERE id = ?
       `).run(
@@ -194,6 +198,8 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
         data.color_ids ?? null, data.photo_urls ?? null, data.local_image_paths ?? null,
         data.package_size_id ?? null, data.item_attributes ?? null,
         data.is_unisex ?? null, data.status ?? null, data.extra_metadata ?? null,
+        (data as Partial<InventoryMasterRow>).live_snapshot_hash ?? null,
+        (data as Partial<InventoryMasterRow>).live_snapshot_fetched_at ?? null,
         data.id
       );
       return data.id;
@@ -204,8 +210,9 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
     INSERT INTO inventory_master (
       title, description, price, currency, category_id, brand_id, brand_name,
       size_id, size_label, condition, status_id, color_ids, photo_urls, local_image_paths,
-      package_size_id, item_attributes, is_unisex, status, extra_metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      package_size_id, item_attributes, is_unisex, status, extra_metadata,
+      live_snapshot_hash, live_snapshot_fetched_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.title, data.description ?? null, data.price, data.currency ?? 'GBP',
     data.category_id ?? null, data.brand_id ?? null, data.brand_name ?? null,
@@ -213,7 +220,9 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
     data.status_id ?? null,
     data.color_ids ?? null, data.photo_urls ?? null, data.local_image_paths ?? null,
     data.package_size_id ?? null, data.item_attributes ?? null,
-    data.is_unisex ?? 0, data.status ?? 'local_only', data.extra_metadata ?? null
+    data.is_unisex ?? 0, data.status ?? 'local_only', data.extra_metadata ?? null,
+    (data as Partial<InventoryMasterRow>).live_snapshot_hash ?? null,
+    (data as Partial<InventoryMasterRow>).live_snapshot_fetched_at ?? null
   );
 
   return Number(result.lastInsertRowid);
@@ -225,6 +234,19 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
 export function updateLocalImagePaths(localId: number, pathsJson: string): void {
   db().prepare('UPDATE inventory_master SET local_image_paths = ?, updated_at = unixepoch() WHERE id = ?')
     .run(pathsJson, localId);
+}
+
+/**
+ * Update only the persisted live snapshot metadata for an item.
+ * This is intentionally narrow so sync can record external changes without
+ * overwriting the user's local edits.
+ */
+export function updateLiveSnapshot(localId: number, hash: string, fetchedAt: number): void {
+  db().prepare(`
+    UPDATE inventory_master
+    SET live_snapshot_hash = ?, live_snapshot_fetched_at = ?, updated_at = unixepoch()
+    WHERE id = ?
+  `).run(hash, fetchedAt, localId);
 }
 
 /**

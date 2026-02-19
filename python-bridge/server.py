@@ -567,6 +567,40 @@ async def upload_photo(
         return _error_response("MUTATION_ERROR", f"Image mutation failed: {e}", 500)
 
 
+@app.post("/upload-raw")
+async def upload_photo_raw(
+    file: UploadFile = File(..., description="Image file to upload (no mutation)"),
+    temp_uuid: Optional[str] = Form(None, description="Photo temp UUID"),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Upload image to Vinted without any mutation. Returns photo metadata."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+
+    try:
+        raw_bytes = await file.read()
+        data = vinted_upload_photo(
+            cookie=x_vinted_cookie,
+            image_bytes=raw_bytes,
+            temp_uuid=temp_uuid,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+    except Exception as e:
+        return _error_response("UPLOAD_ERROR", f"Photo upload failed: {e}", 500)
+
+
 @app.post("/preview-mutation")
 async def preview_mutation(
     file: UploadFile = File(..., description="Image file to mutate"),

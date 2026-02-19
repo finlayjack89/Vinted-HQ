@@ -34,6 +34,39 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function parseBridgeResult(res: Response): Promise<BridgeResult> {
+  // Bridge should always return JSON, but in practice we sometimes get non-JSON
+  // (e.g. HTML error pages, debug output). Never let that crash IPC.
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      code: 'BRIDGE_BAD_JSON',
+      message: `Python bridge returned empty response (HTTP ${res.status})`,
+    };
+  }
+
+  try {
+    return JSON.parse(trimmed) as BridgeResult;
+  } catch {
+    // Some servers prepend junk; attempt to parse from first { or [.
+    const idx = trimmed.search(/[[{]/);
+    if (idx > 0) {
+      try {
+        return JSON.parse(trimmed.slice(idx)) as BridgeResult;
+      } catch {
+        // fallthrough
+      }
+    }
+    return {
+      ok: false,
+      code: 'BRIDGE_BAD_JSON',
+      message: `Python bridge returned invalid JSON (HTTP ${res.status}): ${trimmed.slice(0, 200)}`,
+    };
+  }
+}
+
 /** Retry on RATE_LIMITED with exponential backoff. */
 async function fetchWithRetry(
   url: string,
@@ -44,7 +77,7 @@ async function fetchWithRetry(
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(url, opts);
-      const json = (await res.json()) as BridgeResult;
+      const json = await parseBridgeResult(res);
       lastJson = json;
       if (checkRetry(json)) {
         const delay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt);
@@ -69,7 +102,7 @@ async function fetchWithRetry(
 /**
  * Search catalog by URL. Returns items from Vinted API.
  */
-export async function search(url: string, page: number = 1, proxy?: string): Promise<BridgeResult> {
+export async function search(url: string, page = 1, proxy?: string): Promise<BridgeResult> {
   const params: Record<string, string> = {
     url,
     page: String(page),
@@ -112,8 +145,7 @@ export async function checkoutBuild(orderId: number, proxy?: string): Promise<Br
       headers: { 'X-Vinted-Cookie': cookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({ order_id: orderId }),
     });
-    const json = (await res.json()) as BridgeResult;
-    return json;
+    return await parseBridgeResult(res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
@@ -146,8 +178,7 @@ export async function checkoutPut(
       headers: { 'X-Vinted-Cookie': cookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({ components }),
     });
-    const json = (await res.json()) as BridgeResult;
-    return json;
+    return await parseBridgeResult(res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
@@ -164,7 +195,7 @@ export async function nearbyPickupPoints(
   shippingOrderId: number,
   lat: number,
   lon: number,
-  countryCode: string = 'GB',
+  countryCode = 'GB',
   proxy?: string
 ): Promise<BridgeResult> {
   const params: Record<string, string> = {
@@ -189,8 +220,7 @@ export async function nearbyPickupPoints(
       method: 'GET',
       headers: { 'X-Vinted-Cookie': cookie },
     });
-    const json = (await res.json()) as BridgeResult;
-    return json;
+    return await parseBridgeResult(res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
@@ -206,7 +236,9 @@ export async function nearbyPickupPoints(
 export async function healthCheck(): Promise<{ ok: boolean; service?: string }> {
   try {
     const res = await fetch(`${BRIDGE_BASE}/health`);
-    const json = (await res.json()) as { ok?: boolean; service?: string };
+    const text = (await res.text()).trim();
+    if (!text) return { ok: false };
+    const json = JSON.parse(text) as { ok?: boolean; service?: string };
     return { ok: json.ok === true, service: json.service };
   } catch {
     return { ok: false };
@@ -243,8 +275,8 @@ function bridgeError(err: unknown): BridgeResult {
  */
 export async function fetchWardrobe(
   userId: number,
-  page: number = 1,
-  perPage: number = 20,
+  page = 1,
+  perPage = 20,
   proxy?: string
 ): Promise<BridgeResult> {
   const cookie = secureStorage.retrieveCookie();
@@ -503,6 +535,39 @@ export async function previewMutation(
 }
 
 /**
+ * Upload a photo to Vinted without mutating it.
+ * Returns the Vinted photo object (including `id` + `url`).
+ */
+export async function uploadPhotoRaw(
+  imageBuffer: Buffer,
+  tempUuid?: string,
+  proxy?: string,
+  transportModeOverride?: 'DIRECT' | 'PROXY',
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+
+  const params: Record<string, string> = { transport_mode: transportModeOverride ?? _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const formData = new FormData();
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: 'image/jpeg' }), 'photo.jpg');
+    if (tempUuid) formData.append('temp_uuid', tempUuid);
+
+    const res = await fetch(`${BRIDGE_BASE}/upload-raw${qs ? '?' + qs : ''}`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: formData,
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
  * Create and publish a new listing.
  */
 export async function createListing(
@@ -524,7 +589,7 @@ export async function createListing(
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_data: itemData, upload_session_id: uploadSessionId }),
     });
-    return (await res.json()) as BridgeResult;
+    return await parseBridgeResult(res);
   } catch (err) {
     return bridgeError(err);
   }
@@ -537,13 +602,14 @@ export async function editListing(
   itemId: number,
   itemData: Record<string, unknown>,
   uploadSessionId?: string,
-  proxy?: string
+  proxy?: string,
+  transportModeOverride?: 'DIRECT' | 'PROXY',
 ): Promise<BridgeResult> {
   const cookie = secureStorage.retrieveCookie();
   if (!cookie) {
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
-  const params: Record<string, string> = { transport_mode: _transportMode() };
+  const params: Record<string, string> = { transport_mode: transportModeOverride ?? _transportMode() };
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
 
@@ -553,7 +619,7 @@ export async function editListing(
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_data: itemData, upload_session_id: uploadSessionId }),
     });
-    return (await res.json()) as BridgeResult;
+    return await parseBridgeResult(res);
   } catch (err) {
     return bridgeError(err);
   }
@@ -576,7 +642,7 @@ export async function deleteListing(itemId: number, proxy?: string): Promise<Bri
       method: 'POST',
       headers: authHeaders(),
     });
-    return (await res.json()) as BridgeResult;
+    return await parseBridgeResult(res);
   } catch (err) {
     return bridgeError(err);
   }
@@ -604,7 +670,7 @@ export async function toggleListingVisibility(
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_hidden: isHidden }),
     });
-    return (await res.json()) as BridgeResult;
+    return await parseBridgeResult(res);
   } catch (err) {
     return bridgeError(err);
   }
@@ -642,7 +708,7 @@ export async function relistItem(
         relist_count: relistCount,
       }),
     });
-    return (await res.json()) as BridgeResult;
+    return await parseBridgeResult(res);
   } catch (err) {
     return bridgeError(err);
   }

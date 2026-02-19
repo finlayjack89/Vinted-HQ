@@ -2,7 +2,7 @@ import { app, BrowserWindow, protocol, net, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn, ChildProcess, execSync } from 'node:child_process';
 import started from 'electron-squirrel-startup';
 import { initDb, closeDb } from './main/db';
 import { registerIpcHandlers } from './main/ipc';
@@ -34,7 +34,6 @@ let pythonBridgeProcess: ChildProcess | null = null;
  */
 function killStaleBridge(): void {
   try {
-    const { execSync } = require('node:child_process');
     if (process.platform === 'win32') {
       // Windows: find PID on port and kill it
       const result = execSync(`netstat -ano | findstr :${PYTHON_BRIDGE_PORT}`, { encoding: 'utf8', timeout: 5000 });

@@ -86,6 +86,8 @@ function migrate(database: Database.Database): void {
       is_unisex INTEGER DEFAULT 0,
       status TEXT DEFAULT 'local_only',  -- 'live','local_only','discrepancy','action_required'
       extra_metadata TEXT,         -- JSON blob for any additional fields
+      live_snapshot_hash TEXT,     -- sha256 over normalized live fields
+      live_snapshot_fetched_at INTEGER,
       created_at INTEGER DEFAULT (unixepoch()),
       updated_at INTEGER DEFAULT (unixepoch())
     );
@@ -141,6 +143,8 @@ function migrate(database: Database.Database): void {
   addIfMissing('manufacturer_labelling', 'TEXT');
   addIfMissing('video_game_rating_id', 'INTEGER');
   addIfMissing('shipment_prices', 'TEXT'); // JSON: { domestic, international }
+  addIfMissing('live_snapshot_hash', 'TEXT');
+  addIfMissing('live_snapshot_fetched_at', 'INTEGER');
 }
 
 export function getDb(): Database.Database | null {

@@ -69,7 +69,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'bridge:search',
-    (_event, url: string, page: number = 1, proxy?: string) => bridge.search(url, page, proxy)
+    (_event, url: string, page = 1, proxy?: string) => bridge.search(url, page, proxy)
   );
 
   ipcMain.handle(
@@ -191,6 +191,10 @@ export function registerIpcHandlers(): void {
     inventoryService.pushToVinted(localId, proxy)
   );
 
+  ipcMain.handle('wardrobe:pullLiveToLocal', (_event, localId: number) =>
+    inventoryService.pullLiveToLocal(localId)
+  );
+
   ipcMain.handle('wardrobe:editLiveItem', (_event, localId: number, updates: Record<string, unknown>, proxy?: string) =>
     inventoryService.editLiveItem(localId, updates, proxy)
   );
@@ -255,7 +259,7 @@ export function registerIpcHandlers(): void {
 
     // Phase 2: Browser Fetch (Robust)
     // Directly execute fetch() inside the authenticated Electron window context
-    const { fetchViaBrowser } = await import('./itemDetailBrowser');
+    const { fetchViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
 
     // Ensure we are in the correct context (edit page) to match Vinted's expectations
     const referer = itemId ? `https://www.vinted.co.uk/items/${itemId}/edit` : undefined;
@@ -267,7 +271,9 @@ export function registerIpcHandlers(): void {
       body: JSON.stringify({
         attributes: [{ code: 'category', value: [catalogId] }]
       }),
-      referer
+      referer,
+      partition: VINTED_EDIT_PARTITION,
+      forceDirect: true,
     });
 
     if (result.ok && result.data) {
@@ -302,7 +308,7 @@ export function registerIpcHandlers(): void {
     // data via JS injection.  Vinted is a full SPA — the HTML contains only
     // 6 SEO fields; all real data is loaded by JavaScript after hydration.
     // This approach mirrors what dotb.io (Chrome extension) does.
-    const { fetchItemDetailViaBrowser } = await import('./itemDetailBrowser');
-    return fetchItemDetailViaBrowser(itemId);
+    const { fetchItemDetailViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
+    return fetchItemDetailViaBrowser(itemId, { partition: VINTED_EDIT_PARTITION, forceDirect: true });
   });
 }

@@ -16,6 +16,7 @@ import * as inventoryDb from './inventoryDb';
 import * as proxyService from './proxyService';
 import { logger } from './logger';
 import * as settings from './settings';
+import { buildLiveSnapshotFromItemData, buildLiveSnapshotFromVintedDetail, hashLiveSnapshot } from './liveSnapshot';
 
 import type { RelistQueueEntry } from '../types/global';
 
@@ -101,27 +102,74 @@ export async function pullFromVinted(userId: number): Promise<{
 
     for (const vintedItem of data.items) {
       try {
-        // First pass: upsert from wardrobe list (limited fields)
-        const localId = upsertFromVintedItem(vintedItem);
         const vintedId = Number(vintedItem.id);
+        const existing = inventoryDb.getInventoryItemByVintedId(vintedId);
+        const snapshotFetchedAt = Math.floor(Date.now() / 1000);
 
-        // Second pass: fetch full item detail to capture ALL fields
-        // (description, catalog_id, brand_id, size_id, status_id, color_ids,
-        //  package_size_id, item_attributes, isbn, measurements, model, etc.)
+        // Ensure the item exists locally so we have a stable localId for caching, etc.
+        // For existing items with a stored snapshot, we avoid overwriting local fields
+        // until we've compared the live snapshot hash.
+        const localId = existing ? existing.id : upsertFromVintedItem(vintedItem);
+
+        // If the item is already marked discrepancy, do not overwrite local fields during sync.
+        // We still update snapshot metadata when possible so the user can see if live changed.
+        const isDiscrepancy = existing?.status === 'discrepancy';
+
+        // Second pass: fetch full item detail to compute a stable live snapshot hash
+        // and (when safe) fill missing fields.
         // NOTE: No proxy — this endpoint is geo-sensitive (non-UK proxies → wrong domain)
+        let itemDetail: Record<string, unknown> | null = null;
+        let liveHash: string | null = null;
         try {
           const detailResult = await bridge.fetchItemDetail(vintedId);
           if (detailResult.ok) {
             const detailData = (detailResult as { data: unknown }).data as Record<string, unknown>;
-            const itemDetail = (detailData.item ?? detailData) as Record<string, unknown>;
-            // Re-upsert with full detail data — this fills in all the missing fields
-            upsertFromVintedItem(itemDetail);
+            itemDetail = (detailData.item ?? detailData) as Record<string, unknown>;
+            liveHash = hashLiveSnapshot(buildLiveSnapshotFromVintedDetail(itemDetail));
           }
         } catch {
-          // Item detail fetch failed — wardrobe list data is still saved
+          // Item detail fetch failed — we'll fall back to list data where safe.
         }
 
-        // Download and cache photos
+        if (liveHash) {
+          // Always persist the newest snapshot metadata we observed.
+          inventoryDb.updateLiveSnapshot(localId, liveHash, snapshotFetchedAt);
+        }
+
+        if (isDiscrepancy) {
+          // Never overwrite local fields while discrepancy is active.
+          pulled++;
+          emitSyncProgress('pull', 'progress', pulled, totalEntries);
+          continue;
+        }
+
+        const prevHash = existing?.live_snapshot_hash ?? null;
+        if (prevHash && !liveHash) {
+          // We have a baseline snapshot but couldn't fetch a new one to compare.
+          // Avoid overwriting local fields without confirming live state.
+          pulled++;
+          emitSyncProgress('pull', 'progress', pulled, totalEntries);
+          continue;
+        }
+        if (prevHash && liveHash && prevHash !== liveHash) {
+          // Live listing changed externally; mark discrepancy and do not overwrite local fields.
+          inventoryDb.setInventoryStatus(localId, 'discrepancy');
+          pulled++;
+          emitSyncProgress('pull', 'progress', pulled, totalEntries);
+          continue;
+        }
+
+        // Safe to update local from live now.
+        // For existing items, upsert list data after snapshot comparison to avoid silent overwrites.
+        if (existing) {
+          upsertFromVintedItem(vintedItem);
+        }
+        if (itemDetail) {
+          // Re-upsert with full detail data — fills in all the missing fields.
+          upsertFromVintedItem(itemDetail);
+        }
+
+        // Download and cache photos (only when we are applying sync updates).
         const photos = (vintedItem.photos as Record<string, unknown>[] | undefined) ?? [];
         const photoUrls = photos.map((p) => String(p.url || p.full_size_url || ''));
         const localPaths: string[] = [];
@@ -185,7 +233,7 @@ function upsertFromVintedItem(vintedItem: Record<string, unknown>): number {
   // Item is sold when it's closed but NOT a draft (drafts are also "closed" conceptually)
   const isSold = isClosed && !isDraft;
 
-  let status: string = 'live';
+  let status = 'live';
   if (isDraft) status = 'local_only';
   else if (isSold) status = 'sold';
   else if (isReserved) status = 'reserved';
@@ -350,6 +398,23 @@ export async function pushToVinted(localId: number, proxy?: string): Promise<{
   const item = inventoryDb.getInventoryItem(localId);
   if (!item) return { ok: false, error: 'Item not found' };
 
+  // If this local record is already linked to a live Vinted listing, "Push" should
+  // reconcile by overwriting the live listing with the current local fields (edit),
+  // not creating a brand new listing.
+  if (item.vinted_item_id) {
+    const r = await editLiveItem(
+      localId,
+      // Minimal upsert to satisfy DB constraints; the actual payload is built from the
+      // full local record inside editLiveItem().
+      { id: item.id, title: item.title, price: item.price },
+      proxy
+    );
+    if (!r.ok) {
+      return { ok: false, vintedItemId: item.vinted_item_id, error: r.error || 'Edit failed' };
+    }
+    return { ok: true, vintedItemId: item.vinted_item_id };
+  }
+
   const itemData = buildVintedItemData(item);
 
   const result = await bridge.createListing(itemData, undefined, proxy);
@@ -368,6 +433,82 @@ export async function pushToVinted(localId: number, proxy?: string): Promise<{
 
   logger.info('wardrobe-push-complete', { localId, vintedItemId: newItemId });
   return { ok: true, vintedItemId: newItemId };
+}
+
+/**
+ * Pull the current live Vinted listing details into the local vault.
+ * This is used to reconcile a discrepancy when the live listing changed externally
+ * and the user chooses to accept the live version as the new local source of truth.
+ */
+export async function pullLiveToLocal(localId: number): Promise<{ ok: boolean; error?: string }> {
+  const existing = inventoryDb.getInventoryItem(localId);
+  if (!existing) return { ok: false, error: 'Item not found' };
+  const vintedItemId = Number(existing.vinted_item_id || 0);
+  if (!vintedItemId) return { ok: false, error: 'No Vinted item ID linked — cannot pull live details' };
+
+  const snapshotFetchedAt = Math.floor(Date.now() / 1000);
+
+  let raw: Record<string, unknown> | null = null;
+  let bridgeErr = '';
+
+  // Fast path: Python bridge HTML scrape (can be blocked by bot detection).
+  try {
+    const r = await bridge.fetchItemDetail(vintedItemId);
+    if (r.ok) {
+      raw = (r as { ok: true; data: unknown }).data as Record<string, unknown>;
+    } else {
+      bridgeErr = (r as { ok: false; message: string }).message || (r as { ok: false; code: string }).code;
+    }
+  } catch (err) {
+    bridgeErr = err instanceof Error ? err.message : String(err);
+  }
+
+  // Robust fallback: browser extraction in authenticated Chromium context.
+  if (!raw) {
+    try {
+      const { fetchItemDetailViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
+      const browserRes = await fetchItemDetailViaBrowser(vintedItemId, { partition: VINTED_EDIT_PARTITION, forceDirect: true });
+      if (browserRes.ok) {
+        raw = browserRes.data as Record<string, unknown>;
+      } else {
+        const msg = browserRes.message || 'Failed to fetch live item details';
+        return { ok: false, error: bridgeErr ? `${msg} (bridge: ${bridgeErr})` : msg };
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: bridgeErr ? `${msg} (bridge: ${bridgeErr})` : msg };
+    }
+  }
+
+  const live = (raw.item ?? raw) as Record<string, unknown>;
+  if (!live.id) live.id = vintedItemId;
+
+  // Overwrite local fields from live and clear discrepancy by applying live status.
+  const updatedLocalId = upsertFromVintedItem(live);
+
+  // Record newest snapshot metadata so future syncs don't immediately re-flag discrepancy.
+  try {
+    const liveHash = hashLiveSnapshot(buildLiveSnapshotFromVintedDetail(live));
+    inventoryDb.updateLiveSnapshot(updatedLocalId, liveHash, snapshotFetchedAt);
+  } catch {
+    /* ignore snapshot issues */
+  }
+
+  // Refresh cached photos and clear stale local_image_paths so UI reflects live photos.
+  const photos = (live.photos as Record<string, unknown>[] | undefined) ?? [];
+  const photoUrls = photos
+    .map((p) => String((p as Record<string, unknown>).url || (p as Record<string, unknown>).full_size_url || ''))
+    .filter(Boolean);
+
+  const localPaths: string[] = [];
+  for (let i = 0; i < photoUrls.length; i++) {
+    const cached = await downloadAndCacheImage(photoUrls[i], updatedLocalId, i);
+    if (cached) localPaths.push(cached);
+  }
+  inventoryDb.updateLocalImagePaths(updatedLocalId, JSON.stringify(localPaths));
+
+  logger.info('wardrobe-pull-live-to-local', { localId: updatedLocalId, vintedItemId, cached: localPaths.length });
+  return { ok: true };
 }
 
 /**
@@ -395,31 +536,192 @@ export async function editLiveItem(
   // 4. Build Vinted API payload from the updated local record
   const itemData = buildVintedItemData(item);
 
-  // 5. For edit, we need to include the existing photo IDs (not re-upload)
-  // Parse photo IDs from photo_urls or extra_metadata
-  const photoUrls = item.photo_urls ? JSON.parse(item.photo_urls) : [];
-  // Vinted expects assigned_photos as [{id, orientation}] for existing photos
-  // We need the photo IDs, which are typically available from the item detail
-  // For now, we don't include assigned_photos (Vinted keeps existing ones unless changed)
-  delete itemData.assigned_photos;
+  // 5. Photo handling (add/remove/reorder)
+  // The renderer can send a transient `__photo_plan` payload (not persisted in DB)
+  // so we can construct `assigned_photos` for the edit call.
+  const photoPlan = (updates as unknown as { __photo_plan?: unknown }).__photo_plan as
+    | { original_existing_ids?: number[]; items?: { type: string; id?: number; url?: string; path?: string }[] }
+    | undefined;
 
-  // 6. Push to Vinted
-  const resolvedProxy = proxy ?? proxyService.getAnyScrapingProxy();
-  const result = await bridge.editListing(item.vinted_item_id, itemData, undefined, resolvedProxy);
+  const uploadSessionId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now());
+  itemData.temp_uuid = uploadSessionId;
 
-  if (!result.ok) {
-    // Mark as discrepancy since local is different from live
-    inventoryDb.setInventoryStatus(localId, 'discrepancy');
-    const errMsg = (result as { message?: string }).message ?? 'Edit push failed';
-    logger.error('edit-push-failed', { localId, vintedItemId: item.vinted_item_id, error: errMsg });
-    return { ok: false, error: errMsg };
+  // Ensure CSRF + anon_id exist before any write call.
+  // If they're missing, warm them by loading the edit page in a real browser context.
+  const hasCsrf = Boolean(settings.getSetting('csrf_token'));
+  const hasAnon = Boolean(settings.getSetting('anon_id'));
+  if (!hasCsrf || !hasAnon) {
+    try {
+      const { fetchViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
+      const referer = `https://www.vinted.co.uk/items/${item.vinted_item_id}/edit`;
+      await fetchViaBrowser('/api/v2/conversations/stats', {
+        method: 'GET',
+        referer,
+        partition: VINTED_EDIT_PARTITION,
+        forceDirect: true,
+      });
+    } catch (err) {
+      logger.warn('edit-token-warm-failed', { localId, error: String(err) });
+    }
   }
 
-  // 7. Success — mark as live (in sync)
-  inventoryDb.setInventoryStatus(localId, 'live');
-  inventoryDb.upsertSyncRecord(localId, item.vinted_item_id, 'push');
-  logger.info('edit-pushed-to-vinted', { localId, vintedItemId: item.vinted_item_id });
-  return { ok: true };
+  if (photoPlan?.items && Array.isArray(photoPlan.items) && photoPlan.items.length > 0) {
+    const assigned: { id: number; orientation: number }[] = [];
+    const finalRemoteUrls: string[] = [];
+
+    for (const p of photoPlan.items) {
+      if (p?.type === 'existing') {
+        const id = Number(p.id || 0);
+        const url = p.url ? String(p.url) : '';
+        if (id > 0) assigned.push({ id, orientation: 0 });
+        if (url) finalRemoteUrls.push(url);
+      } else if (p?.type === 'new') {
+        const path = p.path ? String(p.path) : '';
+        if (!path) continue;
+        try {
+          // Upload the raw bytes (no mutation) and capture the Vinted photo ID.
+          const fs = await import('fs');
+          const buf = Buffer.from(fs.readFileSync(path));
+
+          const ext = path.toLowerCase().split('.').pop() ?? '';
+          const mimeType =
+            ext === 'png' ? 'image/png' :
+            ext === 'webp' ? 'image/webp' :
+            'image/jpeg';
+          const filename = path.split('/').pop() || 'photo.jpg';
+
+          // Attempt 1: bridge upload (fast). If blocked, fall back to browser upload.
+          let photoId = 0;
+          let photoUrl = '';
+
+          const up = await bridge.uploadPhotoRaw(buf, uploadSessionId, undefined, 'DIRECT');
+          if (up.ok) {
+            const data = (up as { data: unknown }).data as Record<string, unknown>;
+            photoId = Number(data.id || 0);
+            photoUrl = data.url ? String(data.url) : '';
+          } else {
+            const code = (up as { code?: string }).code ?? '';
+            const msg = (up as { message?: string }).message ?? '';
+            const looksBlocked =
+              code === 'FORBIDDEN' ||
+              code === 'DATADOME_CHALLENGE' ||
+              msg.toLowerCase().includes('access forbidden') ||
+              msg.toLowerCase().includes('bot') ||
+              msg.toLowerCase().includes('datadome');
+
+            if (!looksBlocked) {
+              throw new Error(msg || 'Photo upload failed');
+            }
+
+            const { uploadPhotoRawViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
+            const referer = `https://www.vinted.co.uk/items/${item.vinted_item_id}/edit`;
+            const browserUp = await uploadPhotoRawViaBrowser(buf, uploadSessionId, {
+              referer,
+              filename,
+              mimeType,
+              partition: VINTED_EDIT_PARTITION,
+              forceDirect: true,
+            });
+
+            if (!browserUp?.ok || !browserUp.data) {
+              const status = browserUp?.status ? Number(browserUp.status) : 0;
+              const text = browserUp?.text ? String(browserUp.text) : '';
+              throw new Error(browserUp?.error || (status ? `HTTP ${status}: ${text.slice(0, 200)}` : `Photo upload blocked: ${text.slice(0, 200)}`));
+            }
+
+            const data = browserUp.data as Record<string, unknown>;
+            photoId = Number(data.id || 0);
+            photoUrl = data.url ? String(data.url) : '';
+          }
+
+          if (photoId > 0) assigned.push({ id: photoId, orientation: 0 });
+          if (photoUrl) finalRemoteUrls.push(photoUrl);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error('edit-photo-upload-failed', { localId, error: msg });
+          return { ok: false, error: `Photo upload failed: ${msg}` };
+        }
+      }
+    }
+
+    // Only include assigned_photos if we have real IDs; otherwise let Vinted preserve existing ones.
+    if (assigned.length > 0) {
+      itemData.assigned_photos = assigned;
+    } else {
+      delete itemData.assigned_photos;
+    }
+
+    // Update local stored URLs with the final set (helps UI reflect the latest).
+    if (finalRemoteUrls.length > 0) {
+      inventoryDb.upsertInventoryItem({
+        id: item.id,
+        title: item.title,
+        price: item.price,
+        photo_urls: JSON.stringify(finalRemoteUrls),
+        local_image_paths: JSON.stringify([]),
+      } as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
+    }
+  } else {
+    // No explicit photo plan; do not touch photos.
+    delete itemData.assigned_photos;
+  }
+
+  // 6. Push to Vinted (browser-only, stable DIRECT identity)
+  // We intentionally avoid the Python bridge PUT here because curl_cffi gets
+  // scored/blocked more aggressively on write endpoints (403 bot detection),
+  // while Chromium-context requests match the user's real session.
+  try {
+    const { fetchViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
+    const referer = `https://www.vinted.co.uk/items/${item.vinted_item_id}/edit`;
+    const payload = {
+      item: { id: item.vinted_item_id, ...itemData },
+      feedback_id: null,
+      push_up: false,
+      parcel: null,
+      upload_session_id: uploadSessionId,
+    };
+
+    const browserRes = await fetchViaBrowser(`/api/v2/item_upload/items/${item.vinted_item_id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+      referer,
+      partition: VINTED_EDIT_PARTITION,
+      forceDirect: true,
+    });
+
+    if (browserRes?.ok) {
+      inventoryDb.setInventoryStatus(localId, 'live');
+      inventoryDb.upsertSyncRecord(localId, item.vinted_item_id, 'push');
+      // We just authored the live state; record a snapshot so future syncs don't
+      // incorrectly mark this item as externally changed.
+      try {
+        const pushedHash = hashLiveSnapshot(buildLiveSnapshotFromItemData(itemData));
+        inventoryDb.updateLiveSnapshot(localId, pushedHash, Math.floor(Date.now() / 1000));
+      } catch {
+        /* ignore snapshot issues */
+      }
+      logger.info('edit-pushed-to-vinted-browser', { localId, vintedItemId: item.vinted_item_id });
+      return { ok: true };
+    }
+
+    const status = browserRes?.status ? Number(browserRes.status) : 0;
+    const text = browserRes?.text ? String(browserRes.text) : '';
+    const errMsg = browserRes?.error
+      ? String(browserRes.error)
+      : status
+        ? `HTTP ${status}: ${text.slice(0, 300)}`
+        : `Edit push failed: ${text.slice(0, 300) || 'Unknown error'}`;
+
+    inventoryDb.setInventoryStatus(localId, 'discrepancy');
+    logger.error('edit-push-failed-browser', { localId, vintedItemId: item.vinted_item_id, status, error: errMsg });
+    return { ok: false, error: errMsg };
+  } catch (err) {
+    // Mark as discrepancy since local is different from live
+    inventoryDb.setInventoryStatus(localId, 'discrepancy');
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('edit-push-failed-browser-exception', { localId, vintedItemId: item.vinted_item_id, error: msg });
+    return { ok: false, error: msg };
+  }
 }
 
 /**
@@ -427,9 +729,45 @@ export async function editLiveItem(
  * Includes ALL fields to ensure relist/edit preserves every detail of the listing.
  */
 function buildVintedItemData(item: inventoryDb.InventoryItemJoined): Record<string, unknown> {
-  const colorIds = item.color_ids ? JSON.parse(item.color_ids) : [];
-  const attributes = item.item_attributes ? JSON.parse(item.item_attributes) : [];
-  const shipmentPrices = item.shipment_prices ? JSON.parse(item.shipment_prices) : { domestic: null, international: null };
+  const coerceJsonArray = (value: unknown, label: string): unknown[] => {
+    // Inventory DB returns these fields already parsed; accept arrays directly.
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('inventory-json-parse-failed', { label, error: msg, sample: trimmed.slice(0, 200) });
+      return [];
+    }
+  };
+
+  const coerceJsonObject = (value: unknown, fallback: Record<string, unknown>, label: string): Record<string, unknown> => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+    if (typeof value !== 'string') return fallback;
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+      return fallback;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('inventory-json-parse-failed', { label, error: msg, sample: trimmed.slice(0, 200) });
+      return fallback;
+    }
+  };
+
+  const normalizedColorIds = coerceJsonArray(item.color_ids, 'color_ids');
+  const normalizedAttributes = coerceJsonArray(item.item_attributes, 'item_attributes');
+  const normalizedShipmentPrices = coerceJsonObject(
+    item.shipment_prices,
+    { domestic: null, international: null },
+    'shipment_prices'
+  ) as { domestic?: unknown; international?: unknown };
 
   const data: Record<string, unknown> = {
     currency: item.currency || 'GBP',
@@ -446,12 +784,15 @@ function buildVintedItemData(item: inventoryDb.InventoryItemJoined): Record<stri
     video_game_rating_id: item.video_game_rating_id || null,
     price: item.price,
     package_size_id: item.package_size_id || 3,
-    shipment_prices: shipmentPrices,
-    color_ids: colorIds,
+    shipment_prices: {
+      domestic: normalizedShipmentPrices.domestic ?? null,
+      international: normalizedShipmentPrices.international ?? null,
+    },
+    color_ids: normalizedColorIds,
     assigned_photos: [], // Photos handled separately during relist/push
     measurement_length: item.measurement_length || null,
     measurement_width: item.measurement_width || null,
-    item_attributes: attributes,
+    item_attributes: normalizedAttributes,
     manufacturer: item.manufacturer || null,
     manufacturer_labelling: item.manufacturer_labelling || null,
   };
@@ -518,7 +859,22 @@ export async function enqueueRelist(localIds: number[]): Promise<RelistQueueEntr
     }
 
     // Get first cached image path for thumbnail
-    const localPaths = item.local_image_paths ? JSON.parse(item.local_image_paths) as string[] : [];
+    let localPaths: string[] = [];
+    if (Array.isArray(item.local_image_paths)) {
+      localPaths = item.local_image_paths.map(String);
+    } else if (item.local_image_paths) {
+      try {
+        const parsed = JSON.parse(item.local_image_paths) as unknown;
+        localPaths = Array.isArray(parsed) ? parsed.map(String) : [];
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn('inventory-json-parse-failed', {
+          label: 'local_image_paths',
+          error: msg,
+          sample: String(item.local_image_paths).slice(0, 200),
+        });
+      }
+    }
     const thumbnailPath = localPaths[0] ?? null;
 
     const entry: RelistQueueEntry = {

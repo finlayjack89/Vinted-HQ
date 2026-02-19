@@ -128,8 +128,31 @@ export default function Wardrobe() {
   };
 
   const handlePush = async (localId: number) => {
-    await window.vinted.pushToVinted(localId);
-    loadItems();
+    try {
+      const result = await window.vinted.pushToVinted(localId);
+      if (!result?.ok) {
+        window.alert(result?.error || 'Push failed');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`Push failed: ${msg}`);
+    } finally {
+      loadItems();
+    }
+  };
+
+  const handlePull = async (localId: number) => {
+    try {
+      const result = await window.vinted.pullLiveToLocal(localId);
+      if (!result?.ok) {
+        window.alert(result?.error || 'Pull failed');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`Pull failed: ${msg}`);
+    } finally {
+      loadItems();
+    }
   };
 
   const handleDelete = async (localId: number) => {
@@ -146,6 +169,7 @@ export default function Wardrobe() {
       if (!result.ok) {
         console.error('Failed to push edit to Vinted:', result.error);
         // Still saved locally — status will be 'discrepancy'
+        return { ok: false, error: result.error || 'Failed to push edit to Vinted' };
       }
     } else {
       // Local-only item — just save locally
@@ -153,6 +177,7 @@ export default function Wardrobe() {
     }
     setEditingItem(null);
     loadItems();
+    return { ok: true };
   };
 
   const subTabCounts: Record<SubTab, number> = {
@@ -300,6 +325,7 @@ export default function Wardrobe() {
               items={discrepancyItems}
               onEdit={(item) => setEditingItem(item)}
               onPush={handlePush}
+              onPull={handlePull}
             />
           )}
           {subTab === 'queue' && (
@@ -375,6 +401,7 @@ function ItemTable({
   items,
   onRelist,
   onPush,
+  onPull,
   onEdit,
   onDelete,
   showDiscrepancyBadge,
@@ -383,6 +410,7 @@ function ItemTable({
   items: InventoryItem[];
   onRelist?: (localId: number) => void;
   onPush?: (localId: number) => void;
+  onPull?: (localId: number) => void;
   onEdit?: (item: InventoryItem) => void;
   onDelete?: (localId: number) => void;
   showDiscrepancyBadge?: boolean;
@@ -416,6 +444,7 @@ function ItemTable({
               item={item}
               onRelist={onRelist}
               onPush={onPush}
+              onPull={onPull}
               onEdit={onEdit}
               onDelete={onDelete}
               showDiscrepancyBadge={showDiscrepancyBadge}
@@ -431,6 +460,7 @@ function ItemRow({
   item,
   onRelist,
   onPush,
+  onPull,
   onEdit,
   onDelete,
   showDiscrepancyBadge,
@@ -438,6 +468,7 @@ function ItemRow({
   item: InventoryItem;
   onRelist?: (localId: number) => void;
   onPush?: (localId: number) => void;
+  onPull?: (localId: number) => void;
   onEdit?: (item: InventoryItem) => void;
   onDelete?: (localId: number) => void;
   showDiscrepancyBadge?: boolean;
@@ -506,6 +537,11 @@ function ItemRow({
               Relist
             </button>
           )}
+          {onPull && item.vinted_item_id && (
+            <button type="button" onClick={() => onPull(item.id)} style={{ ...actionBtn, color: colors.info }}>
+              Pull
+            </button>
+          )}
           {onPush && (
             <button type="button" onClick={() => onPush(item.id)} style={{ ...actionBtn, color: colors.success }}>
               Push
@@ -562,10 +598,12 @@ function DiscrepancyView({
   items,
   onEdit,
   onPush,
+  onPull,
 }: {
   items: InventoryItem[];
   onEdit: (item: InventoryItem) => void;
   onPush: (localId: number) => void;
+  onPull: (localId: number) => void;
 }) {
   if (items.length === 0) {
     return (
@@ -596,6 +634,7 @@ function DiscrepancyView({
         items={items}
         onEdit={onEdit}
         onPush={onPush}
+        onPull={onPull}
         showDiscrepancyBadge
         emptyMessage="No discrepancies."
       />
@@ -1148,9 +1187,13 @@ function EditItemModal({
   onClose,
 }: {
   item: InventoryItem;
-  onSave: (data: Record<string, unknown>) => void;
+  onSave: (data: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
   onClose: () => void;
 }) {
+  type PhotoPlanItem =
+    | { type: 'existing'; id: number; url: string }
+    | { type: 'new'; path: string };
+
   // ── State: basic fields ──
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description ?? '');
@@ -1214,32 +1257,44 @@ function EditItemModal({
   const [domSize, setDomSize] = useState('');
   const [domParcelSize, setDomParcelSize] = useState('');
 
-  // Debug popup: avoid opening twice in React StrictMode.
-  const openedDebugForItemRef = useRef<number | null>(null);
+  // ── Photos (editable) ──
+  const [photoPlanItems, setPhotoPlanItems] = useState<PhotoPlanItem[]>(() => {
+    const localPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
+    const remoteUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
+    if (localPaths.length > 0) return localPaths.map((p: string) => ({ type: 'new', path: p }));
+    return remoteUrls.map((u: string) => ({ type: 'existing', id: 0, url: u }));
+  });
+  const [photoPlanOriginalExistingIds, setPhotoPlanOriginalExistingIds] = useState<number[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // ── Load static ontology data & fetch item detail for pre-filling ──
   useEffect(() => {
-    window.vinted.getOntology('category').then(setAllCategories).catch(() => {});
-    window.vinted.getOntology('color').then(setAllColors).catch(() => {});
+    window.vinted.getOntology('category').then(setAllCategories).catch(() => undefined);
+    window.vinted.getOntology('color').then(setAllColors).catch(() => undefined);
     // Seed brand with current item's brand so it shows in the dropdown
     if (item.brand_id && item.brand_name) {
       setBrandResults([{ id: item.brand_id, name: item.brand_name }]);
     }
-    // ALWAYS fetch full item detail from Vinted API when item is linked to a live listing.
-    // The wardrobe list endpoint only provides title, price, brand (string), size (string),
-    // status (string), and photos — it does NOT include description, catalog_id, brand_id,
-    // size_id, status_id, color_ids, item_attributes, package_size_id, etc.
+
+    // Always refetch on modal open for live-linked items. This prevents stale/empty
+    // fields when reopening the edit modal for the same listing.
     if (item.vinted_item_id) {
-      // Always-on debug window for capturing full Network logs.
-      if (openedDebugForItemRef.current !== item.vinted_item_id) {
-        openedDebugForItemRef.current = item.vinted_item_id;
+      let cancelled = false;
+
+      // Debug window is opt-in (it is intrusive in normal usage).
+      // Enable by running in DevTools: localStorage.setItem('vinted_edit_debug_window', '1')
+      if (import.meta.env.DEV && window.localStorage.getItem('vinted_edit_debug_window') === '1') {
         window.vinted.openEditDebugWindow(item.vinted_item_id).catch((err) => {
           console.warn('[EditModal] openEditDebugWindow failed:', err);
         });
       }
+      setDetailError('');
       setDetailLoading(true);
       console.log('[EditModal] Fetching item detail for vinted_item_id:', item.vinted_item_id);
       window.vinted.getItemDetail(item.vinted_item_id).then((r) => {
+        if (cancelled) return;
         console.log('[EditModal] Item detail response:', r.ok, r.ok ? 'has data' : (r as { code?: string; message?: string }).message);
         if (!r.ok || !r.data) {
           const errMsg = (r as { message?: string }).message || 'Failed to load item details';
@@ -1366,7 +1421,7 @@ function EditItemModal({
                 return [{ id: exactMatch.id, name: exactMatch.title }, ...prev];
               });
             }
-          }).catch(() => {});
+          }).catch(() => undefined);
         }
 
         // ── Store DOM-scraped text values for reverse lookup ──
@@ -1389,6 +1444,27 @@ function EditItemModal({
         }
         if (domSizeStr) setDomSize(domSizeStr);
         if (domPkgStr) setDomParcelSize(domPkgStr);
+
+        // ── Photos with IDs (for reorder/remove + save) ──
+        // Prefer the photo list from the live Vinted edit-page data (has IDs).
+        try {
+          const rawPhotos = (d.photos ?? []) as Record<string, unknown>[];
+          if (Array.isArray(rawPhotos) && rawPhotos.length > 0) {
+            const existing: PhotoPlanItem[] = rawPhotos
+              .map((p) => ({
+                type: 'existing' as const,
+                id: Number(p.id || 0),
+                url: String(p.url || ''),
+              }))
+              .filter((p) => p.id > 0 && !!p.url);
+            if (existing.length > 0) {
+              setPhotoPlanItems(existing);
+              setPhotoPlanOriginalExistingIds(existing.map((p) => (p.type === 'existing' ? p.id : 0)).filter((id) => id > 0));
+            }
+          }
+        } catch {
+          /* ignore */
+        }
 
         console.log('[EditModal] DOM-scraped values:', {
           colours: domColourStr, materials: domMatStr,
@@ -1415,14 +1491,56 @@ function EditItemModal({
               console.log('[EditModal] Reverse-lookup color_ids:', matched);
               setSelectedColorIds(matched);
             }
-          }).catch(() => {});
+          }).catch(() => undefined);
         }
       }).catch((err) => {
+        if (cancelled) return;
         console.error('[EditModal] Item detail fetch failed:', err);
-      }).finally(() => setDetailLoading(false));
+      }).finally(() => {
+        if (cancelled) return;
+        setDetailLoading(false);
+      });
+
+      return () => {
+        cancelled = true;
+      };
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.vinted_item_id]);
+  }, [item.id, item.vinted_item_id]);
+
+  const openPhotoPicker = () => {
+    fileInputRef.current?.click();
+  };
+
+  const onPhotoFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    const paths: string[] = [];
+    for (const f of files) {
+      // Electron provides a non-standard `path` field.
+      const p = (f as unknown as { path?: string }).path;
+      if (p) paths.push(p);
+    }
+    if (paths.length > 0) {
+      setPhotoPlanItems((prev) => [...prev, ...paths.map((p) => ({ type: 'new' as const, path: p }))]);
+    }
+    // Allow selecting the same file again later.
+    e.target.value = '';
+  };
+
+  const movePhoto = (idx: number, dir: -1 | 1) => {
+    setPhotoPlanItems((prev) => {
+      const next = [...prev];
+      const j = idx + dir;
+      if (j < 0 || j >= next.length) return prev;
+      const tmp = next[idx];
+      next[idx] = next[j];
+      next[j] = tmp;
+      return next;
+    });
+  };
+
+  const removePhotoAt = (idx: number) => {
+    setPhotoPlanItems((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   // ── Fetch category-specific options when category changes ──
   useEffect(() => {
@@ -1505,13 +1623,13 @@ function EditItemModal({
           if (recommended) setPackageSizeId(recommended.id);
         }
       }
-    }).catch(() => {});
+    }).catch(() => undefined);
 
     // Fetch conditions — response: { conditions: [{ id, title, explanation }] }
     window.vinted.getConditions(catId).then((r: { ok: boolean; data?: unknown }) => {
       const conds = extractArray(r, 'conditions');
       if (conds.length > 0) setConditionOptions(conds);
-    }).catch(() => {});
+    }).catch(() => undefined);
 
     // Fetch popular brands for this category
     window.vinted.searchBrands('', catId).then((r) => {
@@ -1524,8 +1642,7 @@ function EditItemModal({
         }
         setBrandResults(opts);
       }
-    }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    }).catch(() => undefined);
   }, [selectedCategoryId, item.vinted_item_id, detailLoading]);
 
   // ── Brand search handler ──
@@ -1571,7 +1688,7 @@ function EditItemModal({
           }));
           setModelOptions(opts);
         }
-      }).catch(() => {}).finally(() => setModelsLoading(false));
+      }).catch(() => undefined).finally(() => setModelsLoading(false));
     }
   };
 
@@ -1581,6 +1698,21 @@ function EditItemModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (detailLoading) {
+      // Prevent validation errors caused by saving before required IDs are loaded.
+      setSaveError('Please wait for listing details to finish loading before saving.');
+      return;
+    }
+    if (saving) return;
+
+    const existingUrls = photoPlanItems
+      .filter((p) => p.type === 'existing')
+      .map((p) => (p as { type: 'existing'; url: string }).url)
+      .filter(Boolean);
+    const newPaths = photoPlanItems
+      .filter((p) => p.type === 'new')
+      .map((p) => (p as { type: 'new'; path: string }).path)
+      .filter(Boolean);
 
     // Rebuild item_attributes with updated material
     let attrs = parsedAttrs.filter((a: { code: string }) => a.code !== 'material');
@@ -1610,6 +1742,14 @@ function EditItemModal({
     if (selectedCollectionId) modelMetadata.collection_id = selectedCollectionId;
     if (selectedModelId) modelMetadata.model_id = selectedModelId;
 
+    // Guard against accidental clears: if the UI didn't manage to prefill/resolve IDs,
+    // preserve existing persisted values rather than sending an empty required field.
+    const fallbackColorIds = Array.isArray(item.color_ids) ? item.color_ids : [];
+    const finalColorIds = selectedColorIds.length > 0 ? selectedColorIds : fallbackColorIds;
+
+    setSaving(true);
+    setSaveError('');
+
     onSave({
       id: item.id,
       title: title.trim(),
@@ -1619,7 +1759,7 @@ function EditItemModal({
       brand_id: selectedBrandId || null,
       brand_name: selectedBrandName.trim(),
       category_id: selectedCategoryId || null,
-      color_ids: JSON.stringify(selectedColorIds),
+      color_ids: JSON.stringify(finalColorIds),
       size_id: selectedSizeId || null,
       size_label: sizeOptions.find((s) => s.id === selectedSizeId)?.title ?? item.size_label ?? '',
       status_id: selectedStatusId || null,
@@ -1629,10 +1769,25 @@ function EditItemModal({
       isbn: isbn || null,
       measurement_length: measurementLength ? parseFloat(measurementLength) : null,
       measurement_width: measurementWidth ? parseFloat(measurementWidth) : null,
-      photo_urls: JSON.stringify(Array.isArray(item.photo_urls) ? item.photo_urls : []),
-      local_image_paths: JSON.stringify(Array.isArray(item.local_image_paths) ? item.local_image_paths : []),
+      photo_urls: JSON.stringify(existingUrls),
+      local_image_paths: JSON.stringify(newPaths),
       status: item.vinted_item_id ? 'discrepancy' : item.status,
+      __photo_plan: {
+        original_existing_ids: photoPlanOriginalExistingIds,
+        items: photoPlanItems,
+      },
       ...(Object.keys(modelMetadata).length > 0 ? { model_metadata: JSON.stringify(modelMetadata) } : {}),
+    }).then((r) => {
+      if (!r.ok) {
+        setSaveError(r.error || 'Failed to save changes');
+        setSaving(false);
+        return;
+      }
+      // Leave closing to the parent (it closes the modal on success).
+      setSaving(false);
+    }).catch((err) => {
+      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaving(false);
     });
   };
 
@@ -1650,7 +1805,7 @@ function EditItemModal({
   return (
     <div style={modalOverlay} onClick={onClose}>
       <div
-        style={{ ...modalContent, maxWidth: 640, maxHeight: '90vh', overflow: 'auto', padding: spacing['2xl'] }}
+        style={{ ...modalContent, maxWidth: 640, maxHeight: '90vh', overflow: 'auto', padding: spacing['2xl'], position: 'relative' }}
         onClick={(e) => e.stopPropagation()}
         className="animate-fadeInScale"
       >
@@ -1659,8 +1814,43 @@ function EditItemModal({
         </h3>
 
         {detailLoading && (
-          <div style={{ textAlign: 'center', color: colors.textMuted, fontSize: font.size.sm, padding: spacing.md }}>
-            Fetching listing details from Vinted...
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: radius.lg,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: spacing.xl,
+              zIndex: 20,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: 420,
+                background: colors.glassBg,
+                border: `1px solid ${colors.glassBorder}`,
+                borderRadius: radius.lg,
+                padding: spacing.xl,
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }} className="animate-pulse">
+                Loading live listing details…
+              </div>
+              <div style={{ marginTop: 8, fontSize: font.size.sm, color: colors.textSecondary, lineHeight: 1.5 }}>
+                Please wait. Editing and saving is disabled until the listing details have finished loading.
+              </div>
+              <div style={{ marginTop: spacing.lg }}>
+                <button type="button" onClick={onClose} style={btnSecondary}>
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         )}
         {detailError && (
@@ -1668,33 +1858,109 @@ function EditItemModal({
             {detailError}
           </div>
         )}
+        {saveError && (
+          <div style={{ background: 'rgba(255,0,0,0.10)', border: '1px solid rgba(255,0,0,0.25)', borderRadius: 8, padding: spacing.sm, marginBottom: spacing.md, fontSize: font.size.sm, color: '#ff6b6b' }}>
+            Save failed: {saveError}
+          </div>
+        )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl }}>
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: spacing.xl,
+            opacity: saving || detailLoading ? 0.85 : 1,
+            pointerEvents: saving || detailLoading ? 'none' : 'auto',
+          }}
+        >
 
           {/* ── Photos ── */}
-          {editPhotos.length > 0 && (
-            <div>
-              <label style={labelStyle}>Photos</label>
+          <div>
+            <label style={labelStyle}>Photos</label>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={onPhotoFilesSelected}
+            />
+
+            <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.sm }}>
+              <button type="button" onClick={openPhotoPicker} style={{ ...btnSecondary, ...btnSmall }} disabled={saving}>
+                Add photos
+              </button>
+              <div style={{ color: colors.textMuted, fontSize: font.size.xs, alignSelf: 'center' }}>
+                {saving
+                  ? `Saving...${photoPlanItems.some((p) => p.type === 'new') ? ' Uploading photos and saving listing.' : ' Updating listing.'}`
+                  : 'Drag-and-drop not supported yet; use Add photos. You can reorder/remove before saving.'}
+              </div>
+            </div>
+
+            {photoPlanItems.length > 0 ? (
               <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-                {editPhotos.map((url: string, i: number) => {
-                  const isLocal = url.startsWith('/') || url.startsWith('C:');
+                {photoPlanItems.map((p, i) => {
+                  const src =
+                    p.type === 'new'
+                      ? `local-image://${encodeURI(p.path)}`
+                      : p.url;
+                  const hasId = p.type === 'existing' ? p.id > 0 : true;
+
                   return (
-                    <div key={i} style={{
-                      width: 80, height: 80, borderRadius: radius.md, overflow: 'hidden',
-                      background: colors.glassBg, border: `1px solid ${colors.glassBorder}`,
-                    }}>
-                      <img
-                        src={isLocal ? `local-image://${encodeURI(url)}` : url}
-                        alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
+                    <div key={`${p.type}-${p.type === 'existing' ? p.id : p.path}-${i}`} style={{ width: 112 }}>
+                      <div style={{
+                        width: 112,
+                        height: 112,
+                        borderRadius: radius.md,
+                        overflow: 'hidden',
+                        background: colors.glassBg,
+                        border: `1px solid ${colors.glassBorder}`,
+                        position: 'relative',
+                      }}>
+                        <img
+                          src={src}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                        {!hasId && (
+                          <div style={{
+                            position: 'absolute',
+                            left: 6,
+                            bottom: 6,
+                            background: 'rgba(0,0,0,0.6)',
+                            color: '#fff',
+                            fontSize: 10,
+                            padding: '2px 6px',
+                            borderRadius: 999,
+                          }}>
+                            no-id
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                        <button type="button" onClick={() => movePhoto(i, -1)} style={{ ...btnSecondary, ...btnSmall, flex: 1 }} title="Move left" disabled={saving}>
+                          ←
+                        </button>
+                        <button type="button" onClick={() => movePhoto(i, 1)} style={{ ...btnSecondary, ...btnSmall, flex: 1 }} title="Move right" disabled={saving}>
+                          →
+                        </button>
+                        <button type="button" onClick={() => removePhotoAt(i)} style={{ ...btnDanger, ...btnSmall }} title="Remove" disabled={saving}>
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <div style={{ ...glassInput, width: '100%', color: colors.textMuted, fontSize: font.size.sm }}>
+                No photos selected.
+              </div>
+            )}
+          </div>
 
           {/* ── Title ── */}
           <div>
@@ -1950,8 +2216,10 @@ function EditItemModal({
 
           {/* ── Actions ── */}
           <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.sm, paddingTop: spacing.lg, borderTop: `1px solid ${colors.separator}` }}>
-            <button type="submit" style={{ ...btnPrimary, flex: 1 }}>Save Changes</button>
-            <button type="button" onClick={onClose} style={btnSecondary}>Cancel</button>
+            <button type="submit" style={{ ...btnPrimary, flex: 1, opacity: saving ? 0.7 : 1 }} disabled={saving}>
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+            <button type="button" onClick={onClose} style={btnSecondary} disabled={saving}>Cancel</button>
           </div>
         </form>
       </div>

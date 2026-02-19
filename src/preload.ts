@@ -159,6 +159,8 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:pullFromVinted', userId),
   pushToVinted: (localId: number, proxy?: string) =>
     ipcRenderer.invoke('wardrobe:pushToVinted', localId, proxy),
+  pullLiveToLocal: (localId: number) =>
+    ipcRenderer.invoke('wardrobe:pullLiveToLocal', localId),
   editLiveItem: (localId: number, updates: Record<string, unknown>, proxy?: string) =>
     ipcRenderer.invoke('wardrobe:editLiveItem', localId, updates, proxy),
 
