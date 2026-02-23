@@ -1,0 +1,3376 @@
+{
+  "log": {
+    "version": "1.2",
+    "creator": {
+      "name": "WebInspector",
+      "version": "537.36"
+    },
+    "pages": [],
+    "entries": [
+      {
+        "_connectionId": "6036",
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 102514
+              },
+              {
+                "functionName": "t.send",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 102480
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 100323
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 99823
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 100887
+              },
+              {
+                "functionName": "t.send",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 100636
+              },
+              {
+                "functionName": "t.export",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 106891
+              },
+              {
+                "functionName": "t.export",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 92598
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 87437
+              },
+              {
+                "functionName": "t.with",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 17363
+              },
+              {
+                "functionName": "t.with",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 18434
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 87389
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 87358
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 84738
+              },
+              {
+                "functionName": "a",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 83595
+              }
+            ],
+            "parent": {
+              "description": "Promise.then",
+              "callFrames": [
+                {
+                  "functionName": "s",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83757
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83767
+                },
+                {
+                  "functionName": "rV",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83539
+                },
+                {
+                  "functionName": "e._doRun",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 86662
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 86381
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 84738
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83790
+                },
+                {
+                  "functionName": "rV",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83539
+                },
+                {
+                  "functionName": "e._runOnce",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 86252
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 87697
+                }
+              ]
+            }
+          }
+        },
+        "_priority": "VeryLow",
+        "_resourceType": "ping",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "POST",
+          "url": "https://metrics-ingress-web.svc.vinted.com/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "metrics-ingress-web.svc.vinted.com"
+            },
+            {
+              "name": ":method",
+              "value": "POST"
+            },
+            {
+              "name": ":path",
+              "value": "/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "content-length",
+              "value": "4486"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=4, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"macOS\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "cross-site"
+            },
+            {
+              "name": "sec-fetch-storage-access",
+              "value": "active"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "key",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM"
+            }
+          ],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 4486,
+          "postData": {
+            "mimeType": "application/json",
+            "text": "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"marketplace_web\"}},{\"key\":\"telemetry.sdk.language\",\"value\":{\"stringValue\":\"webjs\"}},{\"key\":\"telemetry.sdk.name\",\"value\":{\"stringValue\":\"opentelemetry\"}},{\"key\":\"telemetry.sdk.version\",\"value\":{\"stringValue\":\"1.30.1\"}},{\"key\":\"version\",\"value\":{\"stringValue\":\"a673f426c1af376b04309302dd15e0bb7a116918\"}},{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}}],\"droppedAttributesCount\":0},\"scopeMetrics\":[{\"scope\":{\"name\":\"page_load\",\"version\":\"\"},\"metrics\":[{\"name\":\"page_load\",\"description\":\"\",\"unit\":\"\",\"sum\":{\"aggregationTemporality\":1,\"isMonotonic\":true,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}}],\"startTimeUnixNano\":\"1771444446171000000\",\"timeUnixNano\":\"1771444476129000000\",\"asDouble\":1}]}}]},{\"scope\":{\"name\":\"first_contentful_paint\",\"version\":\"\"},\"metrics\":[{\"name\":\"first_contentful_paint\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"desktop\"}}],\"bucketCounts\":[0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"explicitBounds\":[0.25,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,15,20],\"count\":1,\"sum\":0.832,\"min\":0.832,\"max\":0.832,\"startTimeUnixNano\":\"1771444446507000000\",\"timeUnixNano\":\"1771444476129000000\"}]}}]},{\"scope\":{\"name\":\"first_contentful_paint_score\",\"version\":\"\"},\"metrics\":[{\"name\":\"first_contentful_paint_score\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"desktop\"}}],\"bucketCounts\":[0,0,0,0,0,0,0,0,0,0,0,1,0,0,0],\"explicitBounds\":[0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,1],\"count\":1,\"sum\":0.9402503381705574,\"min\":0.9402503381705574,\"max\":0.9402503381705574,\"startTimeUnixNano\":\"1771444446507000000\",\"timeUnixNano\":\"1771444476129000000\"}]}}]},{\"scope\":{\"name\":\"frontend_data_dome_initialization_duration\",\"version\":\"\"},\"metrics\":[{\"name\":\"frontend_data_dome_initialization_duration\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}}],\"bucketCounts\":[0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0],\"explicitBounds\":[0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,3,4,5,6,7,8,9,10,15,20],\"count\":1,\"sum\":0.3618999999761581,\"min\":0.3618999999761581,\"max\":0.3618999999761581,\"startTimeUnixNano\":\"1771444446535000000\",\"timeUnixNano\":\"1771444476129000000\"}]}}]},{\"scope\":{\"name\":\"braze_initialization\",\"version\":\"\"},\"metrics\":[{\"name\":\"braze_initialization\",\"description\":\"\",\"unit\":\"\",\"sum\":{\"aggregationTemporality\":1,\"isMonotonic\":true,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}}],\"startTimeUnixNano\":\"1771444446560000000\",\"timeUnixNano\":\"1771444476129000000\",\"asDouble\":1}]}}]},{\"scope\":{\"name\":\"time_to_first_byte\",\"version\":\"\"},\"metrics\":[{\"name\":\"time_to_first_byte\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"desktop\"}}],\"bucketCounts\":[0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"explicitBounds\":[0.25,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,15,20],\"count\":1,\"sum\":0.772,\"min\":0.772,\"max\":0.772,\"startTimeUnixNano\":\"1771444447506000000\",\"timeUnixNano\":\"1771444476129000000\"}]}}]},{\"scope\":{\"name\":\"web_incognia_initialization_duration\",\"version\":\"\"},\"metrics\":[{\"name\":\"web_incognia_initialization_duration\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}}],\"bucketCounts\":[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],\"explicitBounds\":[0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,3,4,5,6,7,8,9,10,15,20],\"count\":1,\"sum\":1.4261999999284745,\"min\":1.4261999999284745,\"max\":1.4261999999284745,\"startTimeUnixNano\":\"1771444447600000000\",\"timeUnixNano\":\"1771444476129000000\"}]}}]}]}]}"
+          }
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-credentials",
+              "value": "true"
+            },
+            {
+              "name": "access-control-allow-origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "cf-cache-status",
+              "value": "DYNAMIC"
+            },
+            {
+              "name": "cf-ray",
+              "value": "9d0013ca8f89465b-LHR"
+            },
+            {
+              "name": "content-length",
+              "value": "21"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:54:36 GMT"
+            },
+            {
+              "name": "server",
+              "value": "cloudflare"
+            },
+            {
+              "name": "x-envoy-upstream-service-time",
+              "value": "0"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 21,
+            "mimeType": "application/json",
+            "text": "{\"partialSuccess\":{}}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 451,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.83.149",
+        "startedDateTime": "2026-02-18T19:54:36.136Z",
+        "time": 459.00000003166497,
+        "timings": {
+          "blocked": 233.59900000698119,
+          "dns": -1,
+          "ssl": 50.461,
+          "connect": 146.525,
+          "send": 0.48099999999999454,
+          "wait": 77.56700000631065,
+          "receive": 0.8280000183731318,
+          "_blocked_queueing": 233.3210000069812,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_connectionId": "6029",
+        "_initiator": {
+          "type": "preflight",
+          "url": "https://metrics-ingress-web.svc.vinted.com/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM",
+          "requestId": "78732.272"
+        },
+        "_priority": "VeryLow",
+        "_resourceType": "preflight",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "OPTIONS",
+          "url": "https://metrics-ingress-web.svc.vinted.com/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "metrics-ingress-web.svc.vinted.com"
+            },
+            {
+              "name": ":method",
+              "value": "OPTIONS"
+            },
+            {
+              "name": ":path",
+              "value": "/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "access-control-request-headers",
+              "value": "content-type"
+            },
+            {
+              "name": "access-control-request-method",
+              "value": "POST"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=4, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "cross-site"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "key",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM"
+            }
+          ],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-credentials",
+              "value": "true"
+            },
+            {
+              "name": "access-control-allow-headers",
+              "value": "Accept,Accept-Language,Content-Language,Content-Type,User-Agent,Authorization"
+            },
+            {
+              "name": "access-control-allow-methods",
+              "value": "POST"
+            },
+            {
+              "name": "access-control-allow-origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "cf-cache-status",
+              "value": "DYNAMIC"
+            },
+            {
+              "name": "cf-ray",
+              "value": "9d0013c92e5b0030-LHR"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:54:36 GMT"
+            },
+            {
+              "name": "server",
+              "value": "cloudflare"
+            },
+            {
+              "name": "vary",
+              "value": "Accept-Encoding"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 0,
+            "mimeType": "x-unknown"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 0,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.83.149",
+        "startedDateTime": "2026-02-18T19:54:36.137Z",
+        "time": 231.0130000114441,
+        "timings": {
+          "blocked": 0.4399999379068613,
+          "dns": -1,
+          "ssl": 54.985,
+          "connect": 154.811,
+          "send": 0.6629999999999825,
+          "wait": 74.32800002352894,
+          "receive": 0.771000050008297,
+          "_blocked_queueing": 0.052999937906861305,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_connectionId": "5805",
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "window.fetch",
+                "scriptId": "146",
+                "url": "https://static-assets.vinted.com/datadome/5.3.0/tags.js",
+                "lineNumber": 1,
+                "columnNumber": 139133
+              },
+              {
+                "functionName": "rd",
+                "scriptId": "152",
+                "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                "lineNumber": 286,
+                "columnNumber": 390
+              },
+              {
+                "functionName": "fm",
+                "scriptId": "152",
+                "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                "lineNumber": 445,
+                "columnNumber": 1253
+              },
+              {
+                "functionName": "TP",
+                "scriptId": "152",
+                "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                "lineNumber": 995,
+                "columnNumber": 107
+              },
+              {
+                "functionName": "WP",
+                "scriptId": "152",
+                "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                "lineNumber": 995,
+                "columnNumber": 387
+              },
+              {
+                "functionName": "bQ.flush",
+                "scriptId": "152",
+                "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                "lineNumber": 1003,
+                "columnNumber": 92
+              },
+              {
+                "functionName": "",
+                "scriptId": "152",
+                "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                "lineNumber": 1001,
+                "columnNumber": 343
+              }
+            ],
+            "parent": {
+              "description": "setTimeout",
+              "callFrames": [
+                {
+                  "functionName": "bQ.O",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 1001,
+                  "columnNumber": 323
+                },
+                {
+                  "functionName": "bQ.add",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 1003,
+                  "columnNumber": 5
+                },
+                {
+                  "functionName": "k.An",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 1019,
+                  "columnNumber": 210
+                },
+                {
+                  "functionName": "k.ys",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 1019,
+                  "columnNumber": 132
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 1017,
+                  "columnNumber": 30
+                },
+                {
+                  "functionName": "zm",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 456,
+                  "columnNumber": 192
+                },
+                {
+                  "functionName": "Ao",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 476,
+                  "columnNumber": 157
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 1017,
+                  "columnNumber": 14
+                },
+                {
+                  "functionName": "c",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 940,
+                  "columnNumber": 400
+                },
+                {
+                  "functionName": "NL",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 940,
+                  "columnNumber": 436
+                },
+                {
+                  "functionName": "k.xs",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 1017,
+                  "columnNumber": 0
+                },
+                {
+                  "functionName": "b",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 1026,
+                  "columnNumber": 950
+                },
+                {
+                  "functionName": "v",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 604,
+                  "columnNumber": 145
+                },
+                {
+                  "functionName": "Im",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 458,
+                  "columnNumber": 516
+                },
+                {
+                  "functionName": "ju",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 604,
+                  "columnNumber": 229
+                },
+                {
+                  "functionName": "iu.flush",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 608,
+                  "columnNumber": 299
+                },
+                {
+                  "functionName": "iu.push",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 606,
+                  "columnNumber": 378
+                },
+                {
+                  "functionName": "Xt",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 600,
+                  "columnNumber": 526
+                },
+                {
+                  "functionName": "hC.event",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 784,
+                  "columnNumber": 148
+                },
+                {
+                  "functionName": "CC",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 790,
+                  "columnNumber": 470
+                },
+                {
+                  "functionName": "FC.b.push",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 796,
+                  "columnNumber": 304
+                },
+                {
+                  "functionName": "FC.b.push",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 780,
+                  "columnNumber": 164
+                },
+                {
+                  "functionName": "FC.b.push",
+                  "scriptId": "164",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=AW-981576932&cx=c&gtm=4e62h0",
+                  "lineNumber": 673,
+                  "columnNumber": 164
+                },
+                {
+                  "functionName": "yC",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 797,
+                  "columnNumber": 35
+                },
+                {
+                  "functionName": "GC",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 797,
+                  "columnNumber": 59
+                },
+                {
+                  "functionName": "wJ",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 900,
+                  "columnNumber": 33
+                },
+                {
+                  "functionName": "rJ",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 899,
+                  "columnNumber": 336
+                },
+                {
+                  "functionName": "a",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 898,
+                  "columnNumber": 253
+                }
+              ]
+            }
+          }
+        },
+        "_priority": "High",
+        "_resourceType": "fetch",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "POST",
+          "url": "https://region1.google-analytics.com/g/collect?v=2&tid=G-C1K5578GF1&gtm=45je62h0v9106021264za20gzb812675145zd812675145&_p=1771444446507&gcs=G111&gcd=13n3n3n3n5l1&npa=0&dma_cps=syphamo&dma=1&tcfd=10s5a&gdid=dYWJhMj&cid=515035789.1771439593&ul=en-gb&sr=1728x1117&uaa=arm&uab=64&uafvl=Not(A%253ABrand%3B8.0.0.0%7CChromium%3B144.0.7559.134&uamb=0&uam=&uap=macOS&uapv=15.7.3&uaw=0&are=1&frm=0&pscdl=noapi&_eu=AEAAAAQ&_s=3&tag_exp=103116026~103200004~104527906~104528500~104684208~104684211~115938466~115938469~117455676~117455678&sid=1771444433&sct=2&seg=1&dl=https%3A%2F%2Fwww.vinted.co.uk%2Fitems%2F8055522775%2Fedit&dt=Edit%20listing%20%7C%20Vinted&_tu=CA&en=scroll&epn.percent_scrolled=90&_et=25154&tfd=41860",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "region1.google-analytics.com"
+            },
+            {
+              "name": ":method",
+              "value": "POST"
+            },
+            {
+              "name": ":path",
+              "value": "/g/collect?v=2&tid=G-C1K5578GF1&gtm=45je62h0v9106021264za20gzb812675145zd812675145&_p=1771444446507&gcs=G111&gcd=13n3n3n3n5l1&npa=0&dma_cps=syphamo&dma=1&tcfd=10s5a&gdid=dYWJhMj&cid=515035789.1771439593&ul=en-gb&sr=1728x1117&uaa=arm&uab=64&uafvl=Not(A%253ABrand%3B8.0.0.0%7CChromium%3B144.0.7559.134&uamb=0&uam=&uap=macOS&uapv=15.7.3&uaw=0&are=1&frm=0&pscdl=noapi&_eu=AEAAAAQ&_s=3&tag_exp=103116026~103200004~104527906~104528500~104684208~104684211~115938466~115938469~117455676~117455678&sid=1771444433&sct=2&seg=1&dl=https%3A%2F%2Fwww.vinted.co.uk%2Fitems%2F8055522775%2Fedit&dt=Edit%20listing%20%7C%20Vinted&_tu=CA&en=scroll&epn.percent_scrolled=90&_et=25154&tfd=41860"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "content-length",
+              "value": "0"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"macOS\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "cross-site"
+            },
+            {
+              "name": "sec-fetch-storage-access",
+              "value": "active"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "v",
+              "value": "2"
+            },
+            {
+              "name": "tid",
+              "value": "G-C1K5578GF1"
+            },
+            {
+              "name": "gtm",
+              "value": "45je62h0v9106021264za20gzb812675145zd812675145"
+            },
+            {
+              "name": "_p",
+              "value": "1771444446507"
+            },
+            {
+              "name": "gcs",
+              "value": "G111"
+            },
+            {
+              "name": "gcd",
+              "value": "13n3n3n3n5l1"
+            },
+            {
+              "name": "npa",
+              "value": "0"
+            },
+            {
+              "name": "dma_cps",
+              "value": "syphamo"
+            },
+            {
+              "name": "dma",
+              "value": "1"
+            },
+            {
+              "name": "tcfd",
+              "value": "10s5a"
+            },
+            {
+              "name": "gdid",
+              "value": "dYWJhMj"
+            },
+            {
+              "name": "cid",
+              "value": "515035789.1771439593"
+            },
+            {
+              "name": "ul",
+              "value": "en-gb"
+            },
+            {
+              "name": "sr",
+              "value": "1728x1117"
+            },
+            {
+              "name": "uaa",
+              "value": "arm"
+            },
+            {
+              "name": "uab",
+              "value": "64"
+            },
+            {
+              "name": "uafvl",
+              "value": "Not(A%253ABrand%3B8.0.0.0%7CChromium%3B144.0.7559.134"
+            },
+            {
+              "name": "uamb",
+              "value": "0"
+            },
+            {
+              "name": "uam",
+              "value": ""
+            },
+            {
+              "name": "uap",
+              "value": "macOS"
+            },
+            {
+              "name": "uapv",
+              "value": "15.7.3"
+            },
+            {
+              "name": "uaw",
+              "value": "0"
+            },
+            {
+              "name": "are",
+              "value": "1"
+            },
+            {
+              "name": "frm",
+              "value": "0"
+            },
+            {
+              "name": "pscdl",
+              "value": "noapi"
+            },
+            {
+              "name": "_eu",
+              "value": "AEAAAAQ"
+            },
+            {
+              "name": "_s",
+              "value": "3"
+            },
+            {
+              "name": "tag_exp",
+              "value": "103116026~103200004~104527906~104528500~104684208~104684211~115938466~115938469~117455676~117455678"
+            },
+            {
+              "name": "sid",
+              "value": "1771444433"
+            },
+            {
+              "name": "sct",
+              "value": "2"
+            },
+            {
+              "name": "seg",
+              "value": "1"
+            },
+            {
+              "name": "dl",
+              "value": "https%3A%2F%2Fwww.vinted.co.uk%2Fitems%2F8055522775%2Fedit"
+            },
+            {
+              "name": "dt",
+              "value": "Edit%20listing%20%7C%20Vinted"
+            },
+            {
+              "name": "_tu",
+              "value": "CA"
+            },
+            {
+              "name": "en",
+              "value": "scroll"
+            },
+            {
+              "name": "epn.percent_scrolled",
+              "value": "90"
+            },
+            {
+              "name": "_et",
+              "value": "25154"
+            },
+            {
+              "name": "tfd",
+              "value": "41860"
+            }
+          ],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 204,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-credentials",
+              "value": "true"
+            },
+            {
+              "name": "access-control-allow-origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "alt-svc",
+              "value": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache, no-store, must-revalidate"
+            },
+            {
+              "name": "content-length",
+              "value": "0"
+            },
+            {
+              "name": "content-security-policy-report-only",
+              "value": "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:113:0"
+            },
+            {
+              "name": "content-type",
+              "value": "text/plain"
+            },
+            {
+              "name": "cross-origin-opener-policy-report-only",
+              "value": "same-origin; report-to=ascnsrsggc:113:0"
+            },
+            {
+              "name": "cross-origin-resource-policy",
+              "value": "cross-origin"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:54:46 GMT"
+            },
+            {
+              "name": "expires",
+              "value": "Fri, 01 Jan 1990 00:00:00 GMT"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "report-to",
+              "value": "{\"group\":\"ascnsrsggc:113:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:113:0\"}],}"
+            },
+            {
+              "name": "server",
+              "value": "Golfe2"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 0,
+            "mimeType": "text/plain",
+            "text": ""
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 57,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.83.149",
+        "startedDateTime": "2026-02-18T19:54:46.158Z",
+        "time": 57.05800000578165,
+        "timings": {
+          "blocked": 2.048999913342297,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.6869999999999999,
+          "wait": 54.16699995993078,
+          "receive": 0.15500013250857592,
+          "_blocked_queueing": 1.226999913342297,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_connectionId": "5805",
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "window.fetch",
+                "scriptId": "146",
+                "url": "https://static-assets.vinted.com/datadome/5.3.0/tags.js",
+                "lineNumber": 1,
+                "columnNumber": 139133
+              },
+              {
+                "functionName": "rd",
+                "scriptId": "157",
+                "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                "lineNumber": 270,
+                "columnNumber": 390
+              },
+              {
+                "functionName": "fm",
+                "scriptId": "157",
+                "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                "lineNumber": 429,
+                "columnNumber": 1253
+              },
+              {
+                "functionName": "TP",
+                "scriptId": "157",
+                "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                "lineNumber": 958,
+                "columnNumber": 107
+              },
+              {
+                "functionName": "WP",
+                "scriptId": "157",
+                "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                "lineNumber": 958,
+                "columnNumber": 387
+              },
+              {
+                "functionName": "bQ.flush",
+                "scriptId": "157",
+                "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                "lineNumber": 966,
+                "columnNumber": 92
+              },
+              {
+                "functionName": "",
+                "scriptId": "157",
+                "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                "lineNumber": 964,
+                "columnNumber": 343
+              }
+            ],
+            "parent": {
+              "description": "setTimeout",
+              "callFrames": [
+                {
+                  "functionName": "bQ.O",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 964,
+                  "columnNumber": 323
+                },
+                {
+                  "functionName": "bQ.add",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 966,
+                  "columnNumber": 5
+                },
+                {
+                  "functionName": "k.An",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 982,
+                  "columnNumber": 210
+                },
+                {
+                  "functionName": "k.ys",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 982,
+                  "columnNumber": 132
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 980,
+                  "columnNumber": 30
+                },
+                {
+                  "functionName": "zm",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 440,
+                  "columnNumber": 192
+                },
+                {
+                  "functionName": "Ao",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 460,
+                  "columnNumber": 157
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 980,
+                  "columnNumber": 14
+                },
+                {
+                  "functionName": "c",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 903,
+                  "columnNumber": 400
+                },
+                {
+                  "functionName": "NL",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 903,
+                  "columnNumber": 436
+                },
+                {
+                  "functionName": "k.xs",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 980,
+                  "columnNumber": 0
+                },
+                {
+                  "functionName": "b",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 989,
+                  "columnNumber": 950
+                },
+                {
+                  "functionName": "v",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 588,
+                  "columnNumber": 145
+                },
+                {
+                  "functionName": "Im",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 442,
+                  "columnNumber": 516
+                },
+                {
+                  "functionName": "ju",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 588,
+                  "columnNumber": 229
+                },
+                {
+                  "functionName": "iu.flush",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 592,
+                  "columnNumber": 299
+                },
+                {
+                  "functionName": "iu.push",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 590,
+                  "columnNumber": 378
+                },
+                {
+                  "functionName": "Xt",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 584,
+                  "columnNumber": 526
+                },
+                {
+                  "functionName": "hC.event",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 768,
+                  "columnNumber": 148
+                },
+                {
+                  "functionName": "CC",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 774,
+                  "columnNumber": 470
+                },
+                {
+                  "functionName": "FC.b.push",
+                  "scriptId": "157",
+                  "url": "https://www.googletagmanager.com/gtag/js?id=G-ZJHK1N3D75&cx=c&gtm=4e62h0",
+                  "lineNumber": 780,
+                  "columnNumber": 304
+                },
+                {
+                  "functionName": "FC.b.push",
+                  "scriptId": "164",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=AW-981576932&cx=c&gtm=4e62h0",
+                  "lineNumber": 673,
+                  "columnNumber": 164
+                },
+                {
+                  "functionName": "yC",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 797,
+                  "columnNumber": 35
+                },
+                {
+                  "functionName": "GC",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 797,
+                  "columnNumber": 59
+                },
+                {
+                  "functionName": "wJ",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 900,
+                  "columnNumber": 33
+                },
+                {
+                  "functionName": "rJ",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 899,
+                  "columnNumber": 336
+                },
+                {
+                  "functionName": "a",
+                  "scriptId": "152",
+                  "url": "https://www.googletagmanager.com/gtag/destination?id=G-C1K5578GF1&cx=c&gtm=4e62h0",
+                  "lineNumber": 898,
+                  "columnNumber": 253
+                }
+              ]
+            }
+          }
+        },
+        "_priority": "High",
+        "_resourceType": "fetch",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "POST",
+          "url": "https://region1.google-analytics.com/g/collect?v=2&tid=G-ZJHK1N3D75&gtm=45je62h0v882011732za20gzb812675145zd812675145&_p=1771444446507&gcs=G111&gcd=13n3n3n3n5l1&npa=0&dma_cps=syphamo&dma=1&tcfd=10s5a&gdid=dYWJhMj&cid=515035789.1771439593&ul=en-gb&sr=1728x1117&uaa=arm&uab=64&uafvl=Not(A%253ABrand%3B8.0.0.0%7CChromium%3B144.0.7559.134&uamb=0&uam=&uap=macOS&uapv=15.7.3&uaw=0&are=1&frm=0&pscdl=noapi&_eu=AEAAAAQ&_s=3&tag_exp=103116026~103200004~104527906~104528500~104684208~104684211~115616986~115938466~115938469~117416194~117455676~117455678~117531288&sid=1771444433&sct=2&seg=1&dl=https%3A%2F%2Fwww.vinted.co.uk%2Fitems%2F8055522775%2Fedit&dt=Edit%20listing%20%7C%20Vinted&_tu=CA&en=scroll&epn.percent_scrolled=90&_et=25142&tfd=41866",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "region1.google-analytics.com"
+            },
+            {
+              "name": ":method",
+              "value": "POST"
+            },
+            {
+              "name": ":path",
+              "value": "/g/collect?v=2&tid=G-ZJHK1N3D75&gtm=45je62h0v882011732za20gzb812675145zd812675145&_p=1771444446507&gcs=G111&gcd=13n3n3n3n5l1&npa=0&dma_cps=syphamo&dma=1&tcfd=10s5a&gdid=dYWJhMj&cid=515035789.1771439593&ul=en-gb&sr=1728x1117&uaa=arm&uab=64&uafvl=Not(A%253ABrand%3B8.0.0.0%7CChromium%3B144.0.7559.134&uamb=0&uam=&uap=macOS&uapv=15.7.3&uaw=0&are=1&frm=0&pscdl=noapi&_eu=AEAAAAQ&_s=3&tag_exp=103116026~103200004~104527906~104528500~104684208~104684211~115616986~115938466~115938469~117416194~117455676~117455678~117531288&sid=1771444433&sct=2&seg=1&dl=https%3A%2F%2Fwww.vinted.co.uk%2Fitems%2F8055522775%2Fedit&dt=Edit%20listing%20%7C%20Vinted&_tu=CA&en=scroll&epn.percent_scrolled=90&_et=25142&tfd=41866"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "content-length",
+              "value": "0"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"macOS\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "cross-site"
+            },
+            {
+              "name": "sec-fetch-storage-access",
+              "value": "active"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "v",
+              "value": "2"
+            },
+            {
+              "name": "tid",
+              "value": "G-ZJHK1N3D75"
+            },
+            {
+              "name": "gtm",
+              "value": "45je62h0v882011732za20gzb812675145zd812675145"
+            },
+            {
+              "name": "_p",
+              "value": "1771444446507"
+            },
+            {
+              "name": "gcs",
+              "value": "G111"
+            },
+            {
+              "name": "gcd",
+              "value": "13n3n3n3n5l1"
+            },
+            {
+              "name": "npa",
+              "value": "0"
+            },
+            {
+              "name": "dma_cps",
+              "value": "syphamo"
+            },
+            {
+              "name": "dma",
+              "value": "1"
+            },
+            {
+              "name": "tcfd",
+              "value": "10s5a"
+            },
+            {
+              "name": "gdid",
+              "value": "dYWJhMj"
+            },
+            {
+              "name": "cid",
+              "value": "515035789.1771439593"
+            },
+            {
+              "name": "ul",
+              "value": "en-gb"
+            },
+            {
+              "name": "sr",
+              "value": "1728x1117"
+            },
+            {
+              "name": "uaa",
+              "value": "arm"
+            },
+            {
+              "name": "uab",
+              "value": "64"
+            },
+            {
+              "name": "uafvl",
+              "value": "Not(A%253ABrand%3B8.0.0.0%7CChromium%3B144.0.7559.134"
+            },
+            {
+              "name": "uamb",
+              "value": "0"
+            },
+            {
+              "name": "uam",
+              "value": ""
+            },
+            {
+              "name": "uap",
+              "value": "macOS"
+            },
+            {
+              "name": "uapv",
+              "value": "15.7.3"
+            },
+            {
+              "name": "uaw",
+              "value": "0"
+            },
+            {
+              "name": "are",
+              "value": "1"
+            },
+            {
+              "name": "frm",
+              "value": "0"
+            },
+            {
+              "name": "pscdl",
+              "value": "noapi"
+            },
+            {
+              "name": "_eu",
+              "value": "AEAAAAQ"
+            },
+            {
+              "name": "_s",
+              "value": "3"
+            },
+            {
+              "name": "tag_exp",
+              "value": "103116026~103200004~104527906~104528500~104684208~104684211~115616986~115938466~115938469~117416194~117455676~117455678~117531288"
+            },
+            {
+              "name": "sid",
+              "value": "1771444433"
+            },
+            {
+              "name": "sct",
+              "value": "2"
+            },
+            {
+              "name": "seg",
+              "value": "1"
+            },
+            {
+              "name": "dl",
+              "value": "https%3A%2F%2Fwww.vinted.co.uk%2Fitems%2F8055522775%2Fedit"
+            },
+            {
+              "name": "dt",
+              "value": "Edit%20listing%20%7C%20Vinted"
+            },
+            {
+              "name": "_tu",
+              "value": "CA"
+            },
+            {
+              "name": "en",
+              "value": "scroll"
+            },
+            {
+              "name": "epn.percent_scrolled",
+              "value": "90"
+            },
+            {
+              "name": "_et",
+              "value": "25142"
+            },
+            {
+              "name": "tfd",
+              "value": "41866"
+            }
+          ],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 204,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-credentials",
+              "value": "true"
+            },
+            {
+              "name": "access-control-allow-origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "alt-svc",
+              "value": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache, no-store, must-revalidate"
+            },
+            {
+              "name": "content-length",
+              "value": "0"
+            },
+            {
+              "name": "content-security-policy-report-only",
+              "value": "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:113:0"
+            },
+            {
+              "name": "content-type",
+              "value": "text/plain"
+            },
+            {
+              "name": "cross-origin-opener-policy-report-only",
+              "value": "same-origin; report-to=ascnsrsggc:113:0"
+            },
+            {
+              "name": "cross-origin-resource-policy",
+              "value": "cross-origin"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:54:46 GMT"
+            },
+            {
+              "name": "expires",
+              "value": "Fri, 01 Jan 1990 00:00:00 GMT"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "report-to",
+              "value": "{\"group\":\"ascnsrsggc:113:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:113:0\"}],}"
+            },
+            {
+              "name": "server",
+              "value": "Golfe2"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 0,
+            "mimeType": "text/plain",
+            "text": ""
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 57,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.83.149",
+        "startedDateTime": "2026-02-18T19:54:46.163Z",
+        "time": 54.41199999768287,
+        "timings": {
+          "blocked": 1.108999889947474,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.30800000000000005,
+          "wait": 52.92600004799664,
+          "receive": 0.06900005973875523,
+          "_blocked_queueing": 0.856999889947474,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_fromCache": "disk",
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "17",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/turbopack-4a1f13a96944e0ba.js",
+                "lineNumber": 2,
+                "columnNumber": 3285
+              },
+              {
+                "functionName": "loadChunkCached",
+                "scriptId": "17",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/turbopack-4a1f13a96944e0ba.js",
+                "lineNumber": 2,
+                "columnNumber": 3399
+              },
+              {
+                "functionName": "T",
+                "scriptId": "17",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/turbopack-4a1f13a96944e0ba.js",
+                "lineNumber": 0,
+                "columnNumber": 5644
+              },
+              {
+                "functionName": "P",
+                "scriptId": "17",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/turbopack-4a1f13a96944e0ba.js",
+                "lineNumber": 0,
+                "columnNumber": 5050
+              },
+              {
+                "functionName": "R.l",
+                "scriptId": "17",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/turbopack-4a1f13a96944e0ba.js",
+                "lineNumber": 0,
+                "columnNumber": 5556
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 46666
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 46657
+              },
+              {
+                "functionName": "o.A",
+                "scriptId": "17",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/turbopack-4a1f13a96944e0ba.js",
+                "lineNumber": 0,
+                "columnNumber": 2705
+              },
+              {
+                "functionName": "ep",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 26004
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 27361
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 19670
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 24175
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 20000
+              },
+              {
+                "functionName": "t",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 19871
+              }
+            ]
+          }
+        },
+        "_priority": "Low",
+        "_resourceType": "script",
+        "cache": {},
+        "connection": "8001",
+        "request": {
+          "method": "GET",
+          "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/1bfd8a3390bffe99.js",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"macOS\""
+            },
+            {
+              "name": "Referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "vary",
+              "value": "accept-encoding, Origin"
+            },
+            {
+              "name": "cache-control",
+              "value": "public,max-age=31536000,immutable"
+            },
+            {
+              "name": "content-encoding",
+              "value": "br"
+            },
+            {
+              "name": "etag",
+              "value": "W/\"68d5293f687f6650c6a4a8bfbd54e7e7\""
+            },
+            {
+              "name": "age",
+              "value": "986991"
+            },
+            {
+              "name": "via",
+              "value": "1.1 7a099deb81d48fdcc5e18b9c5e6daf24.cloudfront.net (CloudFront)"
+            },
+            {
+              "name": "x-cache",
+              "value": "Hit from cloudfront"
+            },
+            {
+              "name": "x-amz-cf-id",
+              "value": "qVb2fQ6ipU8kpff1kX8xnVsbr-54fu25EKPcCOdIUt6fw8SJGyd_-g=="
+            },
+            {
+              "name": "date",
+              "value": "Thu, 05 Feb 2026 11:49:15 GMT"
+            },
+            {
+              "name": "content-type",
+              "value": "text/javascript"
+            },
+            {
+              "name": "last-modified",
+              "value": "Thu, 05 Feb 2026 11:47:27 GMT"
+            },
+            {
+              "name": "server",
+              "value": "AmazonS3"
+            },
+            {
+              "name": "x-amz-cf-pop",
+              "value": "LHR61-P3"
+            },
+            {
+              "name": "x-amz-server-side-encryption",
+              "value": "AES256"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 9198,
+            "mimeType": "text/javascript",
+            "text": "(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push([\"object\"==typeof document?document.currentScript:void 0,425223,t=>{\"use strict\";function e(t){return\"object\"==typeof t&&null!==t&&t.nodeType===Node.ELEMENT_NODE}let n={id:\"id\",class:\"class\",tag:\"tag\",attribute:\"attribute\",nthchild:\"nthchild\",nthoftype:\"nthoftype\"};function r(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:\"unknown problem\";for(var e=arguments.length,n=Array(e>1?e-1:0),r=1;r<e;r++)n[r-1]=arguments[r];console.warn(`CssSelectorGenerator: ${t}`,...n)}let o={selectors:[n.id,n.class,n.tag,n.attribute],includeTag:!1,whitelist:[],blacklist:[],combineWithinSelector:!0,combineBetweenSelectors:!0,root:null,maxCombinations:1/0,maxCandidates:1/0};function i(t){return t instanceof RegExp}function l(t){return[\"string\",\"function\"].includes(typeof t)||i(t)}function u(t){return Array.isArray(t)?t.filter(l):[]}function a(t){let e=[Node.DOCUMENT_NODE,Node.DOCUMENT_FRAGMENT_NODE,Node.ELEMENT_NODE];return t instanceof Node&&e.includes(t.nodeType)}function c(t,e){if(a(t))return t.contains(e)||r(\"element root mismatch\",\"Provided root does not contain the element. This will most likely result in producing a fallback selector using element's real root node. If you plan to use the selector using provided root (e.g. `root.querySelector`), it will not work as intended.\"),t;let n=e.getRootNode({composed:!1});return a(n)?(n!==document&&r(\"shadow root inferred\",\"You did not provide a root and the element is a child of Shadow DOM. This will produce a selector using ShadowRoot as a root. If you plan to use the selector using document as a root (e.g. `document.querySelector`), it will not work as intended.\"),n):p(e)}function s(t){return\"number\"==typeof t?t:1/0}function f(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:[],[e=[],...n]=t;return 0===n.length?e:n.reduce((t,e)=>t.filter(t=>e.includes(t)),e)}function d(t){return[].concat(...t)}function h(t){let e=t.map(t=>{if(i(t))return e=>t.test(e);if(\"function\"==typeof t)return e=>{let n=t(e);return\"boolean\"!=typeof n?(r(\"pattern matcher function invalid\",\"Provided pattern matching function does not return boolean. It's result will be ignored.\",t),!1):n};if(\"string\"==typeof t){let e=RegExp(\"^\"+t.replace(/[|\\\\{}()[\\]^$+?.]/g,\"\\\\$&\").replace(/\\*/g,\".+\")+\"$\");return t=>e.test(t)}return r(\"pattern matcher invalid\",\"Pattern matching only accepts strings, regular expressions and/or functions. This item is invalid and will be ignored.\",t),()=>!1});return t=>e.some(e=>e(t))}function g(t,e,n){let r=Array.from(c(n,t[0]).querySelectorAll(e));return r.length===t.length&&t.every(t=>r.includes(t))}function m(t,n){n=null!=n?n:p(t);let r=[],o=t;for(;e(o)&&o!==n;)r.push(o),o=o.parentElement;return r}function p(t){return t.ownerDocument.querySelector(\":root\")}let v=RegExp(\"^$|\\\\s\"),y=RegExp(\"^$\"),b=[n.nthoftype,n.tag,n.id,n.class,n.attribute,n.nthchild],w=h([\"class\",\"id\",\"ng-*\"]);function E(t){let{name:e}=t;return`[${e}]`}function S(t){let{name:e,value:n}=t;return`[${e}='${n}']`}function A(t){let{nodeName:e,nodeValue:n}=t;return{name:M(e),value:M(null!=n?n:void 0)}}function N(t){let e=Array.from(t.attributes).filter(e=>(function(t,e){let{nodeName:n,nodeValue:r}=t;return!([\"input\",\"option\"].includes(e.tagName.toLowerCase())&&\"value\"===n||\"src\"===n&&(null==r?void 0:r.startsWith(\"data:\")))&&!w(n)})(e,t)).map(A);return[...e.map(E),...e.map(S)]}function C(t){var e;return(null!=(e=t.getAttribute(\"class\"))?e:\"\").trim().split(/\\s+/).filter(t=>!y.test(t)).map(t=>`.${M(t)}`)}function O(t){var e;let n=null!=(e=t.getAttribute(\"id\"))?e:\"\",r=`#${M(n)}`,o=t.getRootNode({composed:!1});return!v.test(n)&&g([t],r,o)?[r]:[]}function T(t){let n=t.parentNode;if(n){let r=Array.from(n.childNodes).filter(e).indexOf(t);if(r>-1)return[`:nth-child(${String(r+1)})`]}return[]}function x(t){return[M(t.tagName.toLowerCase())]}function $(t){let e=[...new Set(d(t.map(x)))];return 0===e.length||e.length>1?[]:[e[0]]}function j(t){let e=$([t])[0],n=t.parentElement;if(n){let r=Array.from(n.children).filter(t=>t.tagName.toLowerCase()===e).indexOf(t);if(r>-1)return[`${e}:nth-of-type(${String(r+1)})`]}return[]}function R(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:[],{maxResults:e=1/0}=arguments.length>1&&void 0!==arguments[1]?arguments[1]:{};return Array.from(function*(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:[],{maxResults:e=1/0}=arguments.length>1&&void 0!==arguments[1]?arguments[1]:{},n=0,r=k(1);for(;r.length<=t.length&&n<e;){n+=1;let e=r.map(e=>t[e]);yield e,r=function(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:[],e=arguments.length>1&&void 0!==arguments[1]?arguments[1]:0,n=t.length;if(0===n)return[];let r=[...t];r[n-1]+=1;for(let t=n-1;t>=0;t--)if(r[t]>e)if(0===t)return k(n+1);else r[t-1]++,r[t]=r[t-1]+1;return r[n-1]>e?k(n+1):r}(r,t.length-1)}}(t,{maxResults:e}))}function k(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:1;return Array.from(Array(t).keys())}let D=/[ !\"#$%&'()\\[\\]{|}<>*+,./;=?@^`~\\\\]/;function M(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:\"\";return CSS?CSS.escape(t):function(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:\"\";return t.split(\"\").map(t=>\":\"===t?\"\\\\3A \":D.test(t)?`\\\\${t}`:escape(t).replace(/%/g,\"\\\\\")).join(\"\")}(t)}let L={tag:$,id:function(t){return 0===t.length||t.length>1?[]:O(t[0])},class:function(t){return f(t.map(C))},attribute:function(t){return f(t.map(N))},nthchild:function(t){return f(t.map(T))},nthoftype:function(t){return f(t.map(j))}},B={tag:x,id:O,class:C,attribute:N,nthchild:T,nthoftype:j};function P(t){return t.includes(n.tag)||t.includes(n.nthoftype)?[...t]:[...t,n.tag]}function _(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:{},e=[...b];return t[n.tag]&&t[n.nthoftype]&&e.splice(e.indexOf(n.tag),1),e.map(e=>t[e]?t[e].join(\"\"):\"\").join(\"\")}function q(t){return{value:t,include:!1}}function U(t){let{selectors:e,operator:r}=t,o=[...b];e[n.tag]&&e[n.nthoftype]&&(o=o.filter(t=>t!==n.tag));let i=\"\";return o.forEach(t=>{var n;(null!=(n=e[t])?n:[]).forEach(t=>{let{value:e,include:n}=t;n&&(i+=e)})}),r+i}function W(t){return[\":root\",...m(t).reverse().map(t=>{let e=function(t,e){let n=arguments.length>2&&void 0!==arguments[2]?arguments[2]:\"\",r={};return e.forEach(e=>{Reflect.set(r,e,B[e](t).map(q))}),{element:t,operator:n,selectors:r}}(t,[n.nthchild],\" > \");return e.selectors.nthchild.forEach(t=>{t.include=!0}),e}).map(U)].join(\"\")}function I(t){var r,i;let l=arguments.length>1&&void 0!==arguments[1]?arguments[1]:{},a=(((i=t)instanceof NodeList||i instanceof HTMLCollection)&&(i=Array.from(i)),[...new Set((Array.isArray(i)?i:[i]).filter(e))]),v=function(t){var e;let r=arguments.length>1&&void 0!==arguments[1]?arguments[1]:{},i=Object.assign(Object.assign({},o),r);return{selectors:Array.isArray(e=i.selectors)?e.filter(t=>Object.values(n).includes(t)):[],whitelist:u(i.whitelist),blacklist:u(i.blacklist),root:c(i.root,t),combineWithinSelector:!!i.combineWithinSelector,combineBetweenSelectors:!!i.combineBetweenSelectors,includeTag:!!i.includeTag,maxCombinations:s(i.maxCombinations),maxCandidates:s(i.maxCandidates)}}(a[0],l),y=null!=(r=v.root)?r:p(a[0]),b=\"\",w=y;function E(){return function(t,e){let n=arguments.length>2&&void 0!==arguments[2]?arguments[2]:\"\",r=arguments.length>3?arguments[3]:void 0;if(0===t.length)return null;for(let o of[t.length>1?t:[],...f(t.map(t=>m(t,e))).map(t=>[t])]){let t=function(t,e){var n;let r=arguments.length>2&&void 0!==arguments[2]?arguments[2]:\"\",o=arguments.length>3?arguments[3]:void 0;for(let i of(n=[...new Set(d(function(t,e){return(function(t){let{selectors:e,combineBetweenSelectors:n,includeTag:r,maxCandidates:o}=t,i=n?R(e,{maxResults:o}):e.map(t=>[t]);return r?i.map(P):i})(e).map(e=>(function(t,e){let n={};return t.forEach(t=>{let r=e[t];r&&r.length>0&&(n[t]=r)}),(function(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:{},e=[];return Object.entries(t).forEach(t=>{let[n,r]=t;e=r.flatMap(t=>0===e.length?[{[n]:t}]:e.map(e=>Object.assign(Object.assign({},e),{[n]:t})))}),e})(n).map(_)})(e,t)).filter(t=>t.length>0)}(function(t,e){let{blacklist:n,whitelist:r,combineWithinSelector:o,maxCombinations:i}=e,l=h(n),u=h(r);return(function(t){let{selectors:e,includeTag:n}=t,r=[...e];return n&&!r.includes(\"tag\")&&r.push(\"tag\"),r})(e).reduce((e,n)=>{let r=function(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:[],e=arguments.length>1?arguments[1]:void 0;return t.sort((t,n)=>{let r=e(t),o=e(n);return r&&!o?-1:!r&&o?1:0})}(function(){let t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:[],e=arguments.length>1?arguments[1]:void 0,n=arguments.length>2?arguments[2]:void 0;return t.filter(t=>n(t)||!e(t))}((0,L[n])(t),l,u),u);return e[n]=o?R(r,{maxResults:i}):r.map(t=>[t]),e},{})}(t,o),o)))],\"\"===r?n:[...n.map(t=>r+\" \"+t),...n.map(t=>r+\" > \"+t)]))if(g(t,i,e))return i;return null}(o,e,n,r);if(t)return{foundElements:o,selector:t}}return null}(a,w,b,v)}let S=E();for(;S;){let{foundElements:t,selector:e}=S;if(g(a,e,y))return e;w=t[0],b=e,S=E()}return a.length>1?a.map(t=>I(t,v)).join(\", \"):a.map(W).join(\", \")}t.s([\"default\",0,I,\"getCssSelector\",()=>I],425223)}]);"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 0,
+          "_transferSize": 0,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "157.90.67.45",
+        "startedDateTime": "2026-02-18T19:54:55.530Z",
+        "time": 0.8799999486654997,
+        "timings": {
+          "blocked": 0.49999995926022534,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0,
+          "wait": 0.17499994183331727,
+          "receive": 0.2050000475719571,
+          "_blocked_queueing": 0.3309999592602253,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_connectionId": "5420",
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "27",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/e5d0b197b8ce023b.js",
+                "lineNumber": 0,
+                "columnNumber": 37103
+              },
+              {
+                "functionName": "xhr",
+                "scriptId": "27",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/e5d0b197b8ce023b.js",
+                "lineNumber": 0,
+                "columnNumber": 35139
+              },
+              {
+                "functionName": "e7",
+                "scriptId": "27",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/e5d0b197b8ce023b.js",
+                "lineNumber": 0,
+                "columnNumber": 41902
+              },
+              {
+                "functionName": "_request",
+                "scriptId": "27",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/e5d0b197b8ce023b.js",
+                "lineNumber": 0,
+                "columnNumber": 44531
+              },
+              {
+                "functionName": "request",
+                "scriptId": "27",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/e5d0b197b8ce023b.js",
+                "lineNumber": 0,
+                "columnNumber": 43110
+              },
+              {
+                "functionName": "",
+                "scriptId": "27",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/e5d0b197b8ce023b.js",
+                "lineNumber": 0,
+                "columnNumber": 45058
+              },
+              {
+                "functionName": "",
+                "scriptId": "27",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/e5d0b197b8ce023b.js",
+                "lineNumber": 0,
+                "columnNumber": 13720
+              },
+              {
+                "functionName": "request",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 31276
+              },
+              {
+                "functionName": "transport",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 31173
+              },
+              {
+                "functionName": "sync",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 33877
+              },
+              {
+                "functionName": "y",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 1799
+              },
+              {
+                "functionName": "S",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 2140
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 34607
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 27373
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 19670
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 24175
+              },
+              {
+                "functionName": "",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 20000
+              },
+              {
+                "functionName": "t",
+                "scriptId": "30",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                "lineNumber": 0,
+                "columnNumber": 19871
+              }
+            ]
+          }
+        },
+        "_priority": "High",
+        "_resourceType": "xhr",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "POST",
+          "url": "https://www.vinted.co.uk/relay/events",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "www.vinted.co.uk"
+            },
+            {
+              "name": ":method",
+              "value": "POST"
+            },
+            {
+              "name": ":path",
+              "value": "/relay/events"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "content-length",
+              "value": "336"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/items/8055522775/edit"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"macOS\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "x-debug-info",
+              "value": "v4"
+            },
+            {
+              "name": "x-local-time",
+              "value": "1771444495530"
+            },
+            {
+              "name": "x-platform",
+              "value": "web"
+            },
+            {
+              "name": "x-portal",
+              "value": "fr"
+            },
+            {
+              "name": "x-screen-height",
+              "value": "0"
+            },
+            {
+              "name": "x-screen-width",
+              "value": "0"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 336,
+          "postData": {
+            "mimeType": "application/json",
+            "text": "[{\"event\":\"system.client_timing\",\"anon_id\":\"1a037f89-b2a1-44fc-9370-c12426a16f84\",\"user_id\":213860635,\"lang_code\":\"en-uk-fr\",\"extra\":{\"path\":\"/items/8055522775/edit\",\"duration\":2084,\"screen\":\"upload_item\",\"status\":\"success\",\"tracking_type\":\"largest_contentful_paint\",\"uuid\":\"42ace566-780a-4c47-b696-63d885a9d8f7\"},\"time\":1771444495530}]"
+          }
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-origin",
+              "value": "*"
+            },
+            {
+              "name": "cf-cache-status",
+              "value": "DYNAMIC"
+            },
+            {
+              "name": "cf-ray",
+              "value": "9d00144169879858-LHR"
+            },
+            {
+              "name": "content-length",
+              "value": "10"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:54:55 GMT"
+            },
+            {
+              "name": "server",
+              "value": "cloudflare"
+            },
+            {
+              "name": "x-envoy-upstream-service-time",
+              "value": "1"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 10,
+            "mimeType": "application/json",
+            "text": "{\"code\":0}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 106,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.83.149",
+        "startedDateTime": "2026-02-18T19:54:55.531Z",
+        "time": 84.58500006236136,
+        "timings": {
+          "blocked": 0.4360000225305557,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.28900000000000003,
+          "wait": 83.67700004336238,
+          "receive": 0.1829999964684248,
+          "_blocked_queueing": 0.21700002253055573,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_connectionId": "6064",
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 142233
+              },
+              {
+                "functionName": "t",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 8973
+              },
+              {
+                "functionName": "P",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 140366
+              },
+              {
+                "functionName": "tH",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 146596
+              },
+              {
+                "functionName": "tX.request",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 148521
+              },
+              {
+                "functionName": "tX.<computed>",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 149015
+              },
+              {
+                "functionName": "",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 134329
+              },
+              {
+                "functionName": "",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 152055
+              },
+              {
+                "functionName": "",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 133921
+              },
+              {
+                "functionName": "",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 154458
+              },
+              {
+                "functionName": "E",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 63394
+              },
+              {
+                "functionName": "O.m.value",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 63172
+              },
+              {
+                "functionName": "",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 63774
+              },
+              {
+                "functionName": "ri",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 94300
+              },
+              {
+                "functionName": "s",
+                "scriptId": "29",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                "lineNumber": 0,
+                "columnNumber": 94509
+              }
+            ],
+            "parent": {
+              "description": "Promise.then",
+              "callFrames": [
+                {
+                  "functionName": "ri",
+                  "scriptId": "29",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                  "lineNumber": 0,
+                  "columnNumber": 94374
+                },
+                {
+                  "functionName": "s",
+                  "scriptId": "29",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                  "lineNumber": 0,
+                  "columnNumber": 94509
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "29",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                  "lineNumber": 0,
+                  "columnNumber": 94570
+                },
+                {
+                  "functionName": "t",
+                  "scriptId": "29",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                  "lineNumber": 0,
+                  "columnNumber": 8973
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "29",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                  "lineNumber": 0,
+                  "columnNumber": 94447
+                },
+                {
+                  "functionName": "rb.value",
+                  "scriptId": "29",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                  "lineNumber": 0,
+                  "columnNumber": 154547
+                },
+                {
+                  "functionName": "t9",
+                  "scriptId": "29",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                  "lineNumber": 0,
+                  "columnNumber": 155653
+                },
+                {
+                  "functionName": "er",
+                  "scriptId": "29",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js",
+                  "lineNumber": 0,
+                  "columnNumber": 155761
+                },
+                {
+                  "functionName": "push._",
+                  "scriptId": "24",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/7bccf5e64512f822.js",
+                  "lineNumber": 0,
+                  "columnNumber": 10993
+                },
+                {
+                  "functionName": "ep",
+                  "scriptId": "30",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                  "lineNumber": 0,
+                  "columnNumber": 26071
+                }
+              ],
+              "parent": {
+                "description": "await",
+                "callFrames": [
+                  {
+                    "functionName": "",
+                    "scriptId": "30",
+                    "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                    "lineNumber": 0,
+                    "columnNumber": 27361
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "30",
+                    "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                    "lineNumber": 0,
+                    "columnNumber": 19670
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "30",
+                    "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                    "lineNumber": 0,
+                    "columnNumber": 24175
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "30",
+                    "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                    "lineNumber": 0,
+                    "columnNumber": 20000
+                  },
+                  {
+                    "functionName": "t",
+                    "scriptId": "30",
+                    "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js",
+                    "lineNumber": 0,
+                    "columnNumber": 19871
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "_priority": "High",
+        "_resourceType": "xhr",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "POST",
+          "url": "https://logs-ingress.svc.vinted.com/api/v3/sync-public",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "logs-ingress.svc.vinted.com"
+            },
+            {
+              "name": ":method",
+              "value": "POST"
+            },
+            {
+              "name": ":path",
+              "value": "/api/v3/sync-public"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "content-length",
+              "value": "1423"
+            },
+            {
+              "name": "content-type",
+              "value": "application/x-ndjson"
+            },
+            {
+              "name": "logs-ingress-log-resource",
+              "value": "apphealth.web"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"macOS\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "cross-site"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 1423,
+          "postData": {
+            "mimeType": "application/x-ndjson",
+            "text": "{\"log_type\":\"generic_v2\",\"type\":\"log\",\"facility\":\"marketplace-web\",\"current_path\":\"/items/8055522775/edit\",\"device_time\":\"2026-02-18T19:54:55.555Z\",\"user_language\":\"en-GB\",\"browser_width\":469,\"browser_height\":772,\"screen_width\":1728,\"screen_height\":1117,\"message\":\"Found LCP element\",\"stacktrace\":\"t9 (https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js:1:155633)\\nModule.er (https://marketplace-web-assets.vinted.com/_next/static/chunks/c2c2489037edda70.js:1:155762)\\npush._ (https://marketplace-web-assets.vinted.com/_next/static/chunks/7bccf5e64512f822.js:1:10994)\\nep (https://marketplace-web-assets.vinted.com/_next/static/chunks/96904991404ce9a4.js:1:26072)\",\"user_agent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36\",\"record_position_in_batch\":0,\"logger_id\":\"e5c5c062-1e3d-472d-a095-c9f32c200109\",\"version\":\"a673f426c1af376b04309302dd15e0bb7a116918\",\"env\":\"production\",\"extra\":\"{\\\"selector\\\":\\\":root > :nth-child(2) > :nth-child(2) > :nth-child(1) > :nth-child(3) > :nth-child(1) > :nth-child(1) > :nth-child(1) > :nth-child(2) > :nth-child(1) > :nth-child(1) > :nth-child(1) > :nth-child(4) > :nth-child(1) > :nth-child(2) > :nth-child(1) > :nth-child(1) > :nth-child(1) > :nth-child(2) > :nth-child(25) > :nth-child(1) > :nth-child(1) > :nth-child(1) > :nth-child(1) > :nth-child(1)\\\",\\\"page\\\":\\\"item-edit\\\"}\"}"
+          }
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-origin",
+              "value": "*"
+            },
+            {
+              "name": "cf-cache-status",
+              "value": "DYNAMIC"
+            },
+            {
+              "name": "cf-ray",
+              "value": "9d0014430a3b68c6-LHR"
+            },
+            {
+              "name": "content-length",
+              "value": "0"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:54:55 GMT"
+            },
+            {
+              "name": "server",
+              "value": "cloudflare"
+            },
+            {
+              "name": "vary",
+              "value": "Origin"
+            },
+            {
+              "name": "x-envoy-upstream-service-time",
+              "value": "4"
+            },
+            {
+              "name": "x-request-id",
+              "value": "dd10b9e0-cffb-4c54-bcee-d82da16dfcd6"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 0,
+            "mimeType": "text/plain",
+            "text": ""
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 309,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.163.153",
+        "startedDateTime": "2026-02-18T19:54:55.557Z",
+        "time": 314.8899999214336,
+        "timings": {
+          "blocked": 234.8049999897182,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.095,
+          "wait": 79.84299997653812,
+          "receive": 0.14699995517730713,
+          "_blocked_queueing": 234.7099999897182,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_connectionId": "6064",
+        "_initiator": {
+          "type": "preflight",
+          "url": "https://logs-ingress.svc.vinted.com/api/v3/sync-public",
+          "requestId": "78732.277"
+        },
+        "_priority": "High",
+        "_resourceType": "preflight",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "OPTIONS",
+          "url": "https://logs-ingress.svc.vinted.com/api/v3/sync-public",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "logs-ingress.svc.vinted.com"
+            },
+            {
+              "name": ":method",
+              "value": "OPTIONS"
+            },
+            {
+              "name": ":path",
+              "value": "/api/v3/sync-public"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "access-control-request-headers",
+              "value": "content-type,logs-ingress-log-resource"
+            },
+            {
+              "name": "access-control-request-method",
+              "value": "POST"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "cross-site"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 204,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-headers",
+              "value": "content-type,logs-ingress-log-resource"
+            },
+            {
+              "name": "access-control-allow-methods",
+              "value": "GET,HEAD,PUT,PATCH,POST,DELETE"
+            },
+            {
+              "name": "access-control-allow-origin",
+              "value": "*"
+            },
+            {
+              "name": "cf-cache-status",
+              "value": "DYNAMIC"
+            },
+            {
+              "name": "cf-ray",
+              "value": "9d001442891d68c6-LHR"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:54:55 GMT"
+            },
+            {
+              "name": "server",
+              "value": "cloudflare"
+            },
+            {
+              "name": "vary",
+              "value": "Origin,Access-Control-Request-Method,Access-Control-Request-Headers, Accept-Encoding"
+            },
+            {
+              "name": "x-envoy-upstream-service-time",
+              "value": "0"
+            },
+            {
+              "name": "x-request-id",
+              "value": "c20b32e6-a8c1-446c-a170-feda2847cfae"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 0,
+            "mimeType": "x-unknown"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 0,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.163.153",
+        "startedDateTime": "2026-02-18T19:54:55.557Z",
+        "time": 234.11199997644871,
+        "timings": {
+          "blocked": 0.11000003807246685,
+          "dns": -1,
+          "ssl": 49.619,
+          "connect": 156.786,
+          "send": 0.16800000000000637,
+          "wait": 76.8809999473244,
+          "receive": 0.1669999910518527,
+          "_blocked_queueing": 0.00500003807246685,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_connectionId": "6036",
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 102514
+              },
+              {
+                "functionName": "t.send",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 102480
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 100323
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 99823
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 100887
+              },
+              {
+                "functionName": "t.send",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 100636
+              },
+              {
+                "functionName": "t.export",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 106891
+              },
+              {
+                "functionName": "t.export",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 92598
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 87437
+              },
+              {
+                "functionName": "t.with",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 17363
+              },
+              {
+                "functionName": "t.with",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 18434
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 87389
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 87358
+              },
+              {
+                "functionName": "",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 84738
+              },
+              {
+                "functionName": "a",
+                "scriptId": "28",
+                "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                "lineNumber": 0,
+                "columnNumber": 83595
+              }
+            ],
+            "parent": {
+              "description": "Promise.then",
+              "callFrames": [
+                {
+                  "functionName": "s",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83757
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83767
+                },
+                {
+                  "functionName": "rV",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83539
+                },
+                {
+                  "functionName": "e._doRun",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 86662
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 86381
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 84738
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83790
+                },
+                {
+                  "functionName": "rV",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 83539
+                },
+                {
+                  "functionName": "e._runOnce",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 86252
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "28",
+                  "url": "https://marketplace-web-assets.vinted.com/_next/static/chunks/937889475acc6092.js",
+                  "lineNumber": 0,
+                  "columnNumber": 87697
+                }
+              ]
+            }
+          }
+        },
+        "_priority": "VeryLow",
+        "_resourceType": "ping",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "POST",
+          "url": "https://metrics-ingress-web.svc.vinted.com/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "metrics-ingress-web.svc.vinted.com"
+            },
+            {
+              "name": ":method",
+              "value": "POST"
+            },
+            {
+              "name": ":path",
+              "value": "/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "content-length",
+              "value": "4611"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=4, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"macOS\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "cross-site"
+            },
+            {
+              "name": "sec-fetch-storage-access",
+              "value": "active"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "key",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM"
+            }
+          ],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 4611,
+          "postData": {
+            "mimeType": "application/json",
+            "text": "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"marketplace_web\"}},{\"key\":\"telemetry.sdk.language\",\"value\":{\"stringValue\":\"webjs\"}},{\"key\":\"telemetry.sdk.name\",\"value\":{\"stringValue\":\"opentelemetry\"}},{\"key\":\"telemetry.sdk.version\",\"value\":{\"stringValue\":\"1.30.1\"}},{\"key\":\"version\",\"value\":{\"stringValue\":\"a673f426c1af376b04309302dd15e0bb7a116918\"}},{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}}],\"droppedAttributesCount\":0},\"scopeMetrics\":[{\"scope\":{\"name\":\"largest_contentful_paint\",\"version\":\"\"},\"metrics\":[{\"name\":\"largest_contentful_paint\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"mobile\"}}],\"bucketCounts\":[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"explicitBounds\":[0.25,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10,15,20],\"count\":1,\"sum\":2.084,\"min\":2.084,\"max\":2.084,\"startTimeUnixNano\":\"1771444495529000000\",\"timeUnixNano\":\"1771444506753000000\"}]}}]},{\"scope\":{\"name\":\"largest_contentful_paint_score\",\"version\":\"\"},\"metrics\":[{\"name\":\"largest_contentful_paint_score\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"mobile\"}}],\"bucketCounts\":[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0],\"explicitBounds\":[0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,1],\"count\":1,\"sum\":0.6029634443334009,\"min\":0.6029634443334009,\"max\":0.6029634443334009,\"startTimeUnixNano\":\"1771444495529000000\",\"timeUnixNano\":\"1771444506753000000\"}]}}]},{\"scope\":{\"name\":\"interaction_to_next_paint\",\"version\":\"\"},\"metrics\":[{\"name\":\"interaction_to_next_paint\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"mobile\"}}],\"bucketCounts\":[0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"explicitBounds\":[0.005,0.01,0.025,0.05,0.1,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.6,0.75,1,2,5],\"count\":1,\"sum\":0.016,\"min\":0.016,\"max\":0.016,\"startTimeUnixNano\":\"1771444495531000000\",\"timeUnixNano\":\"1771444506753000000\"}]}}]},{\"scope\":{\"name\":\"interaction_to_next_paint_score\",\"version\":\"\"},\"metrics\":[{\"name\":\"interaction_to_next_paint_score\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"mobile\"}}],\"bucketCounts\":[0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],\"explicitBounds\":[0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,1],\"count\":1,\"sum\":0.9999992597480132,\"min\":0.9999992597480132,\"max\":0.9999992597480132,\"startTimeUnixNano\":\"1771444495531000000\",\"timeUnixNano\":\"1771444506753000000\"}]}}]},{\"scope\":{\"name\":\"cumulative_layout_shift\",\"version\":\"\"},\"metrics\":[{\"name\":\"cumulative_layout_shift\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"mobile\"}}],\"bucketCounts\":[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"explicitBounds\":[0.001,0.01,0.05,0.1,0.125,0.15,0.175,0.2,0.225,0.25,0.3,0.35,0.4,0.5,0.75,1,5],\"count\":1,\"sum\":0,\"min\":0,\"max\":0,\"startTimeUnixNano\":\"1771444495531000000\",\"timeUnixNano\":\"1771444506753000000\"}]}}]},{\"scope\":{\"name\":\"cumulative_layout_shift_score\",\"version\":\"\"},\"metrics\":[{\"name\":\"cumulative_layout_shift_score\",\"description\":\"\",\"unit\":\"\",\"histogram\":{\"aggregationTemporality\":1,\"dataPoints\":[{\"attributes\":[{\"key\":\"env\",\"value\":{\"stringValue\":\"production\"}},{\"key\":\"page\",\"value\":{\"stringValue\":\"item-edit\"}},{\"key\":\"connection\",\"value\":{\"stringValue\":\"4g\"}},{\"key\":\"device\",\"value\":{\"stringValue\":\"mobile\"}}],\"bucketCounts\":[0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],\"explicitBounds\":[0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,0.99,1],\"count\":1,\"sum\":1,\"min\":1,\"max\":1,\"startTimeUnixNano\":\"1771444495531000000\",\"timeUnixNano\":\"1771444506753000000\"}]}}]}]}]}"
+          }
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-credentials",
+              "value": "true"
+            },
+            {
+              "name": "access-control-allow-origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "cf-cache-status",
+              "value": "DYNAMIC"
+            },
+            {
+              "name": "cf-ray",
+              "value": "9d0014880def465b-LHR"
+            },
+            {
+              "name": "content-length",
+              "value": "21"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:55:06 GMT"
+            },
+            {
+              "name": "server",
+              "value": "cloudflare"
+            },
+            {
+              "name": "x-envoy-upstream-service-time",
+              "value": "0"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 21,
+            "mimeType": "application/json",
+            "text": "{\"partialSuccess\":{}}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 98,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.83.149",
+        "startedDateTime": "2026-02-18T19:55:06.758Z",
+        "time": 149.7089999029413,
+        "timings": {
+          "blocked": 71.22899990388007,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.23500000000000004,
+          "wait": 77.39899996004253,
+          "receive": 0.8460000390186906,
+          "_blocked_queueing": 70.94199990388006,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      },
+      {
+        "_connectionId": "6029",
+        "_initiator": {
+          "type": "preflight",
+          "url": "https://metrics-ingress-web.svc.vinted.com/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM",
+          "requestId": "78732.278"
+        },
+        "_priority": "VeryLow",
+        "_resourceType": "preflight",
+        "cache": {},
+        "connection": "8004",
+        "request": {
+          "method": "OPTIONS",
+          "url": "https://metrics-ingress-web.svc.vinted.com/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "metrics-ingress-web.svc.vinted.com"
+            },
+            {
+              "name": ":method",
+              "value": "OPTIONS"
+            },
+            {
+              "name": ":path",
+              "value": "/v1/metrics?key=eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-GB"
+            },
+            {
+              "name": "access-control-request-headers",
+              "value": "content-type"
+            },
+            {
+              "name": "access-control-request-method",
+              "value": "POST"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "priority",
+              "value": "u=4, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.vinted.co.uk/"
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "cross-site"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [
+            {
+              "name": "key",
+              "value": "eyJhbGciOiJIUzI1NiJ9.eyJwdXJwb3NlIjoib3RlbC1jbGllbnQtbWV0cmljcyIsImlhdCI6MTc3MTQ0NDQ0NCwiZXhwIjoxNzcxNDQ2MjQ0fQ.8tvIij7VZFjTQH0PKIaKoe5e6q-rrgQW4_lU4gKoJTM"
+            }
+          ],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "access-control-allow-credentials",
+              "value": "true"
+            },
+            {
+              "name": "access-control-allow-headers",
+              "value": "Accept,Accept-Language,Content-Language,Content-Type,User-Agent,Authorization"
+            },
+            {
+              "name": "access-control-allow-methods",
+              "value": "POST"
+            },
+            {
+              "name": "access-control-allow-origin",
+              "value": "https://www.vinted.co.uk"
+            },
+            {
+              "name": "cf-cache-status",
+              "value": "DYNAMIC"
+            },
+            {
+              "name": "cf-ray",
+              "value": "9d00148788ca0030-LHR"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 18 Feb 2026 19:55:06 GMT"
+            },
+            {
+              "name": "server",
+              "value": "cloudflare"
+            },
+            {
+              "name": "vary",
+              "value": "Accept-Encoding"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 0,
+            "mimeType": "x-unknown"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 0,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "116.202.83.149",
+        "startedDateTime": "2026-02-18T19:55:06.759Z",
+        "time": 70.21499995607883,
+        "timings": {
+          "blocked": 0.24599993688613175,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.11499999999999999,
+          "wait": 69.50999996094406,
+          "receive": 0.3440000582486391,
+          "_blocked_queueing": 0.0069999368861317635,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        }
+      }
+    ]
+  }
+}
