@@ -38,6 +38,7 @@ export type AppSettings = {
   sessionAutofillEnabled: boolean;
   sessionAutoSubmitEnabled: boolean;
   transportMode: 'PROXY' | 'DIRECT';
+  browser_proxy_mode: 'DIRECT' | 'ISP_DEDICATED';
 };
 
 export type BridgeResult<T = unknown> =
@@ -119,6 +120,18 @@ export type InventoryItem = {
   is_unisex: boolean;
   status: 'live' | 'local_only' | 'discrepancy' | 'action_required' | 'sold' | 'hidden' | 'reserved';
   extra_metadata: Record<string, unknown> | null;
+  list_fingerprint: string | null;
+  detail_hydrated_at: number | null;
+  detail_source: string | null;
+  discrepancy_reason: string | null;
+  isbn: string | null;
+  measurement_length: number | null;
+  measurement_width: number | null;
+  model_metadata: Record<string, unknown> | null;
+  manufacturer: string | null;
+  manufacturer_labelling: string | null;
+  video_game_rating_id: number | null;
+  shipment_prices: Record<string, unknown> | null;
   live_snapshot_hash: string | null;
   live_snapshot_fetched_at: number | null;
   created_at: number;
@@ -252,6 +265,16 @@ declare global {
       // Wardrobe / Inventory Vault
       getWardrobe: (filter?: { status?: string }) => Promise<InventoryItem[]>;
       getWardrobeItem: (localId: number) => Promise<InventoryItem | undefined>;
+      getDetailCompleteness: (localId: number) => Promise<{
+        ok: boolean;
+        complete: boolean;
+        missing: string[];
+        category_id: number | null;
+        requires_size: boolean;
+        requires_size_known: boolean;
+        detail_hydrated_at: number | null;
+        detail_source: string | null;
+      }>;
       upsertWardrobeItem: (data: { title: string; price: number; id?: number; [k: string]: unknown }) => Promise<number>;
       deleteWardrobeItem: (localId: number) => Promise<boolean>;
       pullFromVinted: (userId: number) => Promise<{ pulled: number; errors: string[] }>;
@@ -282,7 +305,7 @@ declare global {
       onOntologyAlert: (callback: (data: { deletedCategories: unknown[]; affectedItems: unknown[] }) => void) => () => void;
 
       // Sync Progress
-      onSyncProgress: (callback: (data: { direction: string; stage: string; current: number; total: number }) => void) => () => void;
+      onSyncProgress: (callback: (data: { direction: string; stage: string; current: number; total: number; message?: string }) => void) => () => void;
     };
   }
 }

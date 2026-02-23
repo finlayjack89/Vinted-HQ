@@ -40,9 +40,10 @@ export default function Wardrobe() {
   const [processing, setProcessing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; message?: string } | null>(null);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [ontologyAlert, setOntologyAlert] = useState<{ deletedCategories: unknown[]; affectedItems: unknown[] } | null>(null);
+  const [actionBusy, setActionBusy] = useState<null | { kind: 'push' | 'pull'; localId: number }>(null);
 
   // ── Data loading ──
   const loadItems = useCallback(async () => {
@@ -78,9 +79,13 @@ export default function Wardrobe() {
     const unsubSync = window.vinted.onSyncProgress((data) => {
       if (data.stage === 'starting') {
         setSyncing(true);
-        setSyncProgress({ current: 0, total: 0 });
+        setSyncProgress({ current: 0, total: 0, message: data.message });
       } else if (data.stage === 'progress') {
-        setSyncProgress({ current: data.current, total: data.total });
+        setSyncProgress((prev) => ({
+          current: data.current,
+          total: data.total,
+          message: data.message ?? prev?.message,
+        }));
       } else {
         setSyncing(false);
         setSyncProgress(null);
@@ -128,6 +133,7 @@ export default function Wardrobe() {
   };
 
   const handlePush = async (localId: number) => {
+    setActionBusy({ kind: 'push', localId });
     try {
       const result = await window.vinted.pushToVinted(localId);
       if (!result?.ok) {
@@ -137,11 +143,13 @@ export default function Wardrobe() {
       const msg = err instanceof Error ? err.message : String(err);
       window.alert(`Push failed: ${msg}`);
     } finally {
-      loadItems();
+      await loadItems();
+      setActionBusy(null);
     }
   };
 
   const handlePull = async (localId: number) => {
+    setActionBusy({ kind: 'pull', localId });
     try {
       const result = await window.vinted.pullLiveToLocal(localId);
       if (!result?.ok) {
@@ -151,7 +159,8 @@ export default function Wardrobe() {
       const msg = err instanceof Error ? err.message : String(err);
       window.alert(`Pull failed: ${msg}`);
     } finally {
-      loadItems();
+      await loadItems();
+      setActionBusy(null);
     }
   };
 
@@ -163,21 +172,27 @@ export default function Wardrobe() {
   const handleSaveEdit = async (data: Record<string, unknown>) => {
     const localId = data.id as number | undefined;
     const item = editingItem;
-    // If the item is linked to a live Vinted listing, push changes to Vinted
-    if (localId && item?.vinted_item_id) {
-      const result = await window.vinted.editLiveItem(localId, data);
-      if (!result.ok) {
-        console.error('Failed to push edit to Vinted:', result.error);
-        // Still saved locally — status will be 'discrepancy'
-        return { ok: false, error: result.error || 'Failed to push edit to Vinted' };
+    try {
+      // If the item is linked to a live Vinted listing, push changes to Vinted
+      if (localId && item?.vinted_item_id) {
+        const result = await window.vinted.editLiveItem(localId, data);
+        if (!result.ok) {
+          console.error('Failed to push edit to Vinted:', result.error);
+          // Still saved locally — status will be 'discrepancy'
+          return { ok: false, error: result.error || 'Failed to push edit to Vinted' };
+        }
+      } else {
+        // Local-only item — just save locally
+    await window.vinted.upsertWardrobeItem(data as { title: string; price: number; id?: number });
       }
-    } else {
-      // Local-only item — just save locally
-      await window.vinted.upsertWardrobeItem(data as { title: string; price: number; id?: number });
-    }
     setEditingItem(null);
-    loadItems();
-    return { ok: true };
+      return { ok: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: msg };
+    } finally {
+      await loadItems();
+    }
   };
 
   const subTabCounts: Record<SubTab, number> = {
@@ -198,8 +213,26 @@ export default function Wardrobe() {
 
   return (
     <div style={{ padding: spacing['2xl'], maxWidth: 1200, margin: '0 auto' }}>
+      {actionBusy && (
+        <div style={modalOverlay}>
+          <div
+            style={{ ...modalContent, maxWidth: 420, textAlign: 'center', background: colors.bgElevated, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
+            onClick={(e) => e.stopPropagation()}
+            className="animate-fadeInScale"
+          >
+            <div style={{ fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }} className="animate-pulse">
+              {actionBusy.kind === 'push' ? 'Pushing to Vinted…' : 'Pulling from Vinted…'}
+            </div>
+            <div style={{ marginTop: 8, fontSize: font.size.sm, color: colors.textSecondary, lineHeight: 1.5 }}>
+              This can take a few seconds. Please don’t close the app.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xl }}>
+      <div style={{ marginBottom: spacing.xl }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ ...sectionTitle, marginBottom: 0, fontSize: font.size['2xl'] }}>Wardrobe</h2>
         <div style={{ display: 'flex', gap: spacing.sm }}>
           <button
@@ -227,6 +260,12 @@ export default function Wardrobe() {
               : 'Sync from Vinted'}
           </button>
         </div>
+        </div>
+        {syncing && syncProgress?.message && (
+          <div style={{ marginTop: spacing.xs, fontSize: font.size.sm, color: colors.textSecondary }}>
+            {syncProgress.message}
+          </div>
+        )}
       </div>
 
       {/* ── Sub-tab Navigation ── */}
@@ -510,6 +549,16 @@ function ItemRow({
         </div>
         {item.brand_name && (
           <div style={{ fontSize: font.size.xs, color: colors.textMuted }}>{item.brand_name}</div>
+        )}
+        {item.status === 'discrepancy' && item.discrepancy_reason === 'failed_push' && (
+          <div style={{ fontSize: font.size.xs, color: colors.error }}>
+            Last push failed — retry Push
+          </div>
+        )}
+        {item.status === 'discrepancy' && item.discrepancy_reason === 'external_change' && (
+          <div style={{ fontSize: font.size.xs, color: colors.textMuted }}>
+            Live listing changed — Pull to accept or Push to overwrite
+          </div>
         )}
       </td>
       <td style={tableCell}>
@@ -1265,6 +1314,7 @@ function EditItemModal({
     return remoteUrls.map((u: string) => ({ type: 'existing', id: 0, url: u }));
   });
   const [photoPlanOriginalExistingIds, setPhotoPlanOriginalExistingIds] = useState<number[]>([]);
+  const hasUnresolvedExistingPhotoIds = photoPlanItems.some((p) => p.type === 'existing' && p.id <= 0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -1278,10 +1328,27 @@ function EditItemModal({
       setBrandResults([{ id: item.brand_id, name: item.brand_name }]);
     }
 
-    // Always refetch on modal open for live-linked items. This prevents stale/empty
-    // fields when reopening the edit modal for the same listing.
-    if (item.vinted_item_id) {
-      let cancelled = false;
+    // Category-aware: ask main process whether this item is complete enough to edit/push.
+    // Also enforce a 7-day cache TTL (stale cache triggers a refresh fetch).
+    let cancelled = false;
+    const checkAndFetch = async () => {
+      if (!item.vinted_item_id) return;
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      let comp: Awaited<ReturnType<typeof window.vinted.getDetailCompleteness>> | null = null;
+      try {
+        comp = await window.vinted.getDetailCompleteness(item.id);
+      } catch {
+        comp = null;
+      }
+      if (cancelled) return;
+
+      const hydratedAt =
+        (comp && typeof comp.detail_hydrated_at === 'number' ? comp.detail_hydrated_at : null) ??
+        (typeof item.detail_hydrated_at === 'number' ? item.detail_hydrated_at : null);
+      const isCacheStale = Boolean(hydratedAt) && (nowSec - (hydratedAt as number) > 7 * 24 * 60 * 60);
+      const needsDetailFetch = !comp || !comp.ok || !comp.complete || isCacheStale;
+      if (!needsDetailFetch) return;
 
       // Debug window is opt-in (it is intrusive in normal usage).
       // Enable by running in DevTools: localStorage.setItem('vinted_edit_debug_window', '1')
@@ -1376,24 +1443,75 @@ function EditItemModal({
         }
 
         // ── Apply resolved values to state ──
-        if (d.description) setDescription(String(d.description));
-        if (resolvedCatId) setSelectedCategoryId(resolvedCatId);
+        // Fill gaps, but don't clobber user edits if they started typing before this finishes.
+        const liveDesc = typeof d.description === 'string' ? d.description : '';
+        if (liveDesc.trim()) {
+          setDescription((prev) => (prev.trim() ? prev : liveDesc));
+        }
+        if (resolvedCatId) setSelectedCategoryId((prev) => (prev ? prev : resolvedCatId));
         if (resolvedBrandId) {
-          setSelectedBrandId(resolvedBrandId);
+          setSelectedBrandId((prev) => (prev ? prev : resolvedBrandId));
           if (resolvedBrandName) {
-            setSelectedBrandName(resolvedBrandName);
+            setSelectedBrandName((prev) => (prev ? prev : resolvedBrandName));
             setBrandResults((prev) => {
               if (prev.find((b) => b.id === resolvedBrandId)) return prev;
               return [{ id: resolvedBrandId, name: resolvedBrandName }, ...prev];
             });
           }
         }
-        if (resolvedSizeId) setSelectedSizeId(resolvedSizeId);
-        if (resolvedStatusId) setSelectedStatusId(resolvedStatusId);
-        if (resolvedPkgId) setPackageSizeId(resolvedPkgId);
-        if (resolvedColorIds.length > 0) setSelectedColorIds(resolvedColorIds);
-        if (d.is_unisex !== undefined) setIsUnisex(Boolean(d.is_unisex));
-        if (resolvedPrice) setPrice(resolvedPrice);
+        if (resolvedSizeId) setSelectedSizeId((prev) => (prev ? prev : resolvedSizeId));
+        if (resolvedStatusId) setSelectedStatusId((prev) => (prev ? prev : resolvedStatusId));
+        if (resolvedPkgId) {
+          const initialPkg = item.package_size_id ?? 3;
+          setPackageSizeId((prev) => (prev === initialPkg ? resolvedPkgId : prev));
+        }
+        if (resolvedColorIds.length > 0) setSelectedColorIds((prev) => (prev.length > 0 ? prev : resolvedColorIds));
+        if (d.is_unisex !== undefined) {
+          const initialUnisex = Boolean(item.is_unisex);
+          setIsUnisex((prev) => (prev === initialUnisex ? Boolean(d.is_unisex) : prev));
+        }
+        if (resolvedPrice) {
+          const initialPrice = String(item.price);
+          setPrice((prev) => (prev === initialPrice ? resolvedPrice : prev));
+        }
+
+        // Persist missing detail fields so the next open doesn't need a refetch
+        // and "Push" has the required IDs even outside the modal.
+        try {
+          const patch: Record<string, unknown> = { id: item.id, title: item.title, price: item.price };
+          let changed = false;
+          if (!item.category_id && resolvedCatId) { patch.category_id = resolvedCatId; changed = true; }
+          if (!item.brand_id && resolvedBrandId) {
+            patch.brand_id = resolvedBrandId;
+            if (resolvedBrandName) patch.brand_name = resolvedBrandName;
+            changed = true;
+          }
+          if (!item.size_id && resolvedSizeId) { patch.size_id = resolvedSizeId; changed = true; }
+          if (!item.size_label && (d.size_title || sizeObj?.title || sizeObj?.name)) {
+            patch.size_label = String(d.size_title || sizeObj?.title || sizeObj?.name || '');
+            changed = true;
+          }
+          if (!item.status_id && resolvedStatusId) { patch.status_id = resolvedStatusId; changed = true; }
+          if (!item.package_size_id && resolvedPkgId) { patch.package_size_id = resolvedPkgId; changed = true; }
+          if ((!Array.isArray(item.color_ids) || item.color_ids.length === 0) && resolvedColorIds.length > 0) {
+            patch.color_ids = JSON.stringify(resolvedColorIds);
+            changed = true;
+          }
+          const localDesc = typeof item.description === 'string' ? item.description : '';
+          const liveDesc = typeof d.description === 'string' ? d.description : '';
+          if (!localDesc.trim() && liveDesc.trim()) { patch.description = liveDesc; changed = true; }
+          if (Array.isArray(item.item_attributes) && item.item_attributes.length === 0 && d.item_attributes && Array.isArray(d.item_attributes)) {
+            patch.item_attributes = JSON.stringify(d.item_attributes);
+            changed = true;
+          }
+          if (changed) {
+            window.vinted.upsertWardrobeItem(patch as { title: string; price: number; id?: number }).catch((err) => {
+              console.warn('[EditModal] Failed to persist hydrated details:', err);
+            });
+          }
+        } catch {
+          /* ignore persistence errors */
+        }
 
         // Parse materials from item_attributes (array of {code, ids})
         if (d.item_attributes && Array.isArray(d.item_attributes)) {
@@ -1448,18 +1566,27 @@ function EditItemModal({
         // ── Photos with IDs (for reorder/remove + save) ──
         // Prefer the photo list from the live Vinted edit-page data (has IDs).
         try {
-          const rawPhotos = (d.photos ?? []) as Record<string, unknown>[];
-          if (Array.isArray(rawPhotos) && rawPhotos.length > 0) {
-            const existing: PhotoPlanItem[] = rawPhotos
-              .map((p) => ({
-                type: 'existing' as const,
-                id: Number(p.id || 0),
-                url: String(p.url || ''),
-              }))
-              .filter((p) => p.id > 0 && !!p.url);
-            if (existing.length > 0) {
-              setPhotoPlanItems(existing);
-              setPhotoPlanOriginalExistingIds(existing.map((p) => (p.type === 'existing' ? p.id : 0)).filter((id) => id > 0));
+          // If we already have local pending photos, don't overwrite the plan from live.
+          // (Those local paths are the user's intended changes.)
+          const existingLocalPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
+          if (existingLocalPaths.length === 0) {
+            const rawPhotos = (d.photos ?? []) as Record<string, unknown>[];
+            if (Array.isArray(rawPhotos) && rawPhotos.length > 0) {
+              const existing: PhotoPlanItem[] = rawPhotos
+                .map((p) => ({
+                  type: 'existing' as const,
+                  id: Number(p.id || 0),
+                  url: String(p.url || ''),
+                }))
+                .filter((p) => !!p.url);
+              if (existing.length > 0) {
+                setPhotoPlanItems(existing);
+                setPhotoPlanOriginalExistingIds(
+                  existing
+                    .map((p) => (p.type === 'existing' ? p.id : 0))
+                    .filter((id) => id > 0)
+                );
+              }
             }
           }
         } catch {
@@ -1501,10 +1628,13 @@ function EditItemModal({
         setDetailLoading(false);
       });
 
-      return () => {
-        cancelled = true;
-      };
-    }
+    };
+
+    void checkAndFetch();
+
+    return () => {
+      cancelled = true;
+    };
   }, [item.id, item.vinted_item_id]);
 
   const openPhotoPicker = () => {
@@ -1750,7 +1880,11 @@ function EditItemModal({
     setSaving(true);
     setSaveError('');
 
-    onSave({
+    const showSizeField =
+      sizeOptions.length > 0 &&
+      (availableFields.includes('size') || (availableFields.length === 0 && !!domSize));
+
+    const payload: Record<string, unknown> = {
       id: item.id,
       title: title.trim(),
       description: description.trim(),
@@ -1760,8 +1894,6 @@ function EditItemModal({
       brand_name: selectedBrandName.trim(),
       category_id: selectedCategoryId || null,
       color_ids: JSON.stringify(finalColorIds),
-      size_id: selectedSizeId || null,
-      size_label: sizeOptions.find((s) => s.id === selectedSizeId)?.title ?? item.size_label ?? '',
       status_id: selectedStatusId || null,
       package_size_id: packageSizeId,
       item_attributes: JSON.stringify(attrs),
@@ -1777,7 +1909,16 @@ function EditItemModal({
         items: photoPlanItems,
       },
       ...(Object.keys(modelMetadata).length > 0 ? { model_metadata: JSON.stringify(modelMetadata) } : {}),
-    }).then((r) => {
+    };
+
+    // If the category doesn't have a size field (e.g. bags), don't send `size_id: null`.
+    // Omitting the field avoids accidentally clearing a previously-synced size_id.
+    if (showSizeField) {
+      payload.size_id = selectedSizeId || null;
+      payload.size_label = sizeOptions.find((s) => s.id === selectedSizeId)?.title ?? item.size_label ?? '';
+    }
+
+    onSave(payload).then((r) => {
       if (!r.ok) {
         setSaveError(r.error || 'Failed to save changes');
         setSaving(false);
@@ -1814,43 +1955,8 @@ function EditItemModal({
         </h3>
 
         {detailLoading && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: radius.lg,
-              background: 'rgba(0,0,0,0.55)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: spacing.xl,
-              zIndex: 20,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              style={{
-                width: '100%',
-                maxWidth: 420,
-                background: colors.glassBg,
-                border: `1px solid ${colors.glassBorder}`,
-                borderRadius: radius.lg,
-                padding: spacing.xl,
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }} className="animate-pulse">
-                Loading live listing details…
-              </div>
-              <div style={{ marginTop: 8, fontSize: font.size.sm, color: colors.textSecondary, lineHeight: 1.5 }}>
-                Please wait. Editing and saving is disabled until the listing details have finished loading.
-              </div>
-              <div style={{ marginTop: spacing.lg }}>
-                <button type="button" onClick={onClose} style={btnSecondary}>
-                  Cancel
-                </button>
-              </div>
-            </div>
+          <div style={{ background: colors.infoBg, border: `1px solid rgba(96, 165, 250, 0.25)`, borderRadius: 8, padding: spacing.sm, marginBottom: spacing.md, fontSize: font.size.sm, color: colors.info }}>
+            Loading additional listing details from Vinted… You can keep editing, but Save is disabled until this finishes.
           </div>
         )}
         {detailError && (
@@ -1870,8 +1976,8 @@ function EditItemModal({
             display: 'flex',
             flexDirection: 'column',
             gap: spacing.xl,
-            opacity: saving || detailLoading ? 0.85 : 1,
-            pointerEvents: saving || detailLoading ? 'none' : 'auto',
+            opacity: saving ? 0.85 : 1,
+            pointerEvents: saving ? 'none' : 'auto',
           }}
         >
 
@@ -1889,15 +1995,23 @@ function EditItemModal({
             />
 
             <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.sm }}>
-              <button type="button" onClick={openPhotoPicker} style={{ ...btnSecondary, ...btnSmall }} disabled={saving}>
+              <button
+                type="button"
+                onClick={openPhotoPicker}
+                style={{ ...btnSecondary, ...btnSmall }}
+                disabled={saving || hasUnresolvedExistingPhotoIds}
+                title={hasUnresolvedExistingPhotoIds ? 'Photo IDs not loaded — cannot edit photos yet' : undefined}
+              >
                 Add photos
               </button>
               <div style={{ color: colors.textMuted, fontSize: font.size.xs, alignSelf: 'center' }}>
                 {saving
                   ? `Saving...${photoPlanItems.some((p) => p.type === 'new') ? ' Uploading photos and saving listing.' : ' Updating listing.'}`
-                  : 'Drag-and-drop not supported yet; use Add photos. You can reorder/remove before saving.'}
+                  : hasUnresolvedExistingPhotoIds
+                    ? 'Photo editing is disabled because live photo IDs could not be loaded. Retry opening the modal and wait for details to load.'
+                    : 'Drag-and-drop not supported yet; use Add photos. You can reorder/remove before saving.'}
               </div>
-            </div>
+          </div>
 
             {photoPlanItems.length > 0 ? (
               <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
@@ -1941,13 +2055,31 @@ function EditItemModal({
                         )}
                       </div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                        <button type="button" onClick={() => movePhoto(i, -1)} style={{ ...btnSecondary, ...btnSmall, flex: 1 }} title="Move left" disabled={saving}>
+                        <button
+                          type="button"
+                          onClick={() => movePhoto(i, -1)}
+                          style={{ ...btnSecondary, ...btnSmall, flex: 1 }}
+                          title="Move left"
+                          disabled={saving || hasUnresolvedExistingPhotoIds}
+                        >
                           ←
                         </button>
-                        <button type="button" onClick={() => movePhoto(i, 1)} style={{ ...btnSecondary, ...btnSmall, flex: 1 }} title="Move right" disabled={saving}>
+                        <button
+                          type="button"
+                          onClick={() => movePhoto(i, 1)}
+                          style={{ ...btnSecondary, ...btnSmall, flex: 1 }}
+                          title="Move right"
+                          disabled={saving || hasUnresolvedExistingPhotoIds}
+                        >
                           →
                         </button>
-                        <button type="button" onClick={() => removePhotoAt(i)} style={{ ...btnDanger, ...btnSmall }} title="Remove" disabled={saving}>
+                        <button
+                          type="button"
+                          onClick={() => removePhotoAt(i)}
+                          style={{ ...btnDanger, ...btnSmall }}
+                          title="Remove"
+                          disabled={saving || hasUnresolvedExistingPhotoIds}
+                        >
                           ✕
                         </button>
                       </div>
@@ -1999,7 +2131,7 @@ function EditItemModal({
                 <option key={c.id} value={c.id}>{c.title}</option>
               ))}
             </select>
-          </div>
+            </div>
 
           {/* ── Size (Category-specific dropdown — hidden if category has no size groups) ──
                When availableFields is empty (attributes API broken), fall back to
@@ -2018,9 +2150,9 @@ function EditItemModal({
               ) : (
                 <div style={{ ...glassInput, width: '100%', color: colors.textMuted, fontSize: font.size.sm }}>
                   {selectedCategoryId ? 'Loading sizes...' : 'Select a category first'}
-                </div>
-              )}
             </div>
+              )}
+          </div>
           )}
 
           {/* ── Colours (Searchable, max 2) ── */}
@@ -2061,9 +2193,9 @@ function EditItemModal({
 
           {/* ── Model/Collection (Luxury brands like Chanel, LV, etc.) ── */}
           {availableFields.includes('model') && modelOptions.length > 0 && (
-            <div>
+          <div>
               <label style={labelStyle}>Model / Collection</label>
-              <select
+            <select
                 value={selectedCollectionId}
                 onChange={(e) => {
                   const cid = Number(e.target.value);
@@ -2084,13 +2216,13 @@ function EditItemModal({
                     <select
                       value={selectedModelId}
                       onChange={(e) => setSelectedModelId(Number(e.target.value))}
-                      style={{ ...glassSelect, width: '100%' }}
-                    >
+              style={{ ...glassSelect, width: '100%' }}
+            >
                       <option value={0}>— Select Model —</option>
                       {collection.children.map((c) => (
                         <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+              ))}
+            </select>
                   );
                 }
                 return null;
@@ -2098,12 +2230,12 @@ function EditItemModal({
               {modelsLoading && (
                 <div style={{ color: colors.textMuted, fontSize: font.size.xs, marginTop: 4 }}>Loading models...</div>
               )}
-            </div>
+          </div>
           )}
 
           {/* ── ISBN (Books category) ── */}
           {availableFields.includes('isbn') && (
-            <div>
+          <div>
               <label style={labelStyle}>ISBN</label>
               <input type="text" value={isbn} onChange={(e) => setIsbn(e.target.value)}
                 placeholder="Enter ISBN number..."
@@ -2130,16 +2262,16 @@ function EditItemModal({
               <label style={labelStyle}>{attr.title}{attr.required ? ' *' : ''}</label>
               {attr.options.length > 0 ? (
                 attr.selectionType === 'single' ? (
-                  <select
+            <select
                     value={Number(nicheValues[attr.code] ?? 0)}
                     onChange={(e) => setNicheValues((prev) => ({ ...prev, [attr.code]: Number(e.target.value) }))}
-                    style={{ ...glassSelect, width: '100%' }}
-                  >
+              style={{ ...glassSelect, width: '100%' }}
+            >
                     <option value={0}>— Select {attr.title} —</option>
                     {attr.options.map((o) => (
                       <option key={o.id} value={o.id}>{o.title}</option>
                     ))}
-                  </select>
+            </select>
                 ) : (
                   <SearchableSelect
                     label=""
@@ -2156,7 +2288,7 @@ function EditItemModal({
                   placeholder={`Enter ${attr.title.toLowerCase()}...`}
                   style={{ ...glassInput, width: '100%' }} />
               )}
-            </div>
+          </div>
           ))}
 
           {/* ── Price ── */}
@@ -2174,9 +2306,9 @@ function EditItemModal({
                 { id: 1, title: 'Small' }, { id: 2, title: 'Medium' }, { id: 3, title: 'Large' },
               ]).map((pkg) => {
                 const sel = packageSizeId === pkg.id;
-                return (
+                    return (
                   <button key={pkg.id} type="button" onClick={() => setPackageSizeId(pkg.id)}
-                    style={{
+                        style={{
                       flex: 1, minWidth: 100, padding: '10px 12px', borderRadius: radius.md,
                       border: `1px solid ${sel ? colors.primary : colors.glassBorder}`,
                       background: sel ? colors.primaryMuted : colors.glassBg,
@@ -2187,8 +2319,8 @@ function EditItemModal({
                     }}
                   >
                     {pkg.title}
-                  </button>
-                );
+                      </button>
+                    );
               })}
             </div>
           </div>
@@ -2208,7 +2340,7 @@ function EditItemModal({
                     width: 16, height: 16, borderRadius: '50%', background: colors.white,
                     position: 'absolute', top: 2, left: isUnisex ? 20 : 2, transition: transition.base,
                   }} />
-                </div>
+                  </div>
                 Unisex item
               </label>
             </div>
@@ -2216,8 +2348,8 @@ function EditItemModal({
 
           {/* ── Actions ── */}
           <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.sm, paddingTop: spacing.lg, borderTop: `1px solid ${colors.separator}` }}>
-            <button type="submit" style={{ ...btnPrimary, flex: 1, opacity: saving ? 0.7 : 1 }} disabled={saving}>
-              {saving ? 'Saving…' : 'Save Changes'}
+            <button type="submit" style={{ ...btnPrimary, flex: 1, opacity: saving || detailLoading ? 0.7 : 1 }} disabled={saving || detailLoading}>
+              {saving ? 'Saving…' : detailLoading ? 'Loading details…' : 'Save Changes'}
             </button>
             <button type="button" onClick={onClose} style={btnSecondary} disabled={saving}>Cancel</button>
           </div>

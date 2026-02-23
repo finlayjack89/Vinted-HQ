@@ -135,6 +135,11 @@ function migrate(database: Database.Database): void {
       database.prepare(`ALTER TABLE inventory_master ADD COLUMN ${col} ${type}`).run();
     }
   };
+  // Sync/cache metadata
+  addIfMissing('list_fingerprint', 'TEXT');
+  addIfMissing('detail_hydrated_at', 'INTEGER');
+  addIfMissing('detail_source', 'TEXT');
+  addIfMissing('discrepancy_reason', 'TEXT');
   addIfMissing('isbn', 'TEXT');
   addIfMissing('measurement_length', 'REAL');
   addIfMissing('measurement_width', 'REAL');

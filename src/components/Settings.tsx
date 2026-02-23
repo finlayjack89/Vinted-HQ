@@ -94,6 +94,7 @@ const defaultSettings: AppSettings = {
   sessionAutofillEnabled: true,
   sessionAutoSubmitEnabled: false,
   transportMode: 'PROXY',
+  browser_proxy_mode: 'DIRECT',
 };
 
 /* ─── Relist Timing Section ─────────────────────────────────── */
@@ -649,6 +650,26 @@ export default function Settings() {
             Your configured proxies will be ignored while this mode is active.
           </p>
         )}
+
+        <div style={{ marginTop: spacing.lg }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: font.size.base, color: colors.textSecondary }}>
+            <span>Browser ops proxy mode:</span>
+            <select
+              value={settings.browser_proxy_mode}
+              onChange={(e) => {
+                handleSettingsChange('browser_proxy_mode', e.target.value as AppSettings['browser_proxy_mode']);
+                showSaved();
+              }}
+              style={{ ...glassSelect, minWidth: 220 }}
+            >
+              <option value="DIRECT">DIRECT (default)</option>
+              <option value="ISP_DEDICATED">ISP Dedicated (sticky)</option>
+            </select>
+          </label>
+          <p style={{ fontSize: font.size.sm, color: colors.textMuted, marginTop: spacing.sm, marginBottom: 0 }}>
+            Controls Electron browser actions (edit save, relist, detail fetch). ISP Dedicated reserves ~25% (min 2) of your ISP proxies and keeps them sticky per browser partition.
+          </p>
+        </div>
       </Section>
 
       {/* ─── Search URLs ──────────────────────────────── */}

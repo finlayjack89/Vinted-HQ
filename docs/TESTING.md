@@ -106,3 +106,86 @@ This document describes how to test the app end-to-end against live Vinted.
 - [ ] Session expiry shows banner + modal
 - [ ] Logs viewer shows entries
 - [ ] Purchases viewer shows history
+
+---
+
+## 7. Wardrobe Vault — Manual Verification Matrix
+
+This section validates the wardrobe system end-to-end against live Vinted:
+sync, edit/save (push), discrepancy management (push/pull), photo detection,
+relist, and incremental sync.
+
+### Prerequisites
+
+- Authenticated Vinted UK session (see section 1)
+- At least 3 live listings:
+  - One category that requires size (e.g. shoes / clothing)
+  - One category that does not require size (e.g. bags / accessories)
+  - One item with multiple photos
+- (Optional but recommended) Settings → Network Transport:
+  - Transport mode: PROXY
+  - Browser ops proxy mode: ISP Dedicated (sticky)
+
+### A) Sync From Vinted (Full + Incremental)
+
+- [ ] Run Wardrobe → Sync from Vinted once
+  - Expect logs: `wardrobe-pull-start`, `wardrobe-pull-page`, `wardrobe-pull-complete`
+  - If bridge blocks: expect `wardrobe-pull-browser-fallback-start` → `wardrobe-pull-browser-fallback-ok`
+- [ ] Run Sync again immediately
+  - Expect many `wardrobe-pull-skip-detail` with `reason: fingerprint_fresh_complete`
+  - Ensure it completes faster than the first run
+
+### B) Edit Modal Hydration + Speed
+
+- [ ] Open Edit modal for an item that was just synced
+  - Expect instant open using cached local fields
+  - If cache is stale/incomplete: expect background fetch and overlay while hydrating
+- [ ] Close and reopen Edit modal for the same item
+  - Expect no repeated detail fetch when the item is complete and within TTL
+
+### C) Save Changes (Push) — Size Required Category
+
+- [ ] Pick a size-required item; change only the title; Save Changes
+  - Expect logs: `wardrobe-edit-start` → `wardrobe-edit-push-browser-start` → `edit-pushed-to-vinted-browser`
+  - Verify live listing title updates on vinted.co.uk
+
+### D) Save Changes (Push) — No-Size Category
+
+- [ ] Pick a no-size item (e.g. bag); ensure the UI does not force a size selection
+- [ ] Change only the title; Save Changes
+  - Must not fail with missing `size_id`
+  - Verify live listing title updates on vinted.co.uk
+
+### E) Discrepancy Detection + Reconciliation
+
+- [ ] Make an external change on Vinted (e.g. edit title on the website)
+- [ ] Run Sync from Vinted
+  - Expect discrepancy to be detected and UI guidance to show the reason
+  - Expect logs: `wardrobe-discrepancy-detected` with `discrepancy_reason: external_change`
+- [ ] Click Pull (accept live)
+  - Local item fields should overwrite from live; discrepancy cleared
+  - Expect logs: `wardrobe-pull-live-to-local-start` → `wardrobe-pull-live-to-local-complete`
+- [ ] Click Push (overwrite live)
+  - Live should overwrite to match local; discrepancy cleared
+  - Expect logs: `wardrobe-edit-start` → `edit-pushed-to-vinted-browser`
+
+### F) Photo Discrepancy Detection
+
+- [ ] Change live photos on Vinted (add/remove/reorder) for a test item
+- [ ] Run Sync from Vinted
+  - Expect discrepancy detection to trigger due to photo URL hash changes
+  - Expect the stored snapshot hash to be `v2:` prefixed in logs/DB
+
+### G) Relist (Single + Bulk)
+
+Warning: relist deletes the old listing and creates a new one.
+
+- [ ] Relist a single item (with multiple photos)
+  - Expect logs: `relist-enqueue-start`, `relist-queue-started`, `relist-item-browser-start`, `relist-item-complete`
+  - Verify:
+    - Old listing is deleted / unavailable
+    - New listing exists with same title/description/category/brand/size/colors/materials/parcel size/photos
+    - Local item now links to the new Vinted item ID
+- [ ] Relist 2+ items in bulk
+  - Ensure randomized delay runs between items (queue countdown updates)
+

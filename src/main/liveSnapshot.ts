@@ -13,6 +13,8 @@ export type LiveSnapshot = {
   status_id: number | null;
   package_size_id: number | null;
   color_ids: number[];
+  // Ordered list of photo URLs (used for discrepancy detection on photo changes).
+  photo_urls: string[];
   item_attributes: { code: string; ids: number[] }[];
   is_unisex: boolean;
   isbn: string | null;
@@ -48,6 +50,17 @@ function uniqSortedNumbers(arr: unknown): number[] {
   const uniq = Array.from(new Set(nums));
   uniq.sort((a, b) => a - b);
   return uniq;
+}
+
+function normalizePhotoUrls(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : [];
+  const out: string[] = [];
+  for (const entry of raw) {
+    const s = typeof entry === 'string' ? entry : (entry === null || entry === undefined ? '' : String(entry));
+    const trimmed = s.trim();
+    if (trimmed) out.push(trimmed);
+  }
+  return out;
 }
 
 function normalizeItemAttributes(value: unknown): { code: string; ids: number[] }[] {
@@ -113,6 +126,7 @@ export function buildLiveSnapshotFromItemData(itemData: Record<string, unknown>)
     status_id: toNumberOrNull(itemData.status_id),
     package_size_id: toNumberOrNull(itemData.package_size_id),
     color_ids: uniqSortedNumbers(itemData.color_ids),
+    photo_urls: normalizePhotoUrls(itemData.photo_urls),
     item_attributes: normalizeItemAttributes(itemData.item_attributes),
     is_unisex: Boolean(itemData.is_unisex),
     isbn: toStringOrNull(itemData.isbn),
@@ -148,6 +162,15 @@ export function buildLiveSnapshotFromVintedDetail(vinted: Record<string, unknown
     status_id: vinted.status_id ?? (vinted.status && typeof vinted.status === 'object' ? (vinted.status as Record<string, unknown>).id : null),
     package_size_id: vinted.package_size_id ?? (vinted.package_size && typeof vinted.package_size === 'object' ? (vinted.package_size as Record<string, unknown>).id : null),
     color_ids: vinted.color_ids ?? vinted.colors ?? [],
+    photo_urls: Array.isArray(vinted.photos)
+      ? (vinted.photos as unknown[])
+          .map((p) => {
+            if (!p || typeof p !== 'object') return '';
+            const o = p as Record<string, unknown>;
+            return String(o.url || o.full_size_url || '').trim();
+          })
+          .filter(Boolean)
+      : [],
     item_attributes: vinted.item_attributes ?? vinted.attributes ?? [],
     is_unisex: vinted.is_unisex,
     isbn: (vinted as Record<string, unknown>).isbn,
@@ -163,6 +186,19 @@ export function buildLiveSnapshotFromVintedDetail(vinted: Record<string, unknown
 
 export function hashLiveSnapshot(snapshot: LiveSnapshot): string {
   const json = stableJson(snapshot);
+  const s = stableStringifyJson(json);
+  const h = crypto.createHash('sha256').update(s).digest('hex');
+  return `v2:${h}`;
+}
+
+/**
+ * Backwards-compatible v1 hash (used to avoid flagging discrepancies just
+ * because we started including photos in v2).
+ */
+export function hashLiveSnapshotV1Compatible(snapshot: LiveSnapshot): string {
+  // v1 omitted photo_urls completely.
+  const { photo_urls: _omit, ...rest } = snapshot;
+  const json = stableJson(rest);
   const s = stableStringifyJson(json);
   return crypto.createHash('sha256').update(s).digest('hex');
 }

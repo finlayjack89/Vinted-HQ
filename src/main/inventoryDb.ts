@@ -29,6 +29,10 @@ export interface InventoryMasterRow {
   is_unisex: number;
   status: string;
   extra_metadata: string | null;     // JSON
+  list_fingerprint: string | null;
+  detail_hydrated_at: number | null;
+  detail_source: string | null;
+  discrepancy_reason: string | null;
   isbn: string | null;
   measurement_length: number | null;
   measurement_width: number | null;
@@ -88,7 +92,13 @@ function db(): Database.Database {
 function parseJsonFields<T extends Partial<InventoryMasterRow>>(row: T): T {
   const r = { ...row };
   const jsonStringFields: (keyof InventoryMasterRow)[] = [
-    'color_ids', 'photo_urls', 'local_image_paths', 'item_attributes', 'extra_metadata',
+    'color_ids',
+    'photo_urls',
+    'local_image_paths',
+    'item_attributes',
+    'extra_metadata',
+    'model_metadata',
+    'shipment_prices',
   ];
   for (const key of jsonStringFields) {
     const val = (r as Record<string, unknown>)[key];
@@ -171,21 +181,33 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
           description = COALESCE(?, description),
           price = COALESCE(?, price),
           currency = COALESCE(?, currency),
-          category_id = ?,
-          brand_id = ?,
-          brand_name = ?,
-          size_id = ?,
-          size_label = ?,
-          condition = ?,
-          status_id = ?,
-          color_ids = ?,
-          photo_urls = ?,
-          local_image_paths = ?,
-          package_size_id = ?,
-          item_attributes = ?,
+          category_id = COALESCE(?, category_id),
+          brand_id = COALESCE(?, brand_id),
+          brand_name = COALESCE(?, brand_name),
+          size_id = COALESCE(?, size_id),
+          size_label = COALESCE(?, size_label),
+          condition = COALESCE(?, condition),
+          status_id = COALESCE(?, status_id),
+          color_ids = COALESCE(?, color_ids),
+          photo_urls = COALESCE(?, photo_urls),
+          local_image_paths = COALESCE(?, local_image_paths),
+          package_size_id = COALESCE(?, package_size_id),
+          item_attributes = COALESCE(?, item_attributes),
           is_unisex = COALESCE(?, is_unisex),
           status = COALESCE(?, status),
-          extra_metadata = ?,
+          extra_metadata = COALESCE(?, extra_metadata),
+          list_fingerprint = COALESCE(?, list_fingerprint),
+          detail_hydrated_at = COALESCE(?, detail_hydrated_at),
+          detail_source = COALESCE(?, detail_source),
+          discrepancy_reason = COALESCE(?, discrepancy_reason),
+          isbn = COALESCE(?, isbn),
+          measurement_length = COALESCE(?, measurement_length),
+          measurement_width = COALESCE(?, measurement_width),
+          model_metadata = COALESCE(?, model_metadata),
+          manufacturer = COALESCE(?, manufacturer),
+          manufacturer_labelling = COALESCE(?, manufacturer_labelling),
+          video_game_rating_id = COALESCE(?, video_game_rating_id),
+          shipment_prices = COALESCE(?, shipment_prices),
           live_snapshot_hash = COALESCE(?, live_snapshot_hash),
           live_snapshot_fetched_at = COALESCE(?, live_snapshot_fetched_at),
           updated_at = unixepoch()
@@ -198,6 +220,18 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
         data.color_ids ?? null, data.photo_urls ?? null, data.local_image_paths ?? null,
         data.package_size_id ?? null, data.item_attributes ?? null,
         data.is_unisex ?? null, data.status ?? null, data.extra_metadata ?? null,
+        data.list_fingerprint ?? null,
+        data.detail_hydrated_at ?? null,
+        data.detail_source ?? null,
+        data.discrepancy_reason ?? null,
+        data.isbn ?? null,
+        data.measurement_length ?? null,
+        data.measurement_width ?? null,
+        data.model_metadata ?? null,
+        data.manufacturer ?? null,
+        data.manufacturer_labelling ?? null,
+        data.video_game_rating_id ?? null,
+        data.shipment_prices ?? null,
         (data as Partial<InventoryMasterRow>).live_snapshot_hash ?? null,
         (data as Partial<InventoryMasterRow>).live_snapshot_fetched_at ?? null,
         data.id
@@ -211,8 +245,11 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
       title, description, price, currency, category_id, brand_id, brand_name,
       size_id, size_label, condition, status_id, color_ids, photo_urls, local_image_paths,
       package_size_id, item_attributes, is_unisex, status, extra_metadata,
+      list_fingerprint, detail_hydrated_at, detail_source, discrepancy_reason,
+      isbn, measurement_length, measurement_width, model_metadata,
+      manufacturer, manufacturer_labelling, video_game_rating_id, shipment_prices,
       live_snapshot_hash, live_snapshot_fetched_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.title, data.description ?? null, data.price, data.currency ?? 'GBP',
     data.category_id ?? null, data.brand_id ?? null, data.brand_name ?? null,
@@ -221,8 +258,167 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
     data.color_ids ?? null, data.photo_urls ?? null, data.local_image_paths ?? null,
     data.package_size_id ?? null, data.item_attributes ?? null,
     data.is_unisex ?? 0, data.status ?? 'local_only', data.extra_metadata ?? null,
+    data.list_fingerprint ?? null,
+    data.detail_hydrated_at ?? null,
+    data.detail_source ?? null,
+    data.discrepancy_reason ?? null,
+    data.isbn ?? null,
+    data.measurement_length ?? null,
+    data.measurement_width ?? null,
+    data.model_metadata ?? null,
+    data.manufacturer ?? null,
+    data.manufacturer_labelling ?? null,
+    data.video_game_rating_id ?? null,
+    data.shipment_prices ?? null,
     (data as Partial<InventoryMasterRow>).live_snapshot_hash ?? null,
     (data as Partial<InventoryMasterRow>).live_snapshot_fetched_at ?? null
+  );
+
+  return Number(result.lastInsertRowid);
+}
+
+const JSON_TEXT_COLUMNS = new Set<keyof InventoryMasterRow>([
+  'color_ids',
+  'photo_urls',
+  'local_image_paths',
+  'item_attributes',
+  'extra_metadata',
+  'model_metadata',
+  'shipment_prices',
+]);
+
+function normalizeValueForDb(key: keyof InventoryMasterRow, value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (JSON_TEXT_COLUMNS.has(key)) {
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return null;
+    }
+  }
+  return value;
+}
+
+/**
+ * Insert or update an inventory master record using explicit assignment.
+ * - Only fields present on `data` are updated (undefined => no-op)
+ * - `null` values are treated as an explicit clear
+ *
+ * This is intentionally different from upsertInventoryItem(), which uses
+ * COALESCE to avoid overwriting existing values with null during sync.
+ */
+export function upsertInventoryItemExplicit(data: Partial<InventoryMasterRow> & { title: string; price: number }): number {
+  const d = db();
+  const hasOwn = (k: keyof InventoryMasterRow) => Object.prototype.hasOwnProperty.call(data, k);
+
+  if (data.id) {
+    const existing = d.prepare('SELECT id FROM inventory_master WHERE id = ?').get(data.id);
+    if (existing) {
+      const updateable: (keyof InventoryMasterRow)[] = [
+        'title',
+        'description',
+        'price',
+        'currency',
+        'category_id',
+        'brand_id',
+        'brand_name',
+        'size_id',
+        'size_label',
+        'condition',
+        'status_id',
+        'color_ids',
+        'photo_urls',
+        'local_image_paths',
+        'package_size_id',
+        'item_attributes',
+        'is_unisex',
+        'status',
+        'extra_metadata',
+        'list_fingerprint',
+        'detail_hydrated_at',
+        'detail_source',
+        'discrepancy_reason',
+        'isbn',
+        'measurement_length',
+        'measurement_width',
+        'model_metadata',
+        'manufacturer',
+        'manufacturer_labelling',
+        'video_game_rating_id',
+        'shipment_prices',
+        'live_snapshot_hash',
+        'live_snapshot_fetched_at',
+      ];
+
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      for (const key of updateable) {
+        if (!hasOwn(key)) continue;
+        const raw = (data as Record<string, unknown>)[key];
+        if (raw === undefined) continue; // absent update
+        sets.push(`${String(key)} = ?`);
+        values.push(normalizeValueForDb(key, raw));
+      }
+
+      if (sets.length > 0) {
+        const sql = `UPDATE inventory_master SET ${sets.join(', ')}, updated_at = unixepoch() WHERE id = ?`;
+        d.prepare(sql).run(...values, data.id);
+      } else {
+        // Still bump updated_at so user actions count as local edits.
+        d.prepare('UPDATE inventory_master SET updated_at = unixepoch() WHERE id = ?').run(data.id);
+      }
+
+      return data.id;
+    }
+  }
+
+  // Insert (explicit assignment; includes all known columns).
+  const result = d.prepare(`
+    INSERT INTO inventory_master (
+      title, description, price, currency, category_id, brand_id, brand_name,
+      size_id, size_label, condition, status_id, color_ids, photo_urls, local_image_paths,
+      package_size_id, item_attributes, is_unisex, status, extra_metadata,
+      list_fingerprint, detail_hydrated_at, detail_source, discrepancy_reason,
+      isbn, measurement_length, measurement_width, model_metadata,
+      manufacturer, manufacturer_labelling, video_game_rating_id, shipment_prices,
+      live_snapshot_hash, live_snapshot_fetched_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    data.title,
+    normalizeValueForDb('description', data.description ?? null),
+    data.price,
+    data.currency ?? 'GBP',
+    data.category_id ?? null,
+    data.brand_id ?? null,
+    data.brand_name ?? null,
+    data.size_id ?? null,
+    data.size_label ?? null,
+    data.condition ?? null,
+    data.status_id ?? null,
+    normalizeValueForDb('color_ids', data.color_ids ?? null),
+    normalizeValueForDb('photo_urls', data.photo_urls ?? null),
+    normalizeValueForDb('local_image_paths', data.local_image_paths ?? null),
+    data.package_size_id ?? null,
+    normalizeValueForDb('item_attributes', data.item_attributes ?? null),
+    data.is_unisex ?? 0,
+    data.status ?? 'local_only',
+    normalizeValueForDb('extra_metadata', data.extra_metadata ?? null),
+    data.list_fingerprint ?? null,
+    data.detail_hydrated_at ?? null,
+    data.detail_source ?? null,
+    data.discrepancy_reason ?? null,
+    data.isbn ?? null,
+    data.measurement_length ?? null,
+    data.measurement_width ?? null,
+    normalizeValueForDb('model_metadata', data.model_metadata ?? null),
+    data.manufacturer ?? null,
+    data.manufacturer_labelling ?? null,
+    data.video_game_rating_id ?? null,
+    normalizeValueForDb('shipment_prices', data.shipment_prices ?? null),
+    data.live_snapshot_hash ?? null,
+    data.live_snapshot_fetched_at ?? null,
   );
 
   return Number(result.lastInsertRowid);
@@ -335,7 +531,8 @@ export function upsertOntologyBatch(
       name = excluded.name,
       slug = excluded.slug,
       parent_id = excluded.parent_id,
-      extra = excluded.extra,
+      -- Preserve existing extra when caller doesn't provide one.
+      extra = COALESCE(excluded.extra, vinted_ontology.extra),
       fetched_at = unixepoch()
   `);
 
@@ -383,4 +580,60 @@ export function updateBrandIdBulk(oldBrandId: number, newBrandId: number): numbe
     'UPDATE inventory_master SET brand_id = ?, updated_at = unixepoch() WHERE brand_id = ?'
   ).run(newBrandId, oldBrandId);
   return result.changes;
+}
+
+/**
+ * Merge a JSON patch into an ontology entity's `extra` column.
+ * This is used for derived metadata (e.g. category requires_size) that should
+ * survive normal ontology refreshes.
+ */
+export function mergeOntologyExtra(entityType: string, entityId: number, patch: Record<string, unknown>): void {
+  const row = getOntologyEntity(entityType, entityId);
+  if (!row) return;
+
+  let base: Record<string, unknown> = {};
+  if (row.extra && typeof row.extra === 'string') {
+    try {
+      const parsed = JSON.parse(row.extra) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        base = parsed as Record<string, unknown>;
+      }
+    } catch {
+      /* ignore malformed extra */
+    }
+  }
+
+  const next = { ...base, ...patch };
+  db().prepare('UPDATE vinted_ontology SET extra = ? WHERE entity_type = ? AND entity_id = ?')
+    .run(JSON.stringify(next), entityType, entityId);
+}
+
+/**
+ * Determine if a category requires a size selection.
+ *
+ * Returns:
+ * - true/false when we have cached knowledge in the category tree
+ * - null when unknown (callers may fetch size_groups to resolve and cache)
+ */
+export function categoryRequiresSize(catalogId: number): boolean | null {
+  let cur: number | null = catalogId;
+  let hops = 0;
+  while (cur && hops < 30) {
+    hops++;
+    const row = getOntologyEntity('category', cur);
+    if (!row) return null;
+    if (row.extra && typeof row.extra === 'string') {
+      try {
+        const parsed = JSON.parse(row.extra) as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const obj = parsed as Record<string, unknown>;
+          if (typeof obj.requires_size === 'boolean') return obj.requires_size;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    cur = row.parent_id ?? null;
+  }
+  return null;
 }

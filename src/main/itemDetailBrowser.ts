@@ -13,10 +13,11 @@
  *   - Real Chrome user agent
  *   - navigator.webdriver spoofed to false
  *   - window.chrome stub injected
- *   - Routed through ISP proxy for clean IP reputation
+ *   - Optional ISP proxy egress (browser_proxy_mode)
  */
 
 import { BrowserWindow, session } from 'electron';
+import crypto from 'node:crypto';
 import * as secureStorage from './secureStorage';
 import * as proxyService from './proxyService';
 import { setupNetworkInterception } from './authCapture';
@@ -30,6 +31,47 @@ const OVERALL_TIMEOUT_MS = 45_000;
 const HYDRATION_WAIT_MS = 10_000;
 const CHROME_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
+
+type StickyProxyConfig = { proxyRaw: string; proxyHost: string; proxyUser: string; proxyPass: string };
+const stickyBrowserProxyByPartition = new Map<string, StickyProxyConfig>();
+let browserProxyCycle = 0;
+
+function getBrowserDedicatedProxy(partition: string): StickyProxyConfig | null {
+  // Partition 25% (min 2) of configured ISP proxies for browser ops.
+  // NOTE: we prefer the dedicated ISP pool (scrapingProxies); fall back to legacy proxyUrls.
+  const scrapers = settings.getSetting('scrapingProxies') ?? [];
+  const legacy = settings.getSetting('proxyUrls') ?? [];
+  const rawPool = scrapers.length > 0 ? scrapers : legacy;
+
+  if (rawPool.length < 2) return null;
+
+  const k = Math.min(rawPool.length, Math.max(2, Math.ceil(rawPool.length * 0.25)));
+  const dedicatedRaw = rawPool.slice(-k);
+  const dedicated = dedicatedRaw
+    .map((p) => proxyService.normalizeProxyUrl(p))
+    .filter((p) => typeof p === 'string' && p.length > 0);
+
+  if (dedicated.length === 0) return null;
+
+  const existing = stickyBrowserProxyByPartition.get(partition);
+  if (existing && dedicated.includes(existing.proxyRaw)) return existing;
+
+  const proxyRaw = dedicated[browserProxyCycle % dedicated.length]!;
+  browserProxyCycle++;
+
+  try {
+    const pu = new URL(proxyRaw);
+    const port = pu.port || (pu.protocol === 'https:' ? '443' : '80');
+    const proxyUser = decodeURIComponent(pu.username);
+    const proxyPass = decodeURIComponent(pu.password);
+    const proxyHost = `${pu.protocol}//${pu.hostname}:${port}`;
+    const cfg: StickyProxyConfig = { proxyRaw, proxyHost, proxyUser, proxyPass };
+    stickyBrowserProxyByPartition.set(partition, cfg);
+    return cfg;
+  } catch {
+    return null;
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -96,9 +138,31 @@ async function prepareVintedBrowserSession(
   // Proxy / egress
   let proxyUser = '';
   let proxyPass = '';
-  if (opts.forceDirect) {
+  const transportMode = proxyService.getTransportMode();
+  const browserProxyMode = settings.getSetting('browser_proxy_mode');
+
+  if (transportMode === proxyService.TransportMode.DIRECT) {
     await ses.setProxy({ proxyRules: '' });
-    logger.info('vinted-browser-session-proxy', { partition: opts.partition, proxy: 'DIRECT' });
+    logger.info('vinted-browser-session-proxy', { partition: opts.partition, proxy: 'DIRECT', mode: 'TRANSPORT_DIRECT' });
+  } else if (browserProxyMode === 'ISP_DEDICATED') {
+    const cfg = getBrowserDedicatedProxy(opts.partition);
+    if (cfg) {
+      proxyUser = cfg.proxyUser;
+      proxyPass = cfg.proxyPass;
+      await ses.setProxy({ proxyRules: cfg.proxyHost });
+      logger.info('vinted-browser-session-proxy', {
+        partition: opts.partition,
+        proxy: cfg.proxyHost,
+        hasAuth: !!(proxyUser && proxyPass),
+        mode: 'ISP_DEDICATED',
+      });
+    } else {
+      await ses.setProxy({ proxyRules: '' });
+      logger.warn('vinted-browser-session-proxy', { partition: opts.partition, proxy: 'DIRECT', mode: 'ISP_DEDICATED_NO_POOL' });
+    }
+  } else if (opts.forceDirect) {
+    await ses.setProxy({ proxyRules: '' });
+    logger.info('vinted-browser-session-proxy', { partition: opts.partition, proxy: 'DIRECT', mode: 'FORCED_DIRECT' });
   } else if (opts.useAnyScrapingProxy) {
     // Electron's setProxy does NOT support user:pass in the URL.
     // We must strip credentials from the proxy rules and provide them via the 'login' event.
@@ -110,15 +174,24 @@ async function prepareVintedBrowserSession(
         proxyPass = decodeURIComponent(pu.password);
         const proxyHost = `${pu.protocol}//${pu.hostname}:${pu.port}`;
         await ses.setProxy({ proxyRules: proxyHost });
-        logger.info('vinted-browser-session-proxy', { partition: opts.partition, proxy: proxyHost, hasAuth: !!(proxyUser && proxyPass) });
+        logger.info('vinted-browser-session-proxy', {
+          partition: opts.partition,
+          proxy: proxyHost,
+          hasAuth: !!(proxyUser && proxyPass),
+          mode: 'ANY_SCRAPING_PROXY',
+        });
       } catch {
         await ses.setProxy({ proxyRules: '' });
         logger.warn('vinted-browser-session-proxy-parse-failed', { partition: opts.partition, proxyRaw: proxyRaw.replace(/:[^:@]+@/, ':***@') });
       }
     } else {
       await ses.setProxy({ proxyRules: '' });
-      logger.info('vinted-browser-session-proxy', { partition: opts.partition, proxy: 'DIRECT' });
+      logger.info('vinted-browser-session-proxy', { partition: opts.partition, proxy: 'DIRECT', mode: 'NO_SCRAPING_PROXY' });
     }
+  } else {
+    // Default: direct egress for browser ops (no accidental stale proxy).
+    await ses.setProxy({ proxyRules: '' });
+    logger.info('vinted-browser-session-proxy', { partition: opts.partition, proxy: 'DIRECT', mode: 'DEFAULT_DIRECT' });
   }
 
   // Cookies
@@ -148,11 +221,10 @@ export async function fetchItemDetailViaBrowser(
   });
 
   try {
-    return await withTimeout(
-      _doFetch(ses, itemId, proxyUser, proxyPass),
-      OVERALL_TIMEOUT_MS,
-      'Browser item detail fetch',
-    );
+    // _doFetch() already has bounded navigation + extraction timeouts and always
+    // closes its BrowserWindow in a finally block. Avoid an outer Promise.race()
+    // timeout here because it cannot cancel _doFetch, which can leak windows.
+    return await _doFetch(ses, itemId, proxyUser, proxyPass);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('item-detail-browser-error', { itemId, error: msg });
@@ -167,6 +239,7 @@ async function _doFetch(
   proxyUser: string,
   proxyPass: string,
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; code: string; message: string }> {
+  const t0 = Date.now();
   const win = new BrowserWindow({
     show: false,
     width: 1280,
@@ -191,10 +264,27 @@ async function _doFetch(
     logger.info('item-detail-browser-loading', { itemId, url: pageUrl });
 
     // ── Navigate: wait for did-navigate (fires after server response, before resource load) ──
-    const navPromise = new Promise<{ url: string; httpCode: number }>((resolve) => {
-      win.webContents.once('did-navigate', (_e, url, httpCode) => {
+    const navPromise = new Promise<{ url: string; httpCode: number }>((resolve, reject) => {
+      let settled = false;
+      const onNav = (_e: Electron.Event, url: string, httpCode: number) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
         resolve({ url, httpCode });
-      });
+      };
+      const onFail = (_e: Electron.Event, errorCode: number, errorDesc: string, validatedURL: string, isMainFrame?: boolean) => {
+        if (isMainFrame === false) return;
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error(`Load failed (${errorCode}): ${errorDesc} (${String(validatedURL || '').slice(0, 200)})`));
+      };
+      const cleanup = () => {
+        win.webContents.removeListener('did-navigate', onNav as unknown as (...args: unknown[]) => void);
+        win.webContents.removeListener('did-fail-load', onFail as unknown as (...args: unknown[]) => void);
+      };
+      win.webContents.on('did-navigate', onNav);
+      win.webContents.on('did-fail-load', onFail as unknown as (...args: unknown[]) => void);
     });
 
     // Log all navigations for diagnostics
@@ -237,12 +327,13 @@ async function _doFetch(
       settings.setSetting('csrf_token', result.csrfToken);
       settings.setSetting('user_agent', CHROME_UA);
     } else {
-      logger.warn('item-detail-browser-csrf-missing', { itemId });
+      logger.debug('item-detail-browser-csrf-missing', { itemId });
     }
 
     // Capture cookies from session and update secureStorage if changed
     try {
-      const cookies = await ses.cookies.get({ domain: 'vinted.co.uk' });
+      const cookieStart = Date.now();
+      const cookies = await withTimeout(ses.cookies.get({ domain: 'vinted.co.uk' }), 5_000, 'Cookie sync');
       const cookieHeader = cookies
         .map((c) => `${c.name}=${c.value}`)
         .join('; ');
@@ -303,7 +394,7 @@ export async function fetchViaBrowser(
   urlPath: string,
   options: { method: string; body?: string; referer?: string; partition?: string; forceDirect?: boolean }
 ): Promise<{ ok: boolean; status?: number; data?: unknown; error?: string; text?: string }> {
-  const { ses } = await prepareVintedBrowserSession({
+  const { ses, proxyUser, proxyPass } = await prepareVintedBrowserSession({
     partition: options.partition ?? VINTED_SCRAPER_PARTITION,
     forceDirect: options.forceDirect === true,
     // Default: don't touch proxy unless caller forces DIRECT.
@@ -322,6 +413,14 @@ export async function fetchViaBrowser(
   });
 
   try {
+    // Proxy authentication via Electron's login event
+    if (proxyUser && proxyPass) {
+      win.webContents.on('login', (event, _details, _authInfo, callback) => {
+        event.preventDefault();
+        callback(proxyUser, proxyPass);
+      });
+    }
+
     // 1. Navigate to the edit page so Vinted's own JS loads and makes authenticated API calls
     const targetUrl = options.referer || VINTED_BASE;
     logger.info('browser-fetch-navigating', { url: targetUrl });
@@ -374,19 +473,23 @@ export async function fetchViaBrowser(
     const csrfValue = capturedCsrf ? capturedCsrf.replace(/'/g, "\\'") : '';
     const anonValue = capturedAnon ? capturedAnon.replace(/'/g, "\\'") : '';
     const refValue = options.referer ? options.referer.replace(/'/g, "\\'") : '';
+    const absoluteUrl =
+      /^https?:\/\//i.test(urlPath)
+        ? urlPath
+        : `${VINTED_BASE}${urlPath.startsWith('/') ? '' : '/'}${urlPath}`;
     const script = `
       (async function() {
         const headers = {
-          'Content-Type': 'application/json',
           'Accept': 'application/json, text/plain, */*',
           'accept-features': 'ALL',
           'locale': 'en-GB',
         };
+        ${options.body ? "headers['Content-Type'] = 'application/json';" : ''}
         ${csrfValue ? `headers['x-csrf-token'] = '${csrfValue}';` : ''}
         ${anonValue ? `headers['x-anon-id'] = '${anonValue}';` : ''}
 
         try {
-          const res = await fetch('${urlPath}', {
+          const res = await fetch('${absoluteUrl}', {
             method: '${options.method}',
             headers: headers,
             credentials: 'include',
@@ -438,7 +541,7 @@ export async function uploadPhotoRawViaBrowser(
   tempUuid: string,
   options: { referer: string; filename?: string; mimeType?: string; partition?: string; forceDirect?: boolean }
 ): Promise<{ ok: boolean; status?: number; data?: unknown; error?: string; text?: string }> {
-  const { ses } = await prepareVintedBrowserSession({
+  const { ses, proxyUser, proxyPass } = await prepareVintedBrowserSession({
     partition: options.partition ?? VINTED_EDIT_PARTITION,
     forceDirect: options.forceDirect === true,
     useAnyScrapingProxy: false,
@@ -456,6 +559,14 @@ export async function uploadPhotoRawViaBrowser(
   });
 
   try {
+    // Proxy authentication via Electron's login event
+    if (proxyUser && proxyPass) {
+      win.webContents.on('login', (event, _details, _authInfo, callback) => {
+        event.preventDefault();
+        callback(proxyUser, proxyPass);
+      });
+    }
+
     const targetUrl = options.referer || VINTED_BASE;
     logger.info('browser-photo-upload-navigating', { url: targetUrl });
     await win.loadURL(targetUrl);
@@ -486,6 +597,7 @@ export async function uploadPhotoRawViaBrowser(
     const nameValue = (options.filename || 'photo.jpg').replace(/'/g, "\\'");
     const mimeValue = (options.mimeType || 'image/jpeg').replace(/'/g, "\\'");
     const tempValue = (tempUuid || '').replace(/'/g, "\\'");
+    const photosUrl = `${VINTED_BASE}/api/v2/photos`;
 
     const script = `
       (async function() {
@@ -515,7 +627,7 @@ export async function uploadPhotoRawViaBrowser(
           form.append('file', file);
           if ('${tempValue}') form.append('temp_uuid', '${tempValue}');
 
-          const res = await fetch('/api/v2/photos', {
+          const res = await fetch('${photosUrl}', {
             method: 'POST',
             headers,
             credentials: 'include',
@@ -552,6 +664,133 @@ export async function uploadPhotoRawViaBrowser(
     return { ok: false, error: msg };
   } finally {
     try { win.close(); } catch { void 0; }
+  }
+}
+
+/**
+ * Browser-only relist sequence:
+ *  1) Upload (mutated) photos to get new photo IDs
+ *  2) Delete old listing (POST /api/v2/items/{id}/delete)
+ *  3) Wait (delete jitter)
+ *  4) Create + publish a new listing (POST /api/v2/item_upload/items)
+ */
+export async function relistViaBrowser(
+  oldItemId: number,
+  itemData: Record<string, unknown>,
+  imageBuffers: Buffer[],
+  relistCount: number,
+  options?: { partition?: string; forceDirect?: boolean }
+): Promise<{
+  ok: boolean;
+  newItemId?: number;
+  uploadSessionId?: string;
+  assignedPhotos?: { id: number; orientation: number }[];
+  photoUrls?: string[];
+  data?: unknown;
+  error?: string;
+}> {
+  try {
+    const partition = options?.partition ?? VINTED_EDIT_PARTITION;
+    const forceDirect = options?.forceDirect !== false; // default true
+
+    const uploadSessionId = crypto.randomUUID();
+    const assigned: { id: number; orientation: number }[] = [];
+    const photoUrls: string[] = [];
+
+    // Step 1: upload photos (IDs are required for create payload)
+    for (let i = 0; i < imageBuffers.length; i++) {
+      const buf = imageBuffers[i];
+      const tempUuid = crypto.randomUUID();
+      const up = await uploadPhotoRawViaBrowser(buf, tempUuid, {
+        referer: `${VINTED_BASE}/items/new`,
+        filename: `photo_${i + 1}.jpg`,
+        mimeType: 'image/jpeg',
+        partition,
+        forceDirect,
+      });
+      if (!up.ok || !up.data) {
+        const status = up.status ? Number(up.status) : 0;
+        const text = up.text ? String(up.text) : '';
+        return { ok: false, error: up.error || (status ? `Photo upload HTTP ${status}: ${text.slice(0, 200)}` : 'Photo upload failed') };
+      }
+
+      const data = up.data as Record<string, unknown>;
+      const id = Number(data.id || 0);
+      const url = data.url ? String(data.url) : '';
+      if (id <= 0) return { ok: false, error: 'Photo upload returned no ID' };
+      assigned.push({ id, orientation: 0 });
+      if (url) photoUrls.push(url);
+
+      // Mimic human pacing between uploads.
+      await sleep(300 + Math.random() * 500);
+    }
+
+    if (assigned.length === 0) return { ok: false, error: 'No photos uploaded' };
+
+    // Step 2: delete old listing (Vinted uses POST, not DELETE)
+    logger.info('relist-browser-step', { step: 'delete', oldItemId, relistCount });
+    const del = await fetchViaBrowser(`/api/v2/items/${oldItemId}/delete`, {
+      method: 'POST',
+      referer: `${VINTED_BASE}/items/${oldItemId}`,
+      partition,
+      forceDirect,
+    });
+    if (!del.ok) {
+      return { ok: false, error: del.error || (del.status ? `Delete HTTP ${del.status}` : 'Delete failed') };
+    }
+
+    // Step 3: delete-post jitter
+    await sleep(10_000 + Math.random() * 1_500);
+
+    // Step 4: create + publish new listing
+    logger.info('relist-browser-step', { step: 'create', oldItemId, relistCount });
+    const payload = {
+      item: {
+        id: null,
+        ...itemData,
+        assigned_photos: assigned,
+      },
+      feedback_id: null,
+      push_up: false,
+      parcel: null,
+      upload_session_id: uploadSessionId,
+    };
+
+    const created = await fetchViaBrowser('/api/v2/item_upload/items', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      referer: `${VINTED_BASE}/items/new`,
+      partition,
+      forceDirect,
+    });
+    if (!created.ok) {
+      const status = created.status ? Number(created.status) : 0;
+      const text = created.text ? String(created.text) : '';
+      return { ok: false, error: created.error || (status ? `Create HTTP ${status}: ${text.slice(0, 300)}` : 'Create failed') };
+    }
+
+    const root = created.data as Record<string, unknown> | null;
+    const newItemId =
+      root && typeof root === 'object'
+        ? Number(
+            (root as Record<string, unknown>).item_id ||
+              (root as Record<string, unknown>).id ||
+              ((root as Record<string, unknown>).item &&
+              typeof (root as Record<string, unknown>).item === 'object'
+                ? ((root as Record<string, unknown>).item as Record<string, unknown>).id
+                : 0) ||
+              0
+          )
+        : 0;
+
+    if (!newItemId) {
+      return { ok: false, error: 'Create succeeded but no new item ID found in response' };
+    }
+
+    return { ok: true, newItemId, uploadSessionId, assignedPhotos: assigned, photoUrls, data: created.data };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
   }
 }
 
@@ -608,16 +847,18 @@ function buildExtractionScript(itemId: number): string {
       var _csrfToken = null;
 
       try {
+        // Strategy 1: legacy <meta name="csrf-token"> (Nuxt/Rails pattern)
         var meta = document.querySelector('meta[name="csrf-token"]');
         if (meta) _csrfToken = meta.content;
-        
+
+        // Strategy 2: Next.js SSR payload
         if (!_csrfToken) {
-           var nextData = document.getElementById('__NEXT_DATA__');
-           if (nextData) {
-             var json = JSON.parse(nextData.textContent);
-             if (json.runtimeConfig && json.runtimeConfig.csrfToken) _csrfToken = json.runtimeConfig.csrfToken;
-             if (json.props && json.props.pageProps && json.props.pageProps.csrfToken) _csrfToken = json.props.pageProps.csrfToken;
-           }
+          var nextData = document.getElementById('__NEXT_DATA__');
+          if (nextData) {
+            var nextJson = JSON.parse(nextData.textContent);
+            if (nextJson.runtimeConfig && nextJson.runtimeConfig.csrfToken) _csrfToken = nextJson.runtimeConfig.csrfToken;
+            if (nextJson.props && nextJson.props.pageProps && nextJson.props.pageProps.csrfToken) _csrfToken = nextJson.props.pageProps.csrfToken;
+          }
         }
       } catch(e) {}
 

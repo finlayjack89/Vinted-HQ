@@ -22,6 +22,7 @@ export interface AppSettings {
   sessionAutofillEnabled: boolean;
   sessionAutoSubmitEnabled: boolean;
   transportMode: 'PROXY' | 'DIRECT';
+  browser_proxy_mode: 'DIRECT' | 'ISP_DEDICATED';
   csrf_token: string;
   user_agent: string;
   anon_id: string;
@@ -46,6 +47,7 @@ const DEFAULTS: AppSettings = {
   sessionAutofillEnabled: true,
   sessionAutoSubmitEnabled: false,
   transportMode: 'PROXY',
+  browser_proxy_mode: 'DIRECT',
   csrf_token: '',
   user_agent: '',
   anon_id: '',
@@ -70,6 +72,7 @@ const SETTINGS_KEYS: (keyof AppSettings)[] = [
   'sessionAutofillEnabled',
   'sessionAutoSubmitEnabled',
   'transportMode',
+  'browser_proxy_mode',
   'csrf_token',
   'user_agent',
   'anon_id',
@@ -99,6 +102,9 @@ function deserialize(key: keyof AppSettings, value: string): unknown {
   }
   if (key === 'transportMode') {
     return value === 'DIRECT' ? 'DIRECT' : 'PROXY';
+  }
+  if (key === 'browser_proxy_mode') {
+    return value === 'ISP_DEDICATED' ? 'ISP_DEDICATED' : 'DIRECT';
   }
   if (key === 'proxyUrls' || key === 'scrapingProxies' || key === 'checkoutProxies') {
     try {

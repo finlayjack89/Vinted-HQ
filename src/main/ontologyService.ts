@@ -11,6 +11,8 @@ import * as bridge from './bridge';
 import * as inventoryDb from './inventoryDb';
 import { logger } from './logger';
 
+const SIZE_REQUIREMENT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface OntologyDiffResult {
@@ -58,6 +60,14 @@ export async function refreshCategories(): Promise<OntologyDiffResult | null> {
     total: remoteCatalogs.length,
     migrated: diff.migrated.length,
     deleted: diff.deleted.length,
+  });
+
+  // Best-effort: seed category size requirement knowledge for categories that
+  // actually appear in the user's inventory. This keeps save validation and
+  // discrepancy logic category-aware without fetching size_groups for the entire
+  // (very large) category tree.
+  void seedCategorySizeRequirements().catch((err) => {
+    logger.warn('ontology-size-requirement-seed-failed', { error: String(err) });
   });
 
   return diff;
@@ -162,6 +172,90 @@ export async function refreshAll(): Promise<void> {
     }
   } catch (err) {
     logger.error('ontology-refresh-error', { error: String(err) });
+  }
+}
+
+async function seedCategorySizeRequirements(): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+
+  const items = inventoryDb.getAllInventoryItems();
+  const categoryIds = new Set<number>();
+  for (const item of items) {
+    const id = item.category_id;
+    if (typeof id === 'number' && id > 0) categoryIds.add(id);
+  }
+
+  // Cap to avoid excessive startup work if inventory is huge.
+  const ids = Array.from(categoryIds).slice(0, 60);
+  if (ids.length === 0) return;
+
+  for (const catalogId of ids) {
+    try {
+      const row = inventoryDb.getOntologyEntity('category', catalogId);
+      if (!row) continue;
+
+      let hasFresh = false;
+      if (row.extra) {
+        try {
+          const parsed = JSON.parse(row.extra) as unknown;
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            const obj = parsed as Record<string, unknown>;
+            const rs = obj.requires_size;
+            const ts = obj.requires_size_fetched_at;
+            if (typeof rs === 'boolean' && typeof ts === 'number' && now - ts < SIZE_REQUIREMENT_TTL_SECONDS) {
+              hasFresh = true;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (hasFresh) continue;
+
+      const r = await bridge.fetchOntologySizes(catalogId);
+      if (!r.ok) {
+        const code = (r as { code?: string }).code ?? '';
+        const message = (r as { message?: string }).message ?? '';
+        const looksLikeNoSize404 =
+          code === 'HTTP_ERROR' && (message.startsWith('HTTP 404:') || message.includes('HTTP 404'));
+        if (looksLikeNoSize404) {
+          inventoryDb.mergeOntologyExtra('category', catalogId, {
+            requires_size: false,
+            requires_size_fetched_at: now,
+          });
+          logger.info('ontology-size-requirement-cached-404', { catalogId, requiresSize: false });
+          continue;
+        }
+
+        logger.warn('ontology-size-groups-fetch-failed', { catalogId, error: message });
+        continue;
+      }
+
+      const data = (r as { ok: true; data: unknown }).data as unknown;
+      const root = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+      const groups = Array.isArray(root.size_groups) ? (root.size_groups as unknown[]) : [];
+
+      let requiresSize = false;
+      for (const g of groups) {
+        if (!g || typeof g !== 'object') continue;
+        const sizes = (g as Record<string, unknown>).sizes;
+        if (Array.isArray(sizes)) {
+          if (sizes.length > 0) { requiresSize = true; break; }
+        } else {
+          // Some responses may flatten sizes at the group level.
+          requiresSize = true;
+          break;
+        }
+      }
+
+      inventoryDb.mergeOntologyExtra('category', catalogId, {
+        requires_size: requiresSize,
+        requires_size_fetched_at: now,
+      });
+      logger.info('ontology-size-requirement-cached', { catalogId, requiresSize });
+    } catch (err) {
+      logger.warn('ontology-size-requirement-cache-error', { catalogId, error: String(err) });
+    }
   }
 }
 

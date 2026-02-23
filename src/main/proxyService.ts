@@ -103,6 +103,14 @@ function normalizeProxy(raw: string): string {
   return raw;
 }
 
+/**
+ * Normalize a proxy string to a URL format.
+ * Exported for consumers that need consistent parsing (e.g. Electron setProxy).
+ */
+export function normalizeProxyUrl(raw: string): string {
+  return normalizeProxy(raw);
+}
+
 /** Extract provider name from proxy hostname. */
 function extractProvider(normalizedProxy: string): string {
   try {

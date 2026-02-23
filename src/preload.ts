@@ -28,6 +28,7 @@ export type AppSettings = {
   sessionAutofillEnabled: boolean;
   sessionAutoSubmitEnabled: boolean;
   transportMode: 'PROXY' | 'DIRECT';
+  browser_proxy_mode: 'DIRECT' | 'ISP_DEDICATED';
 };
 
 contextBridge.exposeInMainWorld('vinted', {
@@ -151,6 +152,8 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:getAll', filter),
   getWardrobeItem: (localId: number) =>
     ipcRenderer.invoke('wardrobe:getItem', localId),
+  getDetailCompleteness: (localId: number) =>
+    ipcRenderer.invoke('wardrobe:getDetailCompleteness', localId),
   upsertWardrobeItem: (data: { title: string; price: number; id?: number; [k: string]: unknown }) =>
     ipcRenderer.invoke('wardrobe:upsertItem', data),
   deleteWardrobeItem: (localId: number) =>
@@ -214,8 +217,8 @@ contextBridge.exposeInMainWorld('vinted', {
 
   // ─── Sync Progress ─────────────────────────────────────────────────────
 
-  onSyncProgress: (callback: (data: { direction: string; stage: string; current: number; total: number }) => void) => {
-    const handler = (_: unknown, data: { direction: string; stage: string; current: number; total: number }) => callback(data);
+  onSyncProgress: (callback: (data: { direction: string; stage: string; current: number; total: number; message?: string }) => void) => {
+    const handler = (_: unknown, data: { direction: string; stage: string; current: number; total: number; message?: string }) => callback(data);
     ipcRenderer.on('wardrobe:sync-progress', handler);
     return () => ipcRenderer.removeListener('wardrobe:sync-progress', handler);
   },

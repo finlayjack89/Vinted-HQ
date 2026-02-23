@@ -29,8 +29,8 @@ export function log(
 }
 
 export const logger = {
-  debug: (event: string, payload?: Record<string, unknown>) => log('DEBUG', event, payload),
-  info: (event: string, payload?: Record<string, unknown>) => log('INFO', event, payload),
-  warn: (event: string, payload?: Record<string, unknown>) => log('WARN', event, payload),
-  error: (event: string, payload?: Record<string, unknown>) => log('ERROR', event, payload),
+  debug: (event: string, payload?: Record<string, unknown>, requestId?: string) => log('DEBUG', event, payload, requestId),
+  info: (event: string, payload?: Record<string, unknown>, requestId?: string) => log('INFO', event, payload, requestId),
+  warn: (event: string, payload?: Record<string, unknown>, requestId?: string) => log('WARN', event, payload, requestId),
+  error: (event: string, payload?: Record<string, unknown>, requestId?: string) => log('ERROR', event, payload, requestId),
 };

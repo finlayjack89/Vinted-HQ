@@ -161,9 +161,12 @@ def _build_headers(
 
 
 def _extract_csrf_from_cookie(cookie: str) -> str | None:
-    """Extract x-csrf-token from cookie string if present (Vinted may send it in Set-Cookie)."""
-    # Vinted often expects x-csrf-token in headers; it may be in a cookie or set by JS.
-    # For now we rely on cookie bundle; add explicit csrf header if needed.
+    """Extract x-csrf-token from the cookie string.
+    Vinted uses the access_token_web JWT as the x-csrf-token header value."""
+    for part in cookie.split(";"):
+        name, _, value = part.strip().partition("=")
+        if name.strip() == "access_token_web" and value.strip():
+            return value.strip()
     return None
 
 
@@ -179,8 +182,10 @@ def _build_write_headers(
     """Build headers for write operations (POST/PUT/DELETE) that require CSRF."""
     headers = _build_headers(cookie, referer, transport_mode=transport_mode, user_agent=user_agent)
     headers["Content-Type"] = "application/json"
-    if csrf_token:
-        headers["x-csrf-token"] = csrf_token
+    # Prefer the explicitly supplied token; fall back to deriving from access_token_web.
+    effective_csrf = csrf_token or _extract_csrf_from_cookie(cookie)
+    if effective_csrf:
+        headers["x-csrf-token"] = effective_csrf
     if anon_id:
         headers["x-anon-id"] = anon_id
     if upload_form:
@@ -245,19 +250,6 @@ def search(
     api_url = f"{BASE_URL}/api/v2/catalog/items?{qs}"
     referer = url if url.startswith("http") else f"{BASE_URL}/catalog"
 
-    # region agent log
-    import json as _json, os as _os
-    _log_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), ".cursor", "debug.log")
-    try:
-        # Log the full query string (first 800 chars) so we can verify exact parameter names and encoding
-        _qs_keys = [k for k, v in (p.split("=", 1) for p in qs.split("&") if "=" in p)]
-        _unique_keys = list(dict.fromkeys(_qs_keys))
-        with open(_log_path, "a") as _f:
-            _f.write(_json.dumps({"location":"vinted_client.py:search","message":"Built API URL","data":{"api_url_first800":api_url[:800],"qs_param_keys":_unique_keys,"has_catalog_bracket":("catalog%5B%5D" in qs or "catalog[]" in qs),"has_catalog_ids":("catalog_ids" in qs),"has_color_ids":("color_ids" in qs),"has_brand_ids":("brand_ids" in qs),"has_size_ids":("size_ids" in qs),"order_value":params.get("order","?"),"page":page,"proxy_provided":bool(proxy)},"timestamp":int(time.time()*1000),"hypothesisId":"H14,H15,H16"}) + "\n")
-    except Exception:
-        pass
-    # endregion
-
     session = _get_session(proxy, transport_mode)
     req_kwargs: dict = {
         "url": api_url,
@@ -298,26 +290,6 @@ def search(
         _resp_data = resp.json()
     except Exception as e:
         raise VintedError("PARSE_ERROR", f"Invalid JSON: {e}")
-
-    # region agent log
-    try:
-        _items = _resp_data.get("items", [])[:2]
-        _sample = []
-        for _it in _items:
-            _sample.append({
-                "id": _it.get("id"),
-                "title": str(_it.get("title", ""))[:40],
-                "catalog_id": _it.get("catalog_id"),
-                "color1": str(_it.get("color1", "")),
-                "color2": str(_it.get("color2", "")),
-                "brand_title": str(_it.get("brand_title", "")),
-                "size_title": str(_it.get("size_title", "")),
-            })
-        with open(_log_path, "a") as _f:
-            _f.write(_json.dumps({"location":"vinted_client.py:search:response","message":"Search response sample","data":{"total_items":len(_resp_data.get("items",[])),"sample_items":_sample,"page":page},"timestamp":int(time.time()*1000),"hypothesisId":"H14,H15,H16"}) + "\n")
-    except Exception:
-        pass
-    # endregion
 
     return _resp_data
 
@@ -746,7 +718,13 @@ def fetch_ontology_sizes(
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
 
-    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+    # Vinted returns 404 for categories that simply have no sizes (e.g. bags).
+    # Treat that as a valid "no size groups" response rather than an error.
+    # Some 404 responses may be HTML (not JSON), so don't call resp.json().
+    if resp.status_code == 404:
+        return {"size_groups": []}
+
+    return _handle_response(resp, allow_statuses=(200, 304, 404), proxy=proxy)
 
 
 def fetch_ontology_materials(
@@ -778,34 +756,12 @@ def fetch_ontology_materials(
     if proxy and transport_mode != "DIRECT":
         req_kwargs["proxy"] = proxy
 
-    # region agent log
-    _log_path = __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.dirname(__import__('os').path.abspath(__file__))), ".cursor", "debug.log")
-    try:
-        with open(_log_path, "a") as _f:
-            _f.write(__import__('json').dumps({"location":"vinted_client.py:fetch_materials","message":"Materials POST request","data":{"catalog_id":catalog_id,"payload":payload,"has_csrf":bool(csrf_token),"has_anon":bool(anon_id),"transport_mode":transport_mode,"proxy_set":bool(proxy)},"timestamp":int(time.time()*1000),"hypothesisId":"H-mat-api"}) + "\n")
-    except Exception:
-        pass
-    # endregion
-
     try:
         resp = session.post(**req_kwargs)
-        import sys
-        print(f"[fetch_ontology_materials] Status: {resp.status_code} | Body len: {len(resp.text)}", file=sys.stderr)
-        if resp.status_code == 200:
-             print(f"[fetch_ontology_materials] Body prefix: {resp.text[:500]}", file=sys.stderr)
     except requests.errors.RequestsError as e:
         raise VintedError("REQUEST_FAILED", str(e))
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
-
-    # region agent log
-    try:
-        _resp_text = resp.text[:500] if resp.text else "EMPTY"
-        with open(_log_path, "a") as _f:
-            _f.write(__import__('json').dumps({"location":"vinted_client.py:fetch_materials_resp","message":"Materials API response","data":{"status_code":resp.status_code,"content_type":resp.headers.get("content-type",""),"resp_len":len(resp.text) if resp.text else 0,"resp_preview":_resp_text[:300]},"timestamp":int(time.time()*1000),"hypothesisId":"H-mat-api"}) + "\n")
-    except Exception:
-        pass
-    # endregion
 
     return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
 
@@ -918,8 +874,6 @@ def fetch_item_detail(
       3. Supplement with regex-based field extraction from the raw HTML
       4. Include debug data for the frontend to diagnose missing fields
     """
-    import sys
-
     merged: dict = {}
     debug_info: dict = {"pages_tried": []}
 
@@ -948,10 +902,6 @@ def fetch_item_detail(
             "regex_keys": sorted(edit_regex.keys()),
         }
         debug_info["pages_tried"].append("edit")
-        print(f"[fetch_item_detail] EDIT page: nuxt_tags={len(nuxt_raw)}, "
-              f"nuxt_bytes={sum(len(r) for r in nuxt_raw)}, "
-              f"item_keys={sorted(edit_item.keys()) if edit_item else 'None'}, "
-              f"regex_keys={sorted(edit_regex.keys())}", file=sys.stderr)
 
         if edit_item:
             merged.update(edit_item)
@@ -961,7 +911,6 @@ def fetch_item_detail(
     except VintedError as e:
         debug_info["edit_page"] = {"error": f"{e.code}: {e.message}"}
         debug_info["pages_tried"].append(f"edit(failed:{e.code})")
-        print(f"[fetch_item_detail] EDIT page failed: {e.code}: {e.message}", file=sys.stderr)
 
     # ── Try 2: VIEW page — fallback, only has basic fields ──
     if len(merged) < 8:
@@ -1017,9 +966,6 @@ def fetch_item_detail(
         else:
             debug_values[k] = v
 
-    print(f"[fetch_item_detail] merged keys: {raw_keys}", file=sys.stderr)
-    print(f"[fetch_item_detail] normalized keys: {sorted(normalized.keys())}", file=sys.stderr)
-
     return {
         "item": normalized,
         "_debug": {
@@ -1046,10 +992,6 @@ def _normalize_ssr_item(raw: dict) -> dict:
     Also logs the raw SSR key set for diagnostics (visible in the Python bridge
     console) so field-name mismatches can be diagnosed.
     """
-    import sys
-    _keys = sorted(raw.keys()) if isinstance(raw, dict) else []
-    print(f"[normalize_ssr_item] raw keys ({len(_keys)}): {_keys}", file=sys.stderr)
-
     out: dict = {}
 
     # ── Pass-through simple scalar fields ────────────────────────────────
@@ -1186,7 +1128,6 @@ def _extract_fields_regex(html: str, item_id: int) -> dict:
     may contain related items, we restrict the search to a window around the
     first occurrence of the item_id.
     """
-    import sys
     result: dict = {}
 
     # Find the position of the item_id in the HTML to scope our search
@@ -1263,7 +1204,6 @@ def _extract_fields_regex(html: str, item_id: int) -> dict:
         except ValueError:
             pass
 
-    print(f"[regex_extract] Found fields: {sorted(result.keys())}", file=sys.stderr)
     return result
 
 
@@ -1274,7 +1214,6 @@ def _extract_item_from_html(html: str, item_id: int) -> dict | None:
     """Extract item data from Vinted page HTML.
     Tries multiple strategies: Nuxt __NUXT_DATA__, window.__NUXT__,
     Schema.org JSON-LD, and raw JSON blobs."""
-    import sys
 
     # ── Strategy 1a: Nuxt 3 __NUXT_DATA__ script tags ──
     # Match various attribute orderings and quote styles
@@ -1283,23 +1222,19 @@ def _extract_item_from_html(html: str, item_id: int) -> dict | None:
         html,
         re.DOTALL | re.IGNORECASE,
     )
-    print(f"[extract_html] __NUXT_DATA__ tags found: {len(nuxt_matches)}", file=sys.stderr)
 
     best_item: dict | None = None
     best_key_count = 0
 
-    for i, raw in enumerate(nuxt_matches):
+    for raw in nuxt_matches:
         stripped = raw.strip()
-        print(f"[extract_html] Tag {i}: len={len(stripped)}, first 150 chars: {stripped[:150]}", file=sys.stderr)
 
         # Try standard Nuxt 3 format (["Reactive", 1] or ["ShallowReactive", 1])
         data = _parse_nuxt_payload(stripped)
         if data:
-            # Search the ENTIRE parsed tree for the item
             item = _find_item_in_data(data, item_id)
             if item and isinstance(item, dict):
                 key_count = len(item)
-                print(f"[extract_html] Nuxt payload found item with {key_count} keys: {sorted(item.keys())[:20]}", file=sys.stderr)
                 if key_count > best_key_count:
                     best_item = item
                     best_key_count = key_count
@@ -1311,7 +1246,6 @@ def _extract_item_from_html(html: str, item_id: int) -> dict | None:
                 if isinstance(data, dict):
                     item = _find_item_in_data(data, item_id)
                     if item and isinstance(item, dict) and len(item) > best_key_count:
-                        print(f"[extract_html] Raw JSON found item with {len(item)} keys", file=sys.stderr)
                         best_item = item
                         best_key_count = len(item)
             except (json.JSONDecodeError, ValueError):
@@ -1506,17 +1440,19 @@ def upload_photo(
     if anon_id:
         headers["x-anon-id"] = anon_id
 
-    # multipart fields matching Vinted's expected format
-    multipart = [
-        ("photo[type]", (None, "item")),
-        ("photo[file]", ("photo.jpg", image_bytes, "image/jpeg")),
-        ("photo[temp_uuid]", (None, photo_uuid)),
-    ]
+    # curl_cffi >= 0.9.0 expects a `files=` mapping (requests-compatible API).
+    # Using the old `multipart=[(...)]` tuple-list format can crash with:
+    #   "'list' object has no attribute '_form'"
+    files = {
+        "photo[type]": (None, "item"),
+        "photo[file]": ("photo.jpg", image_bytes, "image/jpeg"),
+        "photo[temp_uuid]": (None, photo_uuid),
+    }
 
     req_kwargs: dict = {
         "url": api_url,
         "headers": headers,
-        "multipart": multipart,
+        "files": files,
         "timeout": 60,
     }
     if proxy and transport_mode != "DIRECT":
