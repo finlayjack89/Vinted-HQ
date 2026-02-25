@@ -816,5 +816,18 @@ async def relist(
         return _error_response("RELIST_ERROR", f"Relist failed: {e}", 500)
 
 
+# ─── Data Ingestion from Chrome Extension ────────────────────────────────────
+
+@app.post("/ingest")
+async def ingest_data(body: dict = Body(...)):
+    """
+    Receive scraped JSON data from the Chrome Extension.
+    """
+    import logging
+    logging.info(f"Ingested data from extension: {list(body.keys())}")
+    # Forward this to Electron or update the DB directly.
+    return {"ok": True, "message": "Data ingested successfully"}
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=37421, log_level="info")

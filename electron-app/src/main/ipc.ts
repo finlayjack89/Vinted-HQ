@@ -23,7 +23,6 @@ import * as ontologyService from './ontologyService';
 import type { AppSettings } from './settings';
 import { logger } from './logger';
 
-const inFlightItemDetailFetches = new Map<number, Promise<unknown>>();
 
 export function registerIpcHandlers(): void {
   // Session / Cookie
@@ -254,48 +253,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('wardrobe:getSizes', (_event, catalogId: number) =>
     bridge.fetchOntologySizes(catalogId)
   );
-  ipcMain.handle('wardrobe:openEditDebugWindow', async (_event, itemId: number) => {
-    const { openEditDebugWindow } = await import('./editDebugWindow');
-    await openEditDebugWindow(itemId);
-  });
   ipcMain.handle('wardrobe:getMaterials', async (_event, catalogId: number, itemId?: number) => {
-    // Phase 1: Try Python bridge (historically flaky for this endpoint due to CSRF/fingerprint)
-    // const bridgeRes = await bridge.fetchOntologyMaterials(catalogId, itemId);
-    // if (bridgeRes.ok && (bridgeRes.data as any)?.attributes?.length > 0) return bridgeRes;
-
-    // Phase 2: Browser Fetch (Robust)
-    // Directly execute fetch() inside the authenticated Electron window context
-    const { fetchViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-
-    // Ensure we are in the correct context (edit page) to match Vinted's expectations
-    const referer = itemId ? `https://www.vinted.co.uk/items/${itemId}/edit` : undefined;
-
-    // Use POST /api/v2/item_upload/attributes which mimics the actual edit page behavior
-    // We rely on fetchViaBrowser's new Fiber token extraction to handle CSRF
-    const result = await fetchViaBrowser('/api/v2/item_upload/attributes', {
-      method: 'POST',
-      body: JSON.stringify({
-        attributes: [{ code: 'category', value: [catalogId] }]
-      }),
-      referer,
-      partition: VINTED_EDIT_PARTITION,
-      forceDirect: true,
-    });
-
-    if (result.ok && result.data) {
-      return { ok: true, data: result.data };
-    }
-    
-    // Return detailed error info for debugging
-    return { 
-      ok: false, 
-      code: 'BROWSER_FETCH_FAILED', 
-      message: result.error || `HTTP ${result.status}`,
-      details: {
-        status: result.status,
-        text: result.text ? result.text.slice(0, 500) : null
-      }
-    };
+    // Reverted to Python bridge for materials, as browser logic is moving to Chrome Ext
+    return bridge.fetchOntologyMaterials(catalogId, itemId);
   });
   ipcMain.handle('wardrobe:getPackageSizes', (_event, catalogId: number, itemId?: number) =>
     bridge.fetchOntologyPackageSizes(catalogId, itemId)
@@ -309,24 +269,4 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('wardrobe:getModels', (_event, catalogId: number, brandId: number) =>
     bridge.fetchOntologyModels(catalogId, brandId)
   );
-  ipcMain.handle('wardrobe:getItemDetail', async (_event, itemId: number) => {
-    const existing = inFlightItemDetailFetches.get(itemId);
-    if (existing) return existing;
-
-    // Use a hidden BrowserWindow to load the Vinted item page and extract
-    // data via JS injection.  Vinted is a full SPA — the HTML contains only
-    // 6 SEO fields; all real data is loaded by JavaScript after hydration.
-    // This approach mirrors what dotb.io (Chrome extension) does.
-    const p = (async () => {
-      const { fetchItemDetailViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-      return fetchItemDetailViaBrowser(itemId, { partition: VINTED_EDIT_PARTITION, forceDirect: true });
-    })();
-
-    inFlightItemDetailFetches.set(itemId, p);
-    try {
-      return await p;
-    } finally {
-      inFlightItemDetailFetches.delete(itemId);
-    }
-  });
 }

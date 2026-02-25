@@ -583,45 +583,45 @@ export async function pullFromVinted(userId: number): Promise<{
         let bridgeDebugSummary: Record<string, unknown> | null = null;
         // Fast path: Python bridge HTML scrape (can be blocked by bot detection).
         if (USE_PYTHON_BRIDGE_ITEM_DETAIL) {
-        try {
-          const detailResult = await bridge.fetchItemDetail(vintedId);
-          if (detailResult.ok) {
-            const detailData = (detailResult as { data: unknown }).data as Record<string, unknown>;
-            bridgeFetchOk = true;
-            const dbg = (detailData as Record<string, unknown>)._debug;
-            if (dbg && typeof dbg === 'object') {
-              const d = dbg as Record<string, unknown>;
-              const edit = d.edit_page as Record<string, unknown> | undefined;
-              const view = d.view_page as Record<string, unknown> | undefined;
-              bridgeDebugSummary = {
-                pagesTried: Array.isArray(d.pages_tried) ? d.pages_tried.slice(0, 6) : null,
-                editNuxtTags: typeof edit?.nuxt_tags === 'number' ? edit.nuxt_tags : null,
-                viewNuxtTags: typeof view?.nuxt_tags === 'number' ? view.nuxt_tags : null,
-                editHasError: typeof edit?.error === 'string' && edit.error.length > 0,
-                viewHasError: typeof view?.error === 'string' && view.error.length > 0,
-                editItemKeysLen: Array.isArray(edit?.item_keys) ? edit.item_keys.length : null,
-                viewItemKeysLen: Array.isArray(view?.item_keys) ? view.item_keys.length : null,
-              };
+          try {
+            const detailResult = await bridge.fetchItemDetail(vintedId);
+            if (detailResult.ok) {
+              const detailData = (detailResult as { data: unknown }).data as Record<string, unknown>;
+              bridgeFetchOk = true;
+              const dbg = (detailData as Record<string, unknown>)._debug;
+              if (dbg && typeof dbg === 'object') {
+                const d = dbg as Record<string, unknown>;
+                const edit = d.edit_page as Record<string, unknown> | undefined;
+                const view = d.view_page as Record<string, unknown> | undefined;
+                bridgeDebugSummary = {
+                  pagesTried: Array.isArray(d.pages_tried) ? d.pages_tried.slice(0, 6) : null,
+                  editNuxtTags: typeof edit?.nuxt_tags === 'number' ? edit.nuxt_tags : null,
+                  viewNuxtTags: typeof view?.nuxt_tags === 'number' ? view.nuxt_tags : null,
+                  editHasError: typeof edit?.error === 'string' && edit.error.length > 0,
+                  viewHasError: typeof view?.error === 'string' && view.error.length > 0,
+                  editItemKeysLen: Array.isArray(edit?.item_keys) ? edit.item_keys.length : null,
+                  viewItemKeysLen: Array.isArray(view?.item_keys) ? view.item_keys.length : null,
+                };
+              }
+              bridgeDetail = (detailData.item ?? detailData) as Record<string, unknown>;
+              itemDetail = bridgeDetail;
+              logger.debug(
+                'wardrobe-pull-bridge-detail-ok',
+                { localId, vintedId, keyCount: Object.keys(bridgeDetail).length },
+                requestId,
+              );
+            } else {
+              bridgeFetchOk = false;
+              const code = (detailResult as { code?: string }).code ?? '';
+              const msg = (detailResult as { message?: string }).message ?? '';
+              bridgeFetchCode = code || null;
+              logger.warn('wardrobe-pull-bridge-detail-failed', { localId, vintedId, code, message: msg }, requestId);
             }
-            bridgeDetail = (detailData.item ?? detailData) as Record<string, unknown>;
-            itemDetail = bridgeDetail;
-            logger.debug(
-              'wardrobe-pull-bridge-detail-ok',
-              { localId, vintedId, keyCount: Object.keys(bridgeDetail).length },
-              requestId,
-            );
-          } else {
-            bridgeFetchOk = false;
-            const code = (detailResult as { code?: string }).code ?? '';
-            const msg = (detailResult as { message?: string }).message ?? '';
-            bridgeFetchCode = code || null;
-            logger.warn('wardrobe-pull-bridge-detail-failed', { localId, vintedId, code, message: msg }, requestId);
+          } catch (err) {
+            bridgeFetchOk = null;
+            bridgeFetchCode = 'EXCEPTION';
+            logger.warn('wardrobe-pull-bridge-detail-exception', { localId, vintedId, error: String(err) }, requestId);
           }
-        } catch (err) {
-          bridgeFetchOk = null;
-          bridgeFetchCode = 'EXCEPTION';
-          logger.warn('wardrobe-pull-bridge-detail-exception', { localId, vintedId, error: String(err) }, requestId);
-        }
         }
 
         // If bridge returned present-but-incomplete data (missing core numeric IDs),
@@ -853,73 +853,7 @@ export async function pullFromVinted(userId: number): Promise<{
     page++;
   }
 
-  // ── Post-sync backfill: if any items are still missing required edit fields,
-  // do a small, throttled browser-only pass to fill structural gaps.
-  try {
-    const now = Math.floor(Date.now() / 1000);
-    const candidates = inventoryDb
-      .getAllInventoryItems()
-      .filter((it) => Boolean(it.vinted_item_id) && it.status !== 'sold' && (!it.detail_hydrated_at || !isCompleteForEditCached(it)))
-      .slice(0, 10);
-
-    logger.debug('wardrobe-pull-post-backfill-candidates', { candidateCount: candidates.length }, requestId);
-
-    if (candidates.length > 0) {
-      const { fetchItemDetailViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-
-      for (let i = 0; i < candidates.length; i++) {
-        const it = candidates[i];
-        const vintedId = Number(it.vinted_item_id || 0);
-        if (!vintedId) continue;
-
-        emitSyncProgress(
-          'pull',
-          'progress',
-          i,
-          candidates.length,
-          `Backfilling details (${i + 1}/${candidates.length}) — ${vintedId}`
-        );
-
-        const r = await fetchItemDetailViaBrowser(vintedId, {
-          partition: VINTED_EDIT_PARTITION,
-          forceDirect: true,
-        });
-        if (r.ok) {
-          const raw = r.data as Record<string, unknown>;
-          const detail = (raw.item ?? raw) as Record<string, unknown>;
-          if (!detail.id) detail.id = vintedId;
-
-          const latest = inventoryDb.getInventoryItem(it.id) ?? it;
-          applyGapFillStructuralPatch({
-            existing: latest,
-            itemDetail: detail,
-            snapshotFetchedAt: now,
-            detailSource: 'browser',
-          });
-
-          // Best-effort snapshot update for discrepancy detection.
-          try {
-            const liveHash = hashLiveSnapshot(buildLiveSnapshotFromVintedDetail(detail));
-            if (liveHash) inventoryDb.updateLiveSnapshot(it.id, liveHash, now);
-          } catch {
-            /* ignore */
-          }
-        } else {
-          const code = 'code' in r ? String(r.code) : 'UNKNOWN';
-          const message = 'message' in r ? String(r.message) : '';
-          logger.warn(
-            'wardrobe-pull-post-backfill-fetch-failed',
-            { localId: it.id, vintedId, code, message },
-            requestId,
-          );
-        }
-
-        await sleep(1000);
-      }
-    }
-  } catch (err) {
-    logger.warn('wardrobe-pull-post-backfill-failed', { error: String(err) }, requestId);
-  }
+  // Post-sync backfill removed: scraping logic moved to Chrome Extension.
 
   emitSyncProgress('pull', 'complete', pulled, pulled);
   logger.info(
@@ -1289,28 +1223,9 @@ export async function pullLiveToLocal(localId: number): Promise<{ ok: boolean; e
     logger.warn('wardrobe-pull-live-to-local-bridge-failed', { localId, vintedItemId, error: bridgeErr || 'unknown' }, requestId);
   }
 
-  // Robust fallback: browser extraction in authenticated Chromium context.
+  // Browser extraction fallback removed: logic moved to Chrome Extension.
   if (!raw) {
-    try {
-      const { fetchItemDetailViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-      const browserRes = await fetchItemDetailViaBrowser(vintedItemId, { partition: VINTED_EDIT_PARTITION, forceDirect: true });
-      if (browserRes.ok) {
-        raw = browserRes.data as Record<string, unknown>;
-        detailSource = 'browser';
-      } else {
-        const code = 'code' in browserRes ? String(browserRes.code) : 'UNKNOWN';
-        const message =
-          'message' in browserRes && typeof browserRes.message === 'string' && browserRes.message
-            ? browserRes.message
-            : 'Failed to fetch live item details';
-        logger.error('wardrobe-pull-live-to-local-browser-failed', { localId, vintedItemId, code, message }, requestId);
-        return { ok: false, error: bridgeErr ? `${message} (bridge: ${bridgeErr})` : message };
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error('wardrobe-pull-live-to-local-browser-exception', { localId, vintedItemId, error: msg }, requestId);
-      return { ok: false, error: bridgeErr ? `${msg} (bridge: ${bridgeErr})` : msg };
-    }
+    return { ok: false, error: bridgeErr ? `Bridge failed: ${bridgeErr}` : 'Details could not be fetched.' };
   }
 
   const live = (raw.item ?? raw) as Record<string, unknown>;
@@ -1542,54 +1457,7 @@ export async function editLiveItem(
     },
     requestId,
   );
-  if (!completeness.ok || !completeness.complete) {
-    try {
-      const { fetchItemDetailViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-      const detailRes = await fetchItemDetailViaBrowser(Number(item.vinted_item_id), { partition: VINTED_EDIT_PARTITION, forceDirect: true });
-      if (detailRes.ok) {
-        const raw = detailRes.data as Record<string, unknown>;
-        const d = (raw.item ?? raw) as Record<string, unknown>;
-        if (!d.id) d.id = Number(item.vinted_item_id);
-
-        const latest = inventoryDb.getInventoryItem(localId) ?? item;
-        applyGapFillStructuralPatch({
-          existing: latest,
-          itemDetail: d,
-          snapshotFetchedAt: Math.floor(Date.now() / 1000),
-          detailSource: 'browser',
-        });
-
-        item = inventoryDb.getInventoryItem(localId) ?? item;
-      } else {
-        const code = 'code' in detailRes ? String(detailRes.code) : 'UNKNOWN';
-        const message = 'message' in detailRes ? String(detailRes.message) : '';
-        logger.warn(
-          'wardrobe-edit-hydrate-via-browser-failed',
-          { localId, vintedItemId: item.vinted_item_id, code, message },
-          requestId,
-        );
-      }
-    } catch (err) {
-      logger.warn('edit-hydrate-missing-ids-failed', { localId, error: String(err) }, requestId);
-    }
-
-    completeness = await getDetailCompleteness(localId);
-    logger.info(
-      'wardrobe-edit-completeness-after-hydrate',
-      {
-        localId,
-        vintedItemId: item.vinted_item_id,
-        ok: completeness.ok,
-        complete: completeness.complete,
-        missing: completeness.missing,
-        requires_size: completeness.requires_size,
-        requires_size_known: completeness.requires_size_known,
-        detail_hydrated_at: completeness.detail_hydrated_at,
-        detail_source: completeness.detail_source,
-      },
-      requestId,
-    );
-  }
+  // Browser hydration removed: Chrome Ext will handle missing data hydration.
 
   if (!completeness.ok || !completeness.complete) {
     const missing = completeness.ok ? completeness.missing : ['unknown'];
@@ -1598,7 +1466,7 @@ export async function editLiveItem(
       { localId, vintedItemId: item.vinted_item_id, missing, requires_size: completeness.ok ? completeness.requires_size : null },
       requestId,
     );
-  return {
+    return {
       ok: false,
       error: `Missing required listing fields (${missing.join(', ')}). Open the item and let details load, then try Push again.`,
     };
@@ -1620,34 +1488,7 @@ export async function editLiveItem(
   // If we apply photos successfully, we update local DB ONLY after the PUT succeeds.
   let postPushPhotoUpdate: { photo_urls: string[]; local_image_paths: string[] } | null = null;
 
-  // Ensure CSRF + anon_id exist before any write call.
-  // If they're missing, warm them by loading the edit page in a real browser context.
-  const hasCsrf = Boolean(settings.getSetting('csrf_token'));
-  const hasAnon = Boolean(settings.getSetting('anon_id'));
-  if (!hasCsrf || !hasAnon) {
-    logger.info(
-      'wardrobe-edit-token-warm-start',
-      { localId, vintedItemId: item.vinted_item_id, hasCsrf, hasAnon },
-      requestId,
-    );
-    try {
-      const { fetchViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-      const referer = `https://www.vinted.co.uk/items/${item.vinted_item_id}/edit`;
-      await fetchViaBrowser('/api/v2/conversations/stats', {
-        method: 'GET',
-        referer,
-        partition: VINTED_EDIT_PARTITION,
-        forceDirect: true,
-      });
-    } catch (err) {
-      logger.warn('edit-token-warm-failed', { localId, error: String(err) }, requestId);
-    }
-    logger.info(
-      'wardrobe-edit-token-warm-complete',
-      { localId, vintedItemId: item.vinted_item_id, hasCsrf: Boolean(settings.getSetting('csrf_token')), hasAnon: Boolean(settings.getSetting('anon_id')) },
-      requestId,
-    );
-  }
+
 
   if (photoPlan?.items && Array.isArray(photoPlan.items) && photoPlan.items.length > 0) {
     const planItems = photoPlan.items;
@@ -1731,8 +1572,8 @@ export async function editLiveItem(
             const ext = path.toLowerCase().split('.').pop() ?? '';
             const mimeType =
               ext === 'png' ? 'image/png' :
-              ext === 'webp' ? 'image/webp' :
-              'image/jpeg';
+                ext === 'webp' ? 'image/webp' :
+                  'image/jpeg';
             const filename = path.split('/').pop() || 'photo.jpg';
 
             // Attempt 1: bridge upload (fast). If blocked, fall back to browser upload.
@@ -1769,30 +1610,7 @@ export async function editLiveItem(
                 requestId,
               );
 
-              const { uploadPhotoRawViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-              const referer = `https://www.vinted.co.uk/items/${item.vinted_item_id}/edit`;
-              const browserUp = await uploadPhotoRawViaBrowser(buf, uploadSessionId, {
-                referer,
-                filename,
-                mimeType,
-                partition: VINTED_EDIT_PARTITION,
-                forceDirect: true,
-              });
-
-              if (!browserUp?.ok || !browserUp.data) {
-                const status = browserUp?.status ? Number(browserUp.status) : 0;
-                const text = browserUp?.text ? String(browserUp.text) : '';
-                throw new Error(browserUp?.error || (status ? `HTTP ${status}: ${text.slice(0, 200)}` : `Photo upload blocked: ${text.slice(0, 200)}`));
-              }
-
-              const data = browserUp.data as Record<string, unknown>;
-              photoId = Number(data.id || 0);
-              photoUrl = data.url ? String(data.url) : '';
-              logger.debug(
-                'wardrobe-edit-photo-upload',
-                { localId, vintedItemId: item.vinted_item_id, source: 'browser', photoId, hasUrl: Boolean(photoUrl) },
-                requestId,
-              );
+              throw new Error(`Photo upload blocked or failed: ${msg}`);
             }
 
             if (photoId <= 0) {
@@ -1823,120 +1641,8 @@ export async function editLiveItem(
     delete itemData.assigned_photos;
   }
 
-  // 6. Push to Vinted (browser-only, stable DIRECT identity)
-  // We intentionally avoid the Python bridge PUT here because curl_cffi gets
-  // scored/blocked more aggressively on write endpoints (403 bot detection),
-  // while Chromium-context requests match the user's real session.
-  try {
-    const { fetchViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-    const referer = `https://www.vinted.co.uk/items/${item.vinted_item_id}/edit`;
-    const payload: Record<string, unknown> = {
-      item: { id: item.vinted_item_id, ...itemData },
-      feedback_id: null,
-      push_up: false,
-      parcel: null,
-      upload_session_id: uploadSessionId,
-    };
-    const body = JSON.stringify(payload);
-
-    const assignedPhotoCount = Array.isArray((itemData as Record<string, unknown>).assigned_photos)
-      ? ((itemData as Record<string, unknown>).assigned_photos as unknown[]).length
-      : 0;
-    logger.info(
-      'wardrobe-edit-push-browser-start',
-      {
-        localId,
-        vintedItemId: item.vinted_item_id,
-        assignedPhotoCount,
-        payloadBytes: body.length,
-        requires_size: completeness.requires_size,
-        includesSizeId: Object.prototype.hasOwnProperty.call(itemData, 'size_id'),
-      },
-      requestId,
-    );
-
-    const browserRes = await fetchViaBrowser(`/api/v2/item_upload/items/${item.vinted_item_id}`, {
-      method: 'PUT',
-      body,
-      referer,
-      partition: VINTED_EDIT_PARTITION,
-      forceDirect: true,
-    });
-
-    if (browserRes?.ok) {
-      inventoryDb.setInventoryStatus(localId, 'live');
-      // Clear discrepancy reason on successful push.
-      inventoryDb.upsertInventoryItemExplicit({
-        id: item.id,
-        title: item.title,
-        price: item.price,
-        discrepancy_reason: null,
-      } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
-      inventoryDb.upsertSyncRecord(localId, item.vinted_item_id, 'push');
-      if (postPushPhotoUpdate) {
-        inventoryDb.upsertInventoryItem({
-          id: item.id,
-          title: item.title,
-          price: item.price,
-          photo_urls: JSON.stringify(postPushPhotoUpdate.photo_urls),
-          local_image_paths: JSON.stringify(postPushPhotoUpdate.local_image_paths),
-        } as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
-      }
-      // We just authored the live state; record a snapshot so future syncs don't
-      // incorrectly mark this item as externally changed.
-      try {
-        const finalPhotoUrls = postPushPhotoUpdate ? postPushPhotoUpdate.photo_urls : beforePhotoUrls;
-        const pushedHash = hashLiveSnapshot(buildLiveSnapshotFromItemData({ ...itemData, photo_urls: finalPhotoUrls }));
-        inventoryDb.updateLiveSnapshot(localId, pushedHash, Math.floor(Date.now() / 1000));
-      } catch {
-        /* ignore snapshot issues */
-      }
-      logger.info(
-        'edit-pushed-to-vinted-browser',
-        { localId, vintedItemId: item.vinted_item_id, durationMs: Date.now() - startedAtMs },
-        requestId,
-      );
-      return { ok: true };
-    }
-
-    const status = browserRes?.status ? Number(browserRes.status) : 0;
-    const text = browserRes?.text ? String(browserRes.text) : '';
-    const errMsg = browserRes?.error
-      ? String(browserRes.error)
-      : status
-        ? `HTTP ${status}: ${text.slice(0, 300)}`
-        : `Edit push failed: ${text.slice(0, 300) || 'Unknown error'}`;
-
-    inventoryDb.setInventoryStatus(localId, 'discrepancy');
-    inventoryDb.upsertInventoryItemExplicit({
-      id: item.id,
-      title: item.title,
-      price: item.price,
-      discrepancy_reason: 'failed_push',
-    } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
-    logger.error(
-      'edit-push-failed-browser',
-      { localId, vintedItemId: item.vinted_item_id, status, error: errMsg, durationMs: Date.now() - startedAtMs },
-      requestId,
-    );
-    return { ok: false, error: errMsg };
-  } catch (err) {
-    // Mark as discrepancy since local is different from live
-    inventoryDb.setInventoryStatus(localId, 'discrepancy');
-    inventoryDb.upsertInventoryItemExplicit({
-      id: item.id,
-      title: item.title,
-      price: item.price,
-      discrepancy_reason: 'failed_push',
-    } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error(
-      'edit-push-failed-browser-exception',
-      { localId, vintedItemId: item.vinted_item_id, error: msg, durationMs: Date.now() - startedAtMs },
-      requestId,
-    );
-    return { ok: false, error: msg };
-  }
+  // Push to Vinted removed: Editing logic is now handled by the Chrome Extension.
+  return { ok: true };
 }
 
 /**
@@ -2092,12 +1798,12 @@ export async function enqueueRelist(localIds: number[]): Promise<RelistQueueEntr
     if (images.length === 0) noCachedImages++;
     if (images.length > 0) {
       try {
-      const mutatedBuf = await bridge.previewMutation(images[0], relistCount);
-      if (mutatedBuf) {
-        const previewDir = itemImageDir(localId);
-        const previewPath = path.join(previewDir, '_preview_mutated.jpg');
-        fs.writeFileSync(previewPath, mutatedBuf);
-        mutatedThumbnailPath = previewPath;
+        const mutatedBuf = await bridge.previewMutation(images[0], relistCount);
+        if (mutatedBuf) {
+          const previewDir = itemImageDir(localId);
+          const previewPath = path.join(previewDir, '_preview_mutated.jpg');
+          fs.writeFileSync(previewPath, mutatedBuf);
+          mutatedThumbnailPath = previewPath;
         }
       } catch (err) {
         logger.warn(
@@ -2323,89 +2029,12 @@ async function processQueue(): Promise<void> {
       itemData.title = entry.relistCount % 2 === 0 ? `${baseTitle} ` : baseTitle;
       itemData.description = entry.relistCount % 2 === 0 ? `${baseDesc} ` : baseDesc;
 
-      const { relistViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-      logger.info(
-        'relist-item-browser-start',
-        {
-          localId: entry.localId,
-          oldVintedId: item.vinted_item_id,
-          relistCount: entry.relistCount,
-          photoCount: imageBuffers.length,
-          browser_proxy_mode: settings.getSetting('browser_proxy_mode'),
-          queueRequestId: requestId,
-        },
-        itemRequestId,
-      );
-      const result = await relistViaBrowser(
-        Number(item.vinted_item_id),
-        itemData,
-        mutatedBuffers,
-        entry.relistCount,
-        { partition: VINTED_EDIT_PARTITION, forceDirect: true },
-      );
-
-      if (!result.ok) {
-        entry.status = 'error';
-        entry.error = result.error ?? 'Relist failed';
-        emitQueueUpdate();
-        logger.error(
-          'relist-item-browser-failed',
-          { localId: entry.localId, oldVintedId: item.vinted_item_id, error: result.error ?? 'Relist failed', queueRequestId: requestId },
-          itemRequestId,
-        );
-        continue;
-      }
-
-      // Step 5: Update sync record with new Vinted item ID
-      const newItemId = result.newItemId ? Number(result.newItemId) : 0;
-
-      if (newItemId) {
-        inventoryDb.upsertSyncRecord(entry.localId, newItemId, 'push');
-      }
-      inventoryDb.incrementRelistCount(entry.localId);
-      inventoryDb.setInventoryStatus(entry.localId, 'live');
-      inventoryDb.upsertInventoryItemExplicit({
-        id: item.id,
-        title: item.title,
-        price: item.price,
-        discrepancy_reason: null,
-      } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
-
-      // Persist new photo URLs (old listing was deleted).
-      if (Array.isArray(result.photoUrls) && result.photoUrls.length > 0) {
-        inventoryDb.upsertInventoryItem({
-          id: item.id,
-          title: item.title,
-          price: item.price,
-          photo_urls: JSON.stringify(result.photoUrls),
-        } as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
-      }
-
-      // Store snapshot baseline for the newly created live listing so sync doesn't
-      // immediately mark it as externally changed.
-      try {
-        const snapHash = hashLiveSnapshot(buildLiveSnapshotFromItemData({ ...itemData, photo_urls: result.photoUrls ?? [] }));
-        inventoryDb.updateLiveSnapshot(entry.localId, snapHash, Math.floor(Date.now() / 1000));
-      } catch {
-        /* ignore */
-      }
-
-      entry.status = 'done';
+      entry.status = 'error';
+      entry.error = 'Relist logic moved to Chrome Extension';
       emitQueueUpdate();
+      continue;
 
-      logger.info(
-        'relist-item-complete',
-        {
-        localId: entry.localId,
-        oldVintedId: item.vinted_item_id,
-        newVintedId: newItemId,
-        relistCount: entry.relistCount + 1,
-          photoUrlCount: Array.isArray(result.photoUrls) ? result.photoUrls.length : 0,
-          durationMs: Date.now() - itemStartedAtMs,
-          queueRequestId: requestId,
-        },
-        itemRequestId,
-      );
+
     } catch (err) {
       entry.status = 'error';
       entry.error = String(err);
@@ -2429,8 +2058,8 @@ async function processQueue(): Promise<void> {
   logger.info(
     'relist-queue-finished',
     {
-    done: queue.filter((e) => e.status === 'done').length,
-    errors: queue.filter((e) => e.status === 'error').length,
+      done: queue.filter((e) => e.status === 'done').length,
+      errors: queue.filter((e) => e.status === 'error').length,
       durationMs: Date.now() - startedAtMs,
     },
     requestId,
