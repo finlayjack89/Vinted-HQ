@@ -10,7 +10,7 @@ import time
 import uuid
 from urllib.parse import urlencode, urlparse, parse_qs
 
-from curl_cffi import requests
+from curl_cffi import requests, CurlMime
 
 from image_mutator import mutate_image, jitter_text
 
@@ -1440,19 +1440,16 @@ def upload_photo(
     if anon_id:
         headers["x-anon-id"] = anon_id
 
-    # curl_cffi >= 0.9.0 expects a `files=` mapping (requests-compatible API).
-    # Using the old `multipart=[(...)]` tuple-list format can crash with:
-    #   "'list' object has no attribute '_form'"
-    files = {
-        "photo[type]": (None, "item"),
-        "photo[file]": ("photo.jpg", image_bytes, "image/jpeg"),
-        "photo[temp_uuid]": (None, photo_uuid),
-    }
+    # curl_cffi >= 0.14.0 expects multipart=CurlMime()
+    mp = CurlMime()
+    mp.addpart(name="photo[type]", data=b"item")
+    mp.addpart(name="photo[file]", content_type="image/jpeg", filename="photo.jpg", data=image_bytes)
+    mp.addpart(name="photo[temp_uuid]", data=photo_uuid.encode('utf-8'))
 
     req_kwargs: dict = {
         "url": api_url,
         "headers": headers,
-        "files": files,
+        "multipart": mp,
         "timeout": 60,
     }
     if proxy and transport_mode != "DIRECT":
@@ -1464,6 +1461,8 @@ def upload_photo(
         raise VintedError("REQUEST_FAILED", str(e))
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
+    finally:
+        mp.close()
 
     return _handle_response(resp, allow_statuses=(200, 201), proxy=proxy)
 

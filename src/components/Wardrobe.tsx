@@ -1310,8 +1310,16 @@ function EditItemModal({
   const [photoPlanItems, setPhotoPlanItems] = useState<PhotoPlanItem[]>(() => {
     const localPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
     const remoteUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
-    if (localPaths.length > 0) return localPaths.map((p: string) => ({ type: 'new', path: p }));
-    return remoteUrls.map((u: string) => ({ type: 'existing', id: 0, url: u }));
+    
+    // Only treat local_image_paths as 'new' uploads if there are no remote URLs
+    // (i.e. this is a completely local un-pushed item). Otherwise, local_image_paths
+    // is just a cache of the remote images.
+    if (remoteUrls.length > 0) {
+      return remoteUrls.map((u: string) => ({ type: 'existing', id: 0, url: u }));
+    } else if (localPaths.length > 0) {
+      return localPaths.map((p: string) => ({ type: 'new', path: p }));
+    }
+    return [];
   });
   const [photoPlanOriginalExistingIds, setPhotoPlanOriginalExistingIds] = useState<number[]>([]);
   const hasUnresolvedExistingPhotoIds = photoPlanItems.some((p) => p.type === 'existing' && p.id <= 0);

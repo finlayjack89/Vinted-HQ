@@ -652,11 +652,12 @@ export async function pullFromVinted(userId: number): Promise<{
           );
         }
 
-        // Robust fallback: browser extraction in authenticated Chromium context.
+        // We no longer block the main sync loop with a slow browser extraction fallback.
+        // If the bridge fails or is incomplete, we just log a warning and let the
+        // post-sync backfill or the Edit modal handle the heavy extraction later.
         if (!itemDetail || isBridgeIncomplete) {
-          usedBrowserFallback = true;
           logger.info(
-            'wardrobe-pull-browser-fallback-start',
+            'wardrobe-pull-browser-fallback-skipped',
             {
               localId,
               vintedId,
@@ -665,58 +666,8 @@ export async function pullFromVinted(userId: number): Promise<{
             },
             requestId,
           );
-          let browserFallbackOk: boolean | null = null;
-          let browserFallbackCode: string | null = null;
-          let browserFallbackMessage: string | null = null;
-          let browserCoreIds: { brandId: number; catalogId: number; statusId: number } | null = null;
-          try {
-            const { fetchItemDetailViaBrowser, VINTED_EDIT_PARTITION } = await import('./itemDetailBrowser');
-            emitSyncProgress(
-              'pull',
-              'progress',
-              pulled,
-              totalEntries,
-              `Browser detail (${pulled + 1}/${totalEntries}) — ${vintedId}`
-            );
-            const browserRes = await fetchItemDetailViaBrowser(vintedId, {
-              partition: VINTED_EDIT_PARTITION,
-              forceDirect: true,
-            });
-            if (browserRes.ok) {
-              browserFallbackOk = true;
-              const raw = browserRes.data as Record<string, unknown>;
-              itemDetail = (raw.item ?? raw) as Record<string, unknown>;
-              logger.info(
-                'wardrobe-pull-browser-fallback-ok',
-                { localId, vintedId, keyCount: Object.keys(itemDetail).length },
-                requestId,
-              );
-              browserCoreIds = (() => {
-                const d = itemDetail as Record<string, unknown>;
-                const brandId = d.brand_id ? Number(d.brand_id) : 0;
-                const catalogId = d.catalog_id ? Number(d.catalog_id) : 0;
-                const statusId = d.status_id ? Number(d.status_id) : 0;
-                return { brandId, catalogId, statusId };
-              })();
-            } else {
-              browserFallbackOk = false;
-              const code = 'code' in browserRes ? String(browserRes.code) : 'UNKNOWN';
-              const message = 'message' in browserRes ? String(browserRes.message) : '';
-              browserFallbackCode = code || null;
-              browserFallbackMessage = message ? message.slice(0, 160) : null;
-              logger.warn(
-                'wardrobe-pull-browser-fallback-failed',
-                { localId, vintedId, code, message },
-                requestId,
-              );
-            }
-          } catch (err) {
-            browserFallbackOk = null;
-            browserFallbackCode = 'EXCEPTION';
-            browserFallbackMessage = String(err).slice(0, 160);
-            logger.warn('wardrobe-pull-browser-fallback-exception', { localId, vintedId, error: String(err) }, requestId);
-          }
-          // If browser fallback fails, keep any bridge detail we had.
+          // If bridge was incomplete but we have some data, keep it so we can at least
+          // update the snapshot hash.
           if (!itemDetail && bridgeDetail) itemDetail = bridgeDetail;
         }
 
@@ -885,12 +836,12 @@ export async function pullFromVinted(userId: number): Promise<{
           inventoryDb.updateLocalImagePaths(localId, JSON.stringify(localPaths));
         }
 
-        pulled++;
-        emitSyncProgress('pull', 'progress', pulled, totalEntries);
       } catch (err) {
         errors.push(`Item ${vintedItem.id}: ${String(err)}`);
         logger.error('wardrobe-pull-item-error', { vintedId: String(vintedItem.id ?? ''), error: String(err) }, requestId);
       } finally {
+        pulled++;
+        emitSyncProgress('pull', 'progress', pulled, totalEntries);
         // Browser fetch uses a hidden BrowserWindow; give Electron a moment
         // to tear it down before spinning up the next one.
         if (usedBrowserFallback) {
@@ -1647,7 +1598,7 @@ export async function editLiveItem(
       { localId, vintedItemId: item.vinted_item_id, missing, requires_size: completeness.ok ? completeness.requires_size : null },
       requestId,
     );
-    return {
+  return {
       ok: false,
       error: `Missing required listing fields (${missing.join(', ')}). Open the item and let details load, then try Push again.`,
     };
@@ -2141,12 +2092,12 @@ export async function enqueueRelist(localIds: number[]): Promise<RelistQueueEntr
     if (images.length === 0) noCachedImages++;
     if (images.length > 0) {
       try {
-        const mutatedBuf = await bridge.previewMutation(images[0], relistCount);
-        if (mutatedBuf) {
-          const previewDir = itemImageDir(localId);
-          const previewPath = path.join(previewDir, '_preview_mutated.jpg');
-          fs.writeFileSync(previewPath, mutatedBuf);
-          mutatedThumbnailPath = previewPath;
+      const mutatedBuf = await bridge.previewMutation(images[0], relistCount);
+      if (mutatedBuf) {
+        const previewDir = itemImageDir(localId);
+        const previewPath = path.join(previewDir, '_preview_mutated.jpg');
+        fs.writeFileSync(previewPath, mutatedBuf);
+        mutatedThumbnailPath = previewPath;
         }
       } catch (err) {
         logger.warn(
@@ -2445,10 +2396,10 @@ async function processQueue(): Promise<void> {
       logger.info(
         'relist-item-complete',
         {
-          localId: entry.localId,
-          oldVintedId: item.vinted_item_id,
-          newVintedId: newItemId,
-          relistCount: entry.relistCount + 1,
+        localId: entry.localId,
+        oldVintedId: item.vinted_item_id,
+        newVintedId: newItemId,
+        relistCount: entry.relistCount + 1,
           photoUrlCount: Array.isArray(result.photoUrls) ? result.photoUrls.length : 0,
           durationMs: Date.now() - itemStartedAtMs,
           queueRequestId: requestId,
@@ -2478,8 +2429,8 @@ async function processQueue(): Promise<void> {
   logger.info(
     'relist-queue-finished',
     {
-      done: queue.filter((e) => e.status === 'done').length,
-      errors: queue.filter((e) => e.status === 'error').length,
+    done: queue.filter((e) => e.status === 'done').length,
+    errors: queue.filter((e) => e.status === 'error').length,
       durationMs: Date.now() - startedAtMs,
     },
     requestId,
