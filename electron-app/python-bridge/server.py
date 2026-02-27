@@ -8,7 +8,7 @@ import io
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, File, Form, Header, Query, Body, UploadFile
+from fastapi import FastAPI, File, Form, Header, Query, Body, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -43,8 +43,8 @@ app = FastAPI(
     version="0.3.0",
 )
 
-# Allow Electron renderer to call this local bridge server.
-# Restricted to localhost origins to prevent credential theft via malicious webpages.
+# Allow Electron renderer and Chrome Extension content scripts to call this bridge.
+# Extension content scripts run under the Vinted origin, so we must include it here.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -52,6 +52,8 @@ app.add_middleware(
         "http://127.0.0.1",
         "app://.",
         "file://",
+        "https://www.vinted.co.uk",
+        "https://vinted.co.uk",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -816,18 +818,249 @@ async def relist(
         return _error_response("RELIST_ERROR", f"Relist failed: {e}", 500)
 
 
-# ─── Data Ingestion from Chrome Extension ────────────────────────────────────
+# ─── Dual Brain / Ingest Endpoints ──────────────────────────────────────────
 
-@app.post("/ingest")
-async def ingest_data(body: dict = Body(...)):
-    """
-    Receive scraped JSON data from the Chrome Extension.
-    """
-    import logging
-    logging.info(f"Ingested data from extension: {list(body.keys())}")
-    # Forward this to Electron or update the DB directly.
-    return {"ok": True, "message": "Data ingested successfully"}
+import sqlite3
+import os
+import json
 
+@app.post("/ingest/wardrobe")
+def ingest_wardrobe(body: dict = Body(...)):
+    """Receives WardrobeSyncPayload from Extension and upserts to inventory_master."""
+    items = body.get("items", [])
+    if not items:
+        return {"ok": True, "message": "No items to ingest"}
+    
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if not db_path:
+        return _error_response("NO_DB", "VINTED_DB_PATH env var not set", 500)
+
+    try:
+        # Connect to DB. timeout controls busy waiting
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            conn.execute("PRAGMA foreign_keys = ON;")
+            cursor = conn.cursor()
+            
+            for item in items:
+                vinted_id = item.get("id")
+                if not vinted_id:
+                    continue
+                    
+                title = item.get("title", "Untitled")
+                
+                # Best effort price parse
+                price = 0.0
+                currency = "GBP"
+                price_data = item.get("price")
+                if isinstance(price_data, dict):
+                    try:
+                        price = float(price_data.get("amount", 0))
+                    except (ValueError, TypeError):
+                        pass
+                    currency = price_data.get("currency_code", "GBP")
+                elif isinstance(item.get("price_numeric"), str):
+                     try:
+                         price = float(item.get("price_numeric"))
+                     except (ValueError, TypeError):
+                         pass
+                elif isinstance(item.get("price_numeric"), (int, float)):
+                     price = float(item.get("price_numeric"))
+
+                # Extract photo URLs
+                photos = item.get("photos", [])
+                photo_urls = [p.get("url") for p in photos if isinstance(p, dict) and "url" in p]
+                photo_urls_json = json.dumps(photo_urls) if photo_urls else "[]"
+
+                cursor.execute("SELECT local_id FROM inventory_sync WHERE vinted_item_id = ?", (vinted_id,))
+                row = cursor.fetchone()
+                
+                if row:
+                    local_id = row[0]
+                    cursor.execute('''
+                        UPDATE inventory_master 
+                        SET title = ?, price = ?, currency = ?, photo_urls = ?, updated_at = unixepoch()
+                        WHERE id = ?
+                    ''', (title, price, currency, photo_urls_json, local_id))
+                    
+                    cursor.execute('''
+                        UPDATE inventory_sync 
+                        SET last_synced_at = unixepoch()
+                        WHERE local_id = ?
+                    ''', (local_id,))
+                else:
+                    cursor.execute('''
+                        INSERT INTO inventory_master (
+                            title, price, currency, photo_urls, status, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, 'live', unixepoch(), unixepoch())
+                    ''', (title, price, currency, photo_urls_json))
+                    local_id = cursor.lastrowid
+                    
+                    cursor.execute('''
+                        INSERT INTO inventory_sync (
+                            local_id, vinted_item_id, sync_direction, last_synced_at, created_at
+                        ) VALUES (?, ?, 'pull', unixepoch(), unixepoch())
+                    ''', (local_id, vinted_id))
+                    
+            conn.commit()
+            
+        return {"ok": True, "message": f"Ingested {len(items)} items successfully."}
+    except Exception as e:
+        return _error_response("INGEST_ERROR", str(e), 500)
+
+# ─── Deep Sync: single-item ingest from extension ──────────────────────────
+@app.post("/ingest/item")
+async def ingest_single_item(request: Request):
+    """
+    Receive a single item's full __NEXT_DATA__ from the extension (hq_sync=true mode).
+    Updates the local inventory_master with deep fields: description, photos, brand, size, etc.
+    """
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if not db_path:
+        return _error_response("NO_DB", "VINTED_DB_PATH env var not set", 500)
+
+    try:
+        body = await request.json()
+        item = body.get("item", body)  # Accept both {item: {...}} and flat payload
+
+        vinted_id = item.get("id")
+        if not vinted_id:
+            return _error_response("MISSING_ID", "Item payload must include 'id'", 400)
+
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Find local mapping
+            cursor.execute("SELECT local_id FROM inventory_sync WHERE vinted_item_id = ?", (vinted_id,))
+            row = cursor.fetchone()
+
+            if not row:
+                return _error_response("NOT_FOUND", f"Vinted item {vinted_id} not linked to any local item", 404)
+
+            local_id = row[0]
+
+            # Extract deep fields
+            title = item.get("title", "")
+            description = item.get("description", "")
+
+            # Price
+            price = 0.0
+            currency = "GBP"
+            price_data = item.get("price")
+            if isinstance(price_data, dict):
+                price = float(price_data.get("amount", 0))
+                currency = price_data.get("currency_code", "GBP")
+            elif isinstance(item.get("price_numeric"), (str, int, float)):
+                try:
+                    price = float(item.get("price_numeric"))
+                except (ValueError, TypeError):
+                    pass
+
+            # Photos
+            photos = item.get("photos", [])
+            photo_urls = [p.get("url") for p in photos if isinstance(p, dict) and "url" in p]
+            photo_urls_json = json.dumps(photo_urls) if photo_urls else "[]"
+
+            # Brand
+            brand_data = item.get("brand_dto") or item.get("brand") or {}
+            brand_id = brand_data.get("id") if isinstance(brand_data, dict) else None
+            brand_name = brand_data.get("title") or brand_data.get("name") if isinstance(brand_data, dict) else None
+            if brand_name is None and isinstance(item.get("brand_title"), str):
+                brand_name = item.get("brand_title")
+
+            # Size
+            size_data = item.get("size") or {}
+            size_id = size_data.get("id") if isinstance(size_data, dict) else item.get("size_id")
+            size_label = size_data.get("title") or size_data.get("name") if isinstance(size_data, dict) else item.get("size_title")
+
+            # Category
+            category_id = item.get("catalog_id") or item.get("category_id")
+
+            # Condition
+            condition = item.get("status") or item.get("condition")
+            if isinstance(condition, dict):
+                condition = condition.get("title") or condition.get("name")
+
+            # Colors
+            colors = item.get("color1") or item.get("colors") or item.get("color_ids")
+            if isinstance(colors, list):
+                color_ids_json = json.dumps([c.get("id") if isinstance(c, dict) else c for c in colors])
+            elif isinstance(colors, dict):
+                color_ids_json = json.dumps([colors.get("id")])
+            else:
+                color_ids_json = None
+
+            # Package size
+            package_size_id = item.get("package_size_id")
+
+            # Update the master record with all deep fields
+            cursor.execute('''
+                UPDATE inventory_master SET
+                    title = ?,
+                    description = ?,
+                    price = ?,
+                    currency = ?,
+                    photo_urls = ?,
+                    brand_id = COALESCE(?, brand_id),
+                    brand_name = COALESCE(?, brand_name),
+                    size_id = COALESCE(?, size_id),
+                    size_label = COALESCE(?, size_label),
+                    category_id = COALESCE(?, category_id),
+                    condition = COALESCE(?, condition),
+                    color_ids = COALESCE(?, color_ids),
+                    package_size_id = COALESCE(?, package_size_id),
+                    updated_at = unixepoch()
+                WHERE id = ?
+            ''', (
+                title, description, price, currency, photo_urls_json,
+                brand_id, brand_name,
+                size_id, size_label,
+                category_id,
+                condition,
+                color_ids_json,
+                package_size_id,
+                local_id
+            ))
+
+            # Update sync record
+            cursor.execute('''
+                UPDATE inventory_sync
+                SET last_synced_at = unixepoch(), sync_direction = 'deep_pull'
+                WHERE local_id = ?
+            ''', (local_id,))
+
+            conn.commit()
+
+        return {"ok": True, "message": f"Deep sync complete for vinted item {vinted_id} (local_id={local_id})."}
+    except Exception as e:
+        return _error_response("DEEP_SYNC_ERROR", str(e), 500)
+
+@app.get("/items/{item_id}")
+def get_local_item(item_id: int):
+    """Fetch local item data from inventory_master acting as the source of truth for the extension."""
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if not db_path:
+        return _error_response("NO_DB", "VINTED_DB_PATH env var not set", 500)
+    
+    try:
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT m.title, m.description, m.price, m.currency, m.condition
+                FROM inventory_master m
+                JOIN inventory_sync s ON m.id = s.local_id
+                WHERE s.vinted_item_id = ?
+            ''', (item_id,))
+            row = cursor.fetchone()
+            
+            if not row:
+                return _error_response("NOT_FOUND", f"Item {item_id} not found in local DB", 404)
+            
+            return {"ok": True, "data": dict(row)}
+    except Exception as e:
+        return _error_response("DB_ERROR", str(e), 500)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=37421, log_level="info")
+

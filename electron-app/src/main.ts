@@ -80,8 +80,10 @@ function startPythonBridge(): void {
   const pythonExec = fs.existsSync(venvPython) ? venvPython : 'python3';
 
   try {
+    const dbPath = path.join(app.getPath('userData'), 'vinted.db');
     pythonBridgeProcess = spawn(pythonExec, [serverPath], {
       cwd: bridgeDir,
+      env: { ...process.env, VINTED_DB_PATH: dbPath },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

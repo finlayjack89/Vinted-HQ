@@ -213,6 +213,8 @@ declare global {
       getSettings: () => Promise<AppSettings>;
       setSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void>;
       setSettings: (partial: Partial<AppSettings>) => Promise<void>;
+      // System
+      openExternal: (url: string) => Promise<void>;
       // Python bridge
       bridgeHealth: () => Promise<{ ok: boolean; service?: string }>;
       bridgeSearch: (url: string, page?: number, proxy?: string) => Promise<BridgeResult>;
@@ -275,7 +277,7 @@ declare global {
         detail_hydrated_at: number | null;
         detail_source: string | null;
       }>;
-      upsertWardrobeItem: (data: { title: string; price: number; id?: number; [k: string]: unknown }) => Promise<number>;
+      upsertWardrobeItem: (data: { title: string; price: number; id?: number;[k: string]: unknown }) => Promise<number>;
       deleteWardrobeItem: (localId: number) => Promise<boolean>;
       pullFromVinted: (userId: number) => Promise<{ pulled: number; errors: string[] }>;
       pushToVinted: (localId: number, proxy?: string) => Promise<{ ok: boolean; vintedItemId?: number; error?: string }>;
@@ -301,6 +303,7 @@ declare global {
       getConditions: (catalogId: number) => Promise<BridgeResult>;
       searchBrands: (keyword: string, categoryId?: number) => Promise<BridgeResult>;
       getModels: (catalogId: number, brandId: number) => Promise<BridgeResult>;
+      deepSync: (vintedItemId: number) => Promise<{ ok: boolean; message?: string; code?: string }>;
       getItemDetail: (itemId: number) => Promise<BridgeResult>;
       onOntologyAlert: (callback: (data: { deletedCategories: unknown[]; affectedItems: unknown[] }) => void) => () => void;
 
@@ -310,4 +313,4 @@ declare global {
   }
 }
 
-export {};
+export { };

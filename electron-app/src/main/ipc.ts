@@ -3,6 +3,7 @@
  */
 
 import { ipcMain } from 'electron';
+import { execFile } from 'child_process';
 import * as secureStorage from './secureStorage';
 import * as settings from './settings';
 import * as bridge from './bridge';
@@ -63,6 +64,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('settings:setAll', (_event, partial: Partial<AppSettings>) => {
     settings.setAllSettings(partial);
     logger.info('settings:updated', { keys: Object.keys(partial) });
+  });
+
+  // System — force Chrome so the Vinted HQ extension is available
+  ipcMain.handle('openExternal', (_event, url: string) => {
+    execFile('open', ['-a', 'Google Chrome', url]);
   });
 
   // Python bridge (Phase 2)
@@ -130,7 +136,7 @@ export function registerIpcHandlers(): void {
     'checkout:buy',
     async (
       _event,
-      item: { id: number; order_id?: number; price: string; title: string; source_urls?: string[]; [k: string]: unknown },
+      item: { id: number; order_id?: number; price: string; title: string; source_urls?: string[];[k: string]: unknown },
       proxy?: string
     ) => {
       const feedItem = item as import('./feedService').FeedItem;
@@ -269,4 +275,49 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('wardrobe:getModels', (_event, catalogId: number, brandId: number) =>
     bridge.fetchOntologyModels(catalogId, brandId)
   );
+
+  // Fetch full item detail from Vinted (scrapes the item/edit page via Python bridge)
+  ipcMain.handle('wardrobe:getItemDetail', (_event, itemId: number) =>
+    bridge.fetchItemDetail(itemId)
+  );
+
+  // ─── Deep Sync: fetch full item details from Vinted API and save to local DB ──
+  ipcMain.handle('wardrobe:deepSync', async (_event, vintedItemId: number) => {
+    try {
+      // Step 1: Fetch full item detail from Vinted via the Python bridge
+      const result = await bridge.fetchItemDetail(vintedItemId);
+      if (!result.ok) {
+        return result; // Pass through the error
+      }
+
+      const itemData = (result as any).data?.item;
+      if (!itemData) {
+        return { ok: false, code: 'NO_ITEM_DATA', message: 'API returned no item data.' };
+      }
+
+      // Ensure the item has an id
+      if (!itemData.id) {
+        itemData.id = vintedItemId;
+      }
+
+      // Step 2: POST to our local /ingest/item endpoint to save to DB
+      const saveRes = await fetch('http://127.0.0.1:37421/ingest/item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: itemData }),
+      });
+      const saveJson = await saveRes.json();
+
+      if (saveJson.ok) {
+        logger.info('wardrobe:deepSync', { vintedItemId, message: saveJson.message });
+      } else {
+        logger.warn('wardrobe:deepSync:save-failed', { vintedItemId, error: saveJson.message });
+      }
+
+      return saveJson;
+    } catch (err: any) {
+      logger.error('wardrobe:deepSync:error', { vintedItemId, error: err?.message });
+      return { ok: false, code: 'DEEP_SYNC_ERROR', message: err?.message || 'Unknown error' };
+    }
+  });
 }

@@ -1,0 +1,32 @@
+{
+    "manifest_version": 3,
+    "name": "Vinted HQ Extension",
+    "version": "1.0.0",
+    "description": "Companion extension for Vinted HQ Desktop App",
+    "action": {
+        "default_popup": "index.html"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage"
+    ],
+    "host_permissions": [
+        "http://localhost:37421/*",
+        "https://*.vinted.co.uk/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "https://www.vinted.co.uk/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_end"
+        }
+    ]
+}

@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 export type SniperCountdownParams = {
   countdownId: string;
-  item: { id: number; title: string; price: string; [k: string]: unknown };
+  item: { id: number; title: string; price: string;[k: string]: unknown };
   sniper: { id: number; name: string };
   secondsLeft: number;
 };
@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('settings:set', key, value),
   setSettings: (partial: Partial<AppSettings>) => ipcRenderer.invoke('settings:setAll', partial),
 
+  // System
+  openExternal: (url: string) => ipcRenderer.invoke('openExternal', url),
+
   // Python bridge (Phase 2)
   bridgeHealth: () => ipcRenderer.invoke('bridge:health'),
   bridgeSearch: (url: string, page?: number, proxy?: string) =>
@@ -85,7 +88,7 @@ contextBridge.exposeInMainWorld('vinted', {
   startFeedPolling: () => ipcRenderer.invoke('feed:startPolling'),
   stopFeedPolling: () => ipcRenderer.invoke('feed:stopPolling'),
   isFeedPolling: () => ipcRenderer.invoke('feed:isPolling'),
-  checkoutBuy: (item: { id: number; order_id?: number; price: string; [k: string]: unknown }, proxy?: string) =>
+  checkoutBuy: (item: { id: number; order_id?: number; price: string;[k: string]: unknown }, proxy?: string) =>
     ipcRenderer.invoke('checkout:buy', item, proxy),
   onCheckoutProgress: (callback: (step: string) => void) => {
     const handler = (_: unknown, step: string) => callback(step);
@@ -154,7 +157,7 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:getItem', localId),
   getDetailCompleteness: (localId: number) =>
     ipcRenderer.invoke('wardrobe:getDetailCompleteness', localId),
-  upsertWardrobeItem: (data: { title: string; price: number; id?: number; [k: string]: unknown }) =>
+  upsertWardrobeItem: (data: { title: string; price: number; id?: number;[k: string]: unknown }) =>
     ipcRenderer.invoke('wardrobe:upsertItem', data),
   deleteWardrobeItem: (localId: number) =>
     ipcRenderer.invoke('wardrobe:deleteItem', localId),
@@ -207,6 +210,8 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:searchBrands', keyword, categoryId),
   getModels: (catalogId: number, brandId: number) =>
     ipcRenderer.invoke('wardrobe:getModels', catalogId, brandId),
+  deepSync: (vintedItemId: number) =>
+    ipcRenderer.invoke('wardrobe:deepSync', vintedItemId),
   getItemDetail: (itemId: number) =>
     ipcRenderer.invoke('wardrobe:getItemDetail', itemId),
   onOntologyAlert: (callback: (data: unknown) => void) => {
