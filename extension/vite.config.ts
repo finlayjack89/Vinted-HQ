@@ -11,6 +11,7 @@ export default defineConfig({
         popup: resolve(__dirname, 'index.html'),
         content: resolve(__dirname, 'src/content.ts'),
         background: resolve(__dirname, 'src/background.ts'),
+        fetch_interceptor: resolve(__dirname, 'src/fetch_interceptor.ts'),
       },
       output: {
         entryFileNames: `[name].js`

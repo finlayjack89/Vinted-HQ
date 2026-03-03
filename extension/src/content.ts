@@ -14,6 +14,16 @@
 console.log('[Vinted HQ] Content script injected on:', window.location.href);
 console.log('[Vinted HQ] pathname:', window.location.pathname, 'search:', window.location.search);
 
+// ── Listen for intercepted attributes from the Main World fetch interceptor ──
+let capturedAttributes: any = null;
+window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (event.data?.type === 'VINTED_HQ_ATTRIBUTES_CAPTURED') {
+        capturedAttributes = event.data.payload;
+        console.log('[Vinted HQ] 🎯 Received intercepted attributes from Main World:', capturedAttributes);
+    }
+});
+
 /**
  * Send a fetch request via the background service worker.
  * This avoids CORS/CSP issues that content scripts face in Manifest V3.
@@ -128,80 +138,41 @@ function extractItemIdFromUrl(): string | null {
 }
 
 /**
- * Extract CSRF token natively from the DOM/Cookies.
+ * Fetch the snuffed CSRF token and Anon ID from the background script.
+ * The background script caches these from intercepting live Vinted API requests.
  */
-function getCsrfTokenFromDOM(): string | null {
-    console.log('[Vinted HQ CSRF] Attempting to extract CSRF token...');
-    try {
-        const nextData = document.getElementById('__NEXT_DATA__');
-        if (nextData) {
-            const json = JSON.parse(nextData.textContent || '{}');
-            const token = json.runtimeConfig?.csrfToken || json.props?.pageProps?.csrfToken;
-            if (token) {
-                console.log('[Vinted HQ CSRF] Found CSRF token in __NEXT_DATA__:', token);
-                return token;
-            }
-        }
-    } catch { /* skip */ }
+// @ts-ignore: kept for future use
+function getSniffedTokens(): Promise<{ csrfToken: string | null; anonId: string | null }> {
+    return new Promise((resolve) => {
+        console.log('[Vinted HQ CSRF] Requesting sniffed tokens from background...');
 
-    try {
-        const scripts = document.querySelectorAll('script');
-        for (const s of scripts) {
-            const str = s.textContent || '';
-            const match = str.match(/"csrfToken"\s*:\s*"([^"]+)"/);
-            if (match) {
-                console.log('[Vinted HQ CSRF] Found CSRF token in generic script tag:', match[1]);
-                return match[1];
+        chrome.runtime.sendMessage({ type: 'GET_SNIFFED_TOKENS' }, (response) => {
+            if (response && response.ok) {
+                console.log('[Vinted HQ CSRF] Retrieved sniffed tokens:', response);
+                resolve({ csrfToken: response.csrfToken, anonId: response.anonId });
+            } else {
+                console.warn('[Vinted HQ CSRF] Failed to retrieve sniffed tokens.');
+                resolve({ csrfToken: null, anonId: null });
             }
-        }
-    } catch { /* skip */ }
-
-    try {
-        for (const part of document.cookie.split(';')) {
-            const p = part.trim();
-            if (p.startsWith('access_token_web=')) {
-                try {
-                    const params = p.split('=')[1];
-                    const segments = params.split('.');
-                    if (segments.length >= 2) {
-                        const b64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
-                        const json = JSON.parse(atob(b64));
-                        const token = json.csrf_token || json.csrf;
-                        if (token) {
-                            console.log('[Vinted HQ CSRF] Found CSRF token in access_token_web JWT:', token);
-                            return token;
-                        }
-                    }
-                } catch (e) {
-                    console.log('[Vinted HQ CSRF] Error decoding JWT', e);
-                }
-            }
-        }
-    } catch { /* skip */ }
-
-    console.warn('[Vinted HQ CSRF] Failed to extract any CSRF token from DOM or Cookies.');
-    return null;
+        });
+    });
 }
 
 /**
- * Extract Anon ID natively from the Cookies.
- * Vinted requires x-anon-id alongside x-csrf-token for POST requests.
+ * Fetch HttpOnly cookies via background Service Worker.
  */
-function getAnonIdFromDOM(): string | null {
-    try {
-        for (const part of document.cookie.split(';')) {
-            const p = part.trim();
-            if (p.startsWith('anon_id=')) {
-                const token = p.split('=')[1];
-                if (token) {
-                    console.log('[Vinted HQ CSRF] Found anon_id token in cookies:', token);
-                    return token;
-                }
+// @ts-ignore: kept for future use
+function getCookiesFromBackground(): Promise<chrome.cookies.Cookie[]> {
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: 'GET_VINTED_COOKIES' }, (response) => {
+            if (response && response.ok && response.cookies) {
+                resolve(response.cookies);
+            } else {
+                console.warn('[Vinted HQ BG] Failed to fetch cookies via background.');
+                resolve([]);
             }
-        }
-    } catch { /* skip */ }
-
-    return null;
+        });
+    });
 }
 
 function showBanner(message: string, type: 'info' | 'success' | 'error' = 'info') {
@@ -426,45 +397,41 @@ async function runDeepSync() {
     // Ensure the id is present
     if (!data.id) data.id = parseInt(itemId, 10);
 
-    // ── Pre-fetch category attributes natively from Chrome ──────────
-    const catalogId = data.catalogId || data.catalog_id || data.categoryId || data.category_id;
-    if (catalogId) {
-        console.log(`[Vinted HQ] 🔄 Fetching attributes natively via extension for category ${catalogId}...`);
-        const brandId = data.brandId || data.brand_id || (data.brand ? data.brand.id : undefined) || (data.brand_dto ? data.brand_dto.id : undefined);
-        const statusId = data.statusId || data.status_id || (data.status ? data.status.id : undefined);
-
-        const csrfToken = getCsrfTokenFromDOM();
-        const anonId = getAnonIdFromDOM();
-
-        const apiPayload: any = { attributes: [{ code: 'category', value: [catalogId] }] };
-        if (brandId) apiPayload.attributes.push({ code: 'brand', value: [brandId] });
-        if (statusId) apiPayload.attributes.push({ code: 'status', value: [statusId] });
-
-        try {
-            const attrRes = await new Promise<any>((resolve) => {
-                chrome.runtime.sendMessage({
-                    type: 'VINTED_FETCH',
-                    url: 'https://www.vinted.co.uk/api/v2/item_upload/attributes',
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json, text/plain, */*',
-                        'x-csrf-token': csrfToken || '',
-                        'x-anon-id': anonId || ''
-                    },
-                    body: apiPayload
-                }, resolve);
-            });
-
-            if (attrRes.ok) {
-                console.log('[Vinted HQ] ✅ Fetched attributes via Background API:', attrRes.data);
-                data._hq_attributes_schema = attrRes.data;
-            } else {
-                console.warn('[Vinted HQ] ⚠️ Failed to fetch attributes via Background API', attrRes.status, attrRes.error);
+    // ── Use intercepted attributes from the Main World fetch interceptor ──
+    // The fetch_interceptor.js (Main World, document_start) wraps window.fetch
+    // and captures Vinted's OWN attributes response, relaying via postMessage.
+    // We wait up to 8 seconds for Vinted's React to make the call naturally.
+    if (!capturedAttributes) {
+        console.log('[Vinted HQ] ⏳ Waiting for intercepted attributes from Vinted React...');
+        const captured = await new Promise<any>((resolve) => {
+            // Check if already captured
+            if (capturedAttributes) {
+                resolve(capturedAttributes);
+                return;
             }
-        } catch (e) {
-            console.error('[Vinted HQ] ⚠️ Error proxying fetch attributes', e);
-        }
+            // Set up a listener for future capture
+            const handler = (event: MessageEvent) => {
+                if (event.source !== window) return;
+                if (event.data?.type === 'VINTED_HQ_ATTRIBUTES_CAPTURED') {
+                    window.removeEventListener('message', handler);
+                    resolve(event.data.payload);
+                }
+            };
+            window.addEventListener('message', handler);
+            // Timeout after 8 seconds
+            setTimeout(() => {
+                window.removeEventListener('message', handler);
+                resolve(null);
+            }, 8000);
+        });
+        if (captured) capturedAttributes = captured;
+    }
+
+    if (capturedAttributes && capturedAttributes.attributes && capturedAttributes.attributes.length > 0) {
+        console.log('[Vinted HQ] ✅ Using intercepted attributes:', capturedAttributes);
+        data._hq_attributes_schema = capturedAttributes;
+    } else {
+        console.warn('[Vinted HQ] ⚠️ No intercepted attributes available (Vinted may not have called the endpoint on this page).');
     }
 
     // ── 4. DOM Fallbacks for RSC References ─────────────────────────────

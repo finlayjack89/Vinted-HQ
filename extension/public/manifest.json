@@ -12,13 +12,25 @@
     "permissions": [
         "activeTab",
         "scripting",
-        "storage"
+        "storage",
+        "cookies",
+        "webRequest"
     ],
     "host_permissions": [
         "http://localhost:37421/*",
         "https://*.vinted.co.uk/*"
     ],
     "content_scripts": [
+        {
+            "matches": [
+                "https://www.vinted.co.uk/*"
+            ],
+            "js": [
+                "fetch_interceptor.js"
+            ],
+            "run_at": "document_start",
+            "world": "MAIN"
+        },
         {
             "matches": [
                 "https://www.vinted.co.uk/*"
