@@ -731,6 +731,8 @@ def fetch_ontology_materials(
     cookie: str,
     catalog_id: int,
     item_id: int | None = None,
+    brand_id: int | None = None,
+    status_id: int | None = None,
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
@@ -742,6 +744,10 @@ def fetch_ontology_materials(
     which is a POST with the category value in the request body."""
     api_url = f"{BASE_URL}/api/v2/item_upload/attributes"
     payload = {"attributes": [{"code": "category", "value": [catalog_id]}]}
+    if brand_id:
+        payload["attributes"].append({"code": "brand", "value": [brand_id]})
+    if status_id:
+        payload["attributes"].append({"code": "status", "value": [status_id]})
 
     session = _get_session(proxy, transport_mode)
     referer = f"{BASE_URL}/items/{item_id}/edit" if item_id else f"{BASE_URL}/items/new"

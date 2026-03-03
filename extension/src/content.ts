@@ -127,6 +127,83 @@ function extractItemIdFromUrl(): string | null {
     return match ? match[1] : null;
 }
 
+/**
+ * Extract CSRF token natively from the DOM/Cookies.
+ */
+function getCsrfTokenFromDOM(): string | null {
+    console.log('[Vinted HQ CSRF] Attempting to extract CSRF token...');
+    try {
+        const nextData = document.getElementById('__NEXT_DATA__');
+        if (nextData) {
+            const json = JSON.parse(nextData.textContent || '{}');
+            const token = json.runtimeConfig?.csrfToken || json.props?.pageProps?.csrfToken;
+            if (token) {
+                console.log('[Vinted HQ CSRF] Found CSRF token in __NEXT_DATA__:', token);
+                return token;
+            }
+        }
+    } catch { /* skip */ }
+
+    try {
+        const scripts = document.querySelectorAll('script');
+        for (const s of scripts) {
+            const str = s.textContent || '';
+            const match = str.match(/"csrfToken"\s*:\s*"([^"]+)"/);
+            if (match) {
+                console.log('[Vinted HQ CSRF] Found CSRF token in generic script tag:', match[1]);
+                return match[1];
+            }
+        }
+    } catch { /* skip */ }
+
+    try {
+        for (const part of document.cookie.split(';')) {
+            const p = part.trim();
+            if (p.startsWith('access_token_web=')) {
+                try {
+                    const params = p.split('=')[1];
+                    const segments = params.split('.');
+                    if (segments.length >= 2) {
+                        const b64 = segments[1].replace(/-/g, '+').replace(/_/g, '/');
+                        const json = JSON.parse(atob(b64));
+                        const token = json.csrf_token || json.csrf;
+                        if (token) {
+                            console.log('[Vinted HQ CSRF] Found CSRF token in access_token_web JWT:', token);
+                            return token;
+                        }
+                    }
+                } catch (e) {
+                    console.log('[Vinted HQ CSRF] Error decoding JWT', e);
+                }
+            }
+        }
+    } catch { /* skip */ }
+
+    console.warn('[Vinted HQ CSRF] Failed to extract any CSRF token from DOM or Cookies.');
+    return null;
+}
+
+/**
+ * Extract Anon ID natively from the Cookies.
+ * Vinted requires x-anon-id alongside x-csrf-token for POST requests.
+ */
+function getAnonIdFromDOM(): string | null {
+    try {
+        for (const part of document.cookie.split(';')) {
+            const p = part.trim();
+            if (p.startsWith('anon_id=')) {
+                const token = p.split('=')[1];
+                if (token) {
+                    console.log('[Vinted HQ CSRF] Found anon_id token in cookies:', token);
+                    return token;
+                }
+            }
+        }
+    } catch { /* skip */ }
+
+    return null;
+}
+
 function showBanner(message: string, type: 'info' | 'success' | 'error' = 'info') {
     const banner = document.createElement('div');
     const bgColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#6366f1';
@@ -227,11 +304,35 @@ async function runAssistedEdit() {
     }
 }
 
-// ─── Deep Sync (Phase C.2) ──────────────────────────────────────────────────
+// ─── Deep Sync (Phase C.2) — Extension-first architecture ──────────────────
+// The edit page (/items/{id}/edit) contains __NUXT_DATA__ script tags with
+// the full item object. We read these from the DOM, find the item dict,
+// and POST it directly to the local Python bridge's /ingest/item endpoint.
 
 function extractItemIdFromPathname(): string | null {
     const match = window.location.pathname.match(/\/items\/(\d+)/);
     return match ? match[1] : null;
+}
+
+/**
+ * Recursively search a parsed data structure for an object that looks like
+ * a Vinted item (has 'id' matching our item_id, and has 'title').
+ */
+function findItemInData(data: any, itemId: string): any {
+    if (!data || typeof data !== 'object') return null;
+
+    // Check if this object IS the item
+    if (data.id !== undefined && String(data.id) === itemId && 'title' in data) {
+        return data;
+    }
+
+    // Recurse into arrays and objects
+    const entries = Array.isArray(data) ? data : Object.values(data);
+    for (const val of entries) {
+        const found = findItemInData(val, itemId);
+        if (found) return found;
+    }
+    return null;
 }
 
 async function runDeepSync() {
@@ -243,60 +344,172 @@ async function runDeepSync() {
     }
 
     showBanner('Deep syncing item details…', 'info');
-    console.log(`[Vinted HQ] Deep sync: reading __NEXT_DATA__ for item ${itemId}`);
+    console.log(`[Vinted HQ] 🔄 Deep sync: extracting item data for ${itemId} from edit page`);
 
-    // Read __NEXT_DATA__ directly from the DOM — no inline script needed (avoids CSP blocks)
-    const nextDataEl = document.getElementById('__NEXT_DATA__');
     let data: any = null;
 
-    if (nextDataEl?.textContent) {
-        try {
-            const parsed = JSON.parse(nextDataEl.textContent);
-            const pageProps = parsed?.props?.pageProps;
-            console.log('[Vinted HQ] __NEXT_DATA__ found. pageProps keys:', pageProps ? Object.keys(pageProps) : 'no pageProps');
+    // ── Strategy 1: Next.js App Router RSC Payload (self.__next_f) ──────
+    // Vinted uses Next.js App Router on the edit page. The data is embedded 
+    // in flight chunks inside script tags. The main object is 'itemEditModel'.
+    const scripts = Array.from(document.querySelectorAll('script'));
+    console.log(`[Vinted HQ] Scanning ${scripts.length} script tags for itemEditModel...`);
 
-            // Try various keys Vinted might use
-            data = pageProps?.item
-                || pageProps?.itemDto
-                || pageProps?.itemData
-                || pageProps?.product
-                || pageProps?.listing
-                || null;
+    for (const script of scripts) {
+        const content = script.textContent;
+        if (!content || !content.includes('itemEditModel')) continue;
 
-            // If still null, check if the item data is at the top level of pageProps
-            if (!data && pageProps) {
-                // Look for any key that has an 'id' and 'title' (item-like object)
-                for (const key of Object.keys(pageProps)) {
-                    const val = pageProps[key];
-                    if (val && typeof val === 'object' && 'id' in val && 'title' in val) {
-                        console.log(`[Vinted HQ] Found item-like object under key "${key}"`);
-                        data = val;
+        console.log(`[Vinted HQ] Found script containing 'itemEditModel'`);
+
+        // 1. Unescape the Next.js RSC payload string (it's often escaped JSON inside an array)
+        // A generic unescape that handles \" and \\
+        const unescaped = content.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+        // 2. Locate the itemEditModel object start
+        const match = unescaped.match(/"itemEditModel":\s*({.*})/);
+        if (match) {
+            const str = match[1];
+            let braceCount = 0;
+            let endPos = -1;
+
+            // 3. Find the matching closing brace to extract exactly this object
+            for (let i = 0; i < str.length; i++) {
+                if (str[i] === '{') braceCount++;
+                else if (str[i] === '}') {
+                    braceCount--;
+                    if (braceCount === 0) {
+                        endPos = i + 1;
                         break;
                     }
                 }
             }
-        } catch (e) {
-            console.error('[Vinted HQ] Failed to parse __NEXT_DATA__:', e);
+
+            if (endPos !== -1) {
+                try {
+                    const jsonStr = str.substring(0, endPos);
+                    const parsed = JSON.parse(jsonStr);
+
+                    // Verify it matches our item ID
+                    if (String(parsed.id) === itemId) {
+                        data = parsed;
+                        console.log(`[Vinted HQ] Successfully extracted itemEditModel JSON`, Object.keys(data));
+                        break;
+                    }
+                } catch (e) {
+                    console.error("[Vinted HQ] Failed to parse extracted itemEditModel string:", e);
+                }
+            }
         }
-    } else {
-        console.warn('[Vinted HQ] No __NEXT_DATA__ element found in DOM');
+    }
+
+    // ── Strategy 2: Pre-rendered State (window.__NEXT_DATA__) ──────────
+    // Fallback for older Vinted pages
+    if (!data) {
+        try {
+            const nextDataEl = document.getElementById('__NEXT_DATA__');
+            if (nextDataEl?.textContent) {
+                const parsed = JSON.parse(nextDataEl.textContent);
+                const found = findItemInData(parsed, itemId);
+                if (found) {
+                    data = found;
+                    console.log(`[Vinted HQ] Found item in __NEXT_DATA__ element`);
+                }
+            }
+        } catch { /* skip */ }
     }
 
     if (!data) {
-        console.error('[Vinted HQ] No item data found in __NEXT_DATA__.');
-        showBanner('No item data found on this page.', 'error');
+        console.error('[Vinted HQ] No item data found in page.');
+        showBanner('No item data found. Check console for diagnostics.', 'error');
         return;
     }
 
-    console.log('[Vinted HQ] Scraped item data:', data);
+    // Ensure the id is present
+    if (!data.id) data.id = parseInt(itemId, 10);
 
-    // POST to the Python bridge via background service worker
+    // ── Pre-fetch category attributes natively from Chrome ──────────
+    const catalogId = data.catalogId || data.catalog_id || data.categoryId || data.category_id;
+    if (catalogId) {
+        console.log(`[Vinted HQ] 🔄 Fetching attributes natively via extension for category ${catalogId}...`);
+        const brandId = data.brandId || data.brand_id || (data.brand ? data.brand.id : undefined) || (data.brand_dto ? data.brand_dto.id : undefined);
+        const statusId = data.statusId || data.status_id || (data.status ? data.status.id : undefined);
+
+        const csrfToken = getCsrfTokenFromDOM();
+        const anonId = getAnonIdFromDOM();
+
+        const apiPayload: any = { attributes: [{ code: 'category', value: [catalogId] }] };
+        if (brandId) apiPayload.attributes.push({ code: 'brand', value: [brandId] });
+        if (statusId) apiPayload.attributes.push({ code: 'status', value: [statusId] });
+
+        try {
+            const attrRes = await new Promise<any>((resolve) => {
+                chrome.runtime.sendMessage({
+                    type: 'VINTED_FETCH',
+                    url: 'https://www.vinted.co.uk/api/v2/item_upload/attributes',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json, text/plain, */*',
+                        'x-csrf-token': csrfToken || '',
+                        'x-anon-id': anonId || ''
+                    },
+                    body: apiPayload
+                }, resolve);
+            });
+
+            if (attrRes.ok) {
+                console.log('[Vinted HQ] ✅ Fetched attributes via Background API:', attrRes.data);
+                data._hq_attributes_schema = attrRes.data;
+            } else {
+                console.warn('[Vinted HQ] ⚠️ Failed to fetch attributes via Background API', attrRes.status, attrRes.error);
+            }
+        } catch (e) {
+            console.error('[Vinted HQ] ⚠️ Error proxying fetch attributes', e);
+        }
+    }
+
+    // ── 4. DOM Fallbacks for RSC References ─────────────────────────────
+    // In Next.js RSC, large strings (like description) are sometimes replaced 
+    // by references (e.g. "$86") pointing to other chunks. If we see a reference 
+    // (starts with $ and is short), we grab the real value directly from the DOM form.
+
+    // Description
+    if (!data.description || (typeof data.description === 'string' && data.description.startsWith('$') && data.description.length < 10)) {
+        const domDesc = document.querySelector('textarea[name="description"]') as HTMLTextAreaElement;
+        if (domDesc && domDesc.value) {
+            console.log(`[Vinted HQ] Extracting description from DOM fallback`);
+            data.description = domDesc.value;
+        }
+    }
+
+    // Title
+    if (!data.title || (typeof data.title === 'string' && data.title.startsWith('$') && data.title.length < 10)) {
+        const domTitle = document.querySelector('input[name="title"]') as HTMLInputElement;
+        if (domTitle && domTitle.value) {
+            console.log(`[Vinted HQ] Extracting title from DOM fallback`);
+            data.title = domTitle.value;
+        }
+    }
+
+    // Price
+    const domPrice = document.querySelector('input[name="price"]') as HTMLInputElement;
+    if (domPrice && domPrice.value) {
+        // Vinted stores price in various formats (dict, string, float). The python bridge handles normalization.
+        // We inject a clean numeric string from the DOM just to be safe.
+        const cleanPrice = domPrice.value.replace(/[^0-9.]/g, '');
+        if (cleanPrice) {
+            data.price_numeric = cleanPrice;
+        }
+    }
+
+    console.log('[Vinted HQ] Extracted item data keys:', Object.keys(data));
+    console.log('[Vinted HQ] Posting to /ingest/item…');
+
+    // POST the raw item data to the Python bridge via the background service worker
     const result = await bridgeFetch('/ingest/item', 'POST', { item: data });
 
     if (result.ok && result.data?.ok) {
         console.log('[Vinted HQ] ✅ Deep sync complete:', result.data.message);
-        showBanner('Deep sync complete! You can close this tab.', 'success');
-        // Auto-close after a brief delay
+        showBanner('✅ Deep sync complete! Closing tab…', 'success');
         setTimeout(() => window.close(), 2500);
     } else {
         const err = result.data?.message || result.error || 'Unknown error';
@@ -310,10 +523,12 @@ async function runDeepSync() {
 if (window.location.pathname.startsWith('/member/items')) {
     console.log('[Vinted HQ] Member items page detected, injecting Next.js state extractor...');
     setTimeout(injectScript, 1000);
+} else if (window.location.pathname.includes('/edit') && window.location.search.includes('hq_sync=true')) {
+    // Deep Sync — scrape the edit page for __NUXT_DATA__ and POST to bridge
+    console.log('[Vinted HQ] 🔄 Deep Sync mode activated (edit page)...');
+    setTimeout(runDeepSync, 2000);
 } else if (window.location.pathname.includes('/edit') && window.location.search.includes('hq_mode=true')) {
+    // Assisted Edit — push local data into the Vinted edit form
     console.log('[Vinted HQ] ✨ HQ Mode activated — running Assisted Edit...');
     setTimeout(runAssistedEdit, 2000);
-} else if (window.location.pathname.match(/\/items\/\d+/) && window.location.hash === '#hq_sync') {
-    console.log('[Vinted HQ] 🔄 Deep Sync mode activated...');
-    setTimeout(runDeepSync, 2000);
 }

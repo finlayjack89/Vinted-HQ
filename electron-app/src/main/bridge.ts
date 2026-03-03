@@ -425,11 +425,13 @@ export async function fetchOntologySizes(catalogId: number, proxy?: string): Pro
 /**
  * Fetch materials for a category.
  */
-export async function fetchOntologyMaterials(catalogId: number, itemId?: number, proxy?: string): Promise<BridgeResult> {
+export async function fetchOntologyMaterials(catalogId: number, itemId?: number, brandId?: number, statusId?: number, proxy?: string): Promise<BridgeResult> {
   const cookie = secureStorage.retrieveCookie();
   if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   const params: Record<string, string> = { catalog_id: String(catalogId), transport_mode: _transportMode() };
   if (itemId) params.item_id = String(itemId);
+  if (brandId) params.brand_id = String(brandId);
+  if (statusId) params.status_id = String(statusId);
   if (proxy) params.proxy = proxy;
   const qs = new URLSearchParams(params).toString();
   try {

@@ -89,29 +89,29 @@ function db(): Database.Database {
  * Parse JSON string fields from a raw SQLite row into proper JS arrays/objects.
  * SQLite stores these as TEXT; the renderer expects parsed values.
  */
-function parseJsonFields<T extends Partial<InventoryMasterRow>>(row: T): T {
-  const r = { ...row };
-  const jsonStringFields: (keyof InventoryMasterRow)[] = [
+function parseJsonFields(r: InventoryItemJoined): InventoryItemJoined {
+  if (!r) return r;
+  const jsonStringFields = [
     'color_ids',
     'photo_urls',
     'local_image_paths',
-    'item_attributes',
     'extra_metadata',
+    'item_attributes',
     'model_metadata',
     'shipment_prices',
   ];
   for (const key of jsonStringFields) {
-    const val = (r as Record<string, unknown>)[key];
+    const val = (r as unknown as Record<string, unknown>)[key];
     if (typeof val === 'string') {
       try {
-        (r as Record<string, unknown>)[key] = JSON.parse(val);
+        (r as unknown as Record<string, unknown>)[key] = JSON.parse(val);
       } catch {
         // leave as-is if malformed JSON
       }
     } else if (val === null || val === undefined) {
       // For array-type fields, default to empty array so the renderer doesn't need null checks
       if (key === 'color_ids' || key === 'photo_urls' || key === 'local_image_paths' || key === 'item_attributes') {
-        (r as Record<string, unknown>)[key] = [];
+        (r as unknown as Record<string, unknown>)[key] = [];
       }
     }
   }

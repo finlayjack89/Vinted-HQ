@@ -86,6 +86,8 @@ function migrate(database: Database.Database): void {
       is_unisex INTEGER DEFAULT 0,
       status TEXT DEFAULT 'local_only',  -- 'live','local_only','discrepancy','action_required'
       extra_metadata TEXT,         -- JSON blob for any additional fields
+      collection_id INTEGER,
+      model_id INTEGER,
       live_snapshot_hash TEXT,     -- sha256 over normalized live fields
       live_snapshot_fetched_at INTEGER,
       created_at INTEGER DEFAULT (unixepoch()),
@@ -144,6 +146,8 @@ function migrate(database: Database.Database): void {
   addIfMissing('measurement_length', 'REAL');
   addIfMissing('measurement_width', 'REAL');
   addIfMissing('model_metadata', 'TEXT'); // JSON: { collection_id, model_id }
+  addIfMissing('collection_id', 'INTEGER');
+  addIfMissing('model_id', 'INTEGER');
   addIfMissing('manufacturer', 'TEXT');
   addIfMissing('manufacturer_labelling', 'TEXT');
   addIfMissing('video_game_rating_id', 'INTEGER');

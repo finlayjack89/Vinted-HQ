@@ -128,6 +128,8 @@ export type InventoryItem = {
   measurement_length: number | null;
   measurement_width: number | null;
   model_metadata: Record<string, unknown> | null;
+  collection_id: number | null;
+  model_id: number | null;
   manufacturer: string | null;
   manufacturer_labelling: string | null;
   video_game_rating_id: number | null;
@@ -298,7 +300,7 @@ declare global {
       getOntology: (entityType: string) => Promise<OntologyEntity[]>;
       getSizes: (catalogId: number) => Promise<BridgeResult>;
       openEditDebugWindow: (itemId: number) => Promise<void>;
-      getMaterials: (catalogId: number, itemId?: number) => Promise<BridgeResult>;
+      getMaterials: (catalogId: number, itemId?: number, brandId?: number, statusId?: number) => Promise<BridgeResult>;
       getPackageSizes: (catalogId: number, itemId?: number) => Promise<BridgeResult>;
       getConditions: (catalogId: number) => Promise<BridgeResult>;
       searchBrands: (keyword: string, categoryId?: number) => Promise<BridgeResult>;

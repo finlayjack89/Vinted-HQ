@@ -450,7 +450,7 @@ export async function pullFromVinted(userId: number): Promise<{
     logger.debug('wardrobe-pull-page', { page, totalPages, totalEntries, itemCount: data.items.length }, requestId);
 
     for (const vintedItem of data.items) {
-      let usedBrowserFallback = false;
+      const usedBrowserFallback = false;
       try {
         const vintedId = Number(vintedItem.id);
         const existing = inventoryDb.getInventoryItemByVintedId(vintedId);
@@ -1427,7 +1427,7 @@ export async function editLiveItem(
   inventoryDb.upsertInventoryItemExplicit(updates as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
 
   // 2. Get the full item from DB (with sync data)
-  let item = inventoryDb.getInventoryItem(localId);
+  const item = inventoryDb.getInventoryItem(localId);
   if (!item) {
     logger.error('wardrobe-edit-missing-after-save', { localId }, requestId);
     return { ok: false, error: 'Item not found after save' };
@@ -1441,7 +1441,7 @@ export async function editLiveItem(
 
   // 4. Ensure required edit fields exist before pushing (category-aware).
   // If something critical is missing locally, hydrate from the authenticated browser context.
-  let completeness = await getDetailCompleteness(localId);
+  const completeness = await getDetailCompleteness(localId);
   logger.info(
     'wardrobe-edit-completeness-check',
     {

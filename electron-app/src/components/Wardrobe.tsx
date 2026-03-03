@@ -601,17 +601,16 @@ function ItemRow({
               type="button"
               onClick={async (e) => {
                 const btn = e.currentTarget;
-                btn.textContent = 'Syncing…';
+                btn.textContent = 'Syncing in Browser...';
                 btn.disabled = true;
-                try {
-                  const res = await window.vinted.deepSync(item.vinted_item_id!);
-                  btn.textContent = res.ok ? '✅ Synced!' : `❌ ${res.message || 'Failed'}`;
-                  if (res.ok) setTimeout(() => { btn.textContent = 'Fetch Full Details'; btn.disabled = false; }, 2000);
-                  else setTimeout(() => { btn.textContent = 'Fetch Full Details'; btn.disabled = false; }, 4000);
-                } catch {
-                  btn.textContent = '❌ Error';
-                  setTimeout(() => { btn.textContent = 'Fetch Full Details'; btn.disabled = false; }, 3000);
-                }
+
+                // Open the Vinted Edit page with the hq_sync parameter to trigger the Chrome Extension
+                await window.vinted.openExternal(`https://www.vinted.co.uk/items/${item.vinted_item_id}/edit?hq_sync=true`);
+
+                setTimeout(() => {
+                  btn.textContent = 'Fetch Full Details';
+                  btn.disabled = false;
+                }, 4000);
               }}
               style={{ ...actionBtn, color: '#10b981' }}
             >
@@ -1216,10 +1215,14 @@ function extractFromAttributes(result: { ok: boolean; data?: unknown }): {
         const g = group as Record<string, unknown>;
         const subOptions = g.options as unknown[] | undefined;
         if (Array.isArray(subOptions)) {
+          // Nested structure (e.g. grouped by type)
           for (const opt of subOptions) {
             const o = opt as Record<string, unknown>;
             materials.push({ id: Number(o.id), title: String(o.title || '') });
           }
+        } else if (g.id) {
+          // Flat structure (e.g. brand-specific materials like Lamborghini)
+          materials.push({ id: Number(g.id), title: String(g.title || '') });
         }
       }
     }
@@ -1342,9 +1345,6 @@ function EditItemModal({
     const localPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
     const remoteUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
 
-    // Only treat local_image_paths as 'new' uploads if there are no remote URLs
-    // (i.e. this is a completely local un-pushed item). Otherwise, local_image_paths
-    // is just a cache of the remote images.
     if (remoteUrls.length > 0) {
       return remoteUrls.map((u: string) => ({ type: 'existing', id: 0, url: u }));
     } else if (localPaths.length > 0) {
@@ -1352,6 +1352,47 @@ function EditItemModal({
     }
     return [];
   });
+
+  const reloadItem = async () => {
+    try {
+      const freshItem = await window.vinted.getWardrobeItem(item.id);
+      if (freshItem) {
+        setTitle(freshItem.title);
+        setDescription(freshItem.description ?? '');
+        setPrice(String(freshItem.price));
+        setSelectedStatusId(freshItem.status_id ?? 0);
+        setSelectedCategoryId(freshItem.category_id ?? 0);
+        setSelectedBrandId(freshItem.brand_id ?? 0);
+        setSelectedBrandName(freshItem.brand_name ?? '');
+        setSelectedSizeId(freshItem.size_id ?? 0);
+        setPackageSizeId(freshItem.package_size_id ?? 3);
+
+        if (freshItem.isbn) setIsbn(freshItem.isbn);
+        if (freshItem.measurement_length) setMeasurementLength(String(freshItem.measurement_length));
+        if (freshItem.measurement_width) setMeasurementWidth(String(freshItem.measurement_width));
+        if (freshItem.collection_id) setSelectedCollectionId(freshItem.collection_id);
+        if (freshItem.model_id) setSelectedModelId(freshItem.model_id);
+
+        const parsedAttrs = Array.isArray(freshItem.item_attributes) ? freshItem.item_attributes : [];
+        const materialAttr = parsedAttrs.find((a: { code: string }) => a.code === 'material');
+        if (materialAttr && Array.isArray(materialAttr.ids)) {
+          setSelectedMaterialIds(materialAttr.ids);
+        }
+
+        if (Array.isArray(freshItem.color_ids)) setSelectedColorIds(freshItem.color_ids);
+
+        const freshPaths = Array.isArray(freshItem.local_image_paths) ? freshItem.local_image_paths : [];
+        const freshUrls = Array.isArray(freshItem.photo_urls) ? freshItem.photo_urls : [];
+        if (freshUrls.length > 0) {
+          setPhotoPlanItems(freshUrls.map((u: string) => ({ type: 'existing', id: 0, url: u })));
+        } else if (freshPaths.length > 0) {
+          setPhotoPlanItems(freshPaths.map((p: string) => ({ type: 'new', path: p })));
+        }
+      }
+    } catch (err) {
+      console.error('[EditModal] Failed to reload item:', err);
+    }
+  };
   const [photoPlanOriginalExistingIds, setPhotoPlanOriginalExistingIds] = useState<number[]>([]);
   const hasUnresolvedExistingPhotoIds = photoPlanItems.some((p) => p.type === 'existing' && p.id <= 0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1366,314 +1407,6 @@ function EditItemModal({
     if (item.brand_id && item.brand_name) {
       setBrandResults([{ id: item.brand_id, name: item.brand_name }]);
     }
-
-    // Category-aware: ask main process whether this item is complete enough to edit/push.
-    // Also enforce a 7-day cache TTL (stale cache triggers a refresh fetch).
-    let cancelled = false;
-    const checkAndFetch = async () => {
-      if (!item.vinted_item_id) return;
-
-      const nowSec = Math.floor(Date.now() / 1000);
-      let comp: Awaited<ReturnType<typeof window.vinted.getDetailCompleteness>> | null = null;
-      try {
-        comp = await window.vinted.getDetailCompleteness(item.id);
-      } catch {
-        comp = null;
-      }
-      if (cancelled) return;
-
-      const hydratedAt =
-        (comp && typeof comp.detail_hydrated_at === 'number' ? comp.detail_hydrated_at : null) ??
-        (typeof item.detail_hydrated_at === 'number' ? item.detail_hydrated_at : null);
-      const isCacheStale = Boolean(hydratedAt) && (nowSec - (hydratedAt as number) > 7 * 24 * 60 * 60);
-      const needsDetailFetch = !comp || !comp.ok || !comp.complete || isCacheStale;
-      if (!needsDetailFetch) return;
-
-      // Debug window is opt-in (it is intrusive in normal usage).
-      // Enable by running in DevTools: localStorage.setItem('vinted_edit_debug_window', '1')
-      if (import.meta.env.DEV && window.localStorage.getItem('vinted_edit_debug_window') === '1') {
-        window.vinted.openEditDebugWindow(item.vinted_item_id).catch((err) => {
-          console.warn('[EditModal] openEditDebugWindow failed:', err);
-        });
-      }
-      setDetailError('');
-      setDetailLoading(true);
-      console.log('[EditModal] Fetching item detail for vinted_item_id:', item.vinted_item_id);
-      window.vinted.getItemDetail(item.vinted_item_id).then((r) => {
-        if (cancelled) return;
-        console.log('[EditModal] Item detail response:', r.ok, r.ok ? 'has data' : (r as { code?: string; message?: string }).message);
-        if (!r.ok || !r.data) {
-          const errMsg = (r as { message?: string }).message || 'Failed to load item details';
-          const is404 = errMsg.includes('404') || errMsg.includes('NOT_FOUND');
-          setDetailError(is404
-            ? 'This item may have been sold or deleted on Vinted. Fields will need to be filled manually.'
-            : 'Could not load full item details. Some fields may need manual input.');
-          return;
-        }
-        const raw = r.data as Record<string, unknown>;
-        const d = (raw.item ?? raw) as Record<string, unknown>;
-
-        // Log debug data from the browser-based extraction
-        const debug = raw._debug as Record<string, unknown> | undefined;
-        if (debug) {
-          console.log('[EditModal] === DEBUG: Extraction source ===', debug.source);
-          console.log('[EditModal] === DEBUG: Match count ===', debug.matchCount);
-          console.log('[EditModal] === DEBUG: Page title ===', debug.docTitle);
-        }
-
-        console.log('[EditModal] Normalized item keys:', Object.keys(d));
-        console.log('[EditModal] Normalized item values:', {
-          catalog_id: d.catalog_id, brand_id: d.brand_id, brand_title: d.brand_title,
-          size_id: d.size_id, size_title: d.size_title,
-          status_id: d.status_id, color_ids: d.color_ids,
-          package_size_id: d.package_size_id, is_unisex: d.is_unisex,
-          price: d.price, description: d.description ? 'present' : 'missing',
-        });
-
-        // ── Normalize: flatten nested objects from React fiber data ──
-        // Vinted's React components use brand_dto, size_dto, etc. as nested objects
-        const brandObj = (d.brand_dto ?? d.brand) as Record<string, unknown> | string | null;
-        const brandObjDict = brandObj && typeof brandObj === 'object' ? brandObj as Record<string, unknown> : null;
-        const catObj = (d.category ?? d.catalog) as Record<string, unknown> | undefined;
-        const sizeObj = d.size && typeof d.size === 'object' ? d.size as Record<string, unknown> : null;
-        const statusObj = d.status && typeof d.status === 'object' ? d.status as Record<string, unknown> : null;
-        const pkgObj = (d.package_size ?? d.package_size_dto) as Record<string, unknown> | undefined;
-        const pkgObjDict = pkgObj && typeof pkgObj === 'object' ? pkgObj as Record<string, unknown> : null;
-        const priceObj = d.price && typeof d.price === 'object' ? d.price as Record<string, unknown> : null;
-
-        // Resolve brand_id: flat field, brand_dto.id, or brand.id
-        const resolvedBrandId = d.brand_id ? Number(d.brand_id) : (brandObjDict?.id ? Number(brandObjDict.id) : 0);
-        const resolvedBrandName = d.brand_title ? String(d.brand_title)
-          : (brandObjDict?.title ? String(brandObjDict.title)
-            : (brandObjDict?.name ? String(brandObjDict.name)
-              : (typeof brandObj === 'string' ? String(brandObj) : '')));
-
-        // Resolve catalog_id: flat field, or nested category/catalog .id
-        const resolvedCatId = d.catalog_id ? Number(d.catalog_id)
-          : (catObj && typeof catObj === 'object' && catObj.id ? Number(catObj.id) : 0);
-
-        // Resolve size_id
-        const resolvedSizeId = d.size_id ? Number(d.size_id) : (sizeObj?.id ? Number(sizeObj.id) : 0);
-
-        // Resolve status_id (condition)
-        const resolvedStatusId = d.status_id ? Number(d.status_id) : (statusObj?.id ? Number(statusObj.id) : 0);
-
-        // Resolve package_size_id
-        const resolvedPkgId = d.package_size_id ? Number(d.package_size_id) : (pkgObj?.id ? Number(pkgObj.id) : 0);
-
-        // Resolve price — may be a number, string, or { amount, currency_code }
-        const resolvedPrice = priceObj ? String(priceObj.amount ?? priceObj.price ?? d.price)
-          : (d.price ? String(d.price) : '');
-
-        // Resolve color_ids: flat array, or nested colors array of objects
-        let resolvedColorIds: number[] = [];
-        if (d.color_ids && Array.isArray(d.color_ids)) {
-          resolvedColorIds = d.color_ids as number[];
-        } else if (d.colors && Array.isArray(d.colors)) {
-          resolvedColorIds = (d.colors as Record<string, unknown>[])
-            .map((c) => Number(c.id))
-            .filter((id) => id > 0);
-        } else {
-          // Vinted SSR sometimes uses color1_id, color2_id
-          const c1 = d.color1_id ? Number(d.color1_id) : 0;
-          const c2 = d.color2_id ? Number(d.color2_id) : 0;
-          if (c1) resolvedColorIds.push(c1);
-          if (c2) resolvedColorIds.push(c2);
-        }
-
-        // ── Apply resolved values to state ──
-        // Fill gaps, but don't clobber user edits if they started typing before this finishes.
-        const liveDesc = typeof d.description === 'string' ? d.description : '';
-        if (liveDesc.trim()) {
-          setDescription((prev) => (prev.trim() ? prev : liveDesc));
-        }
-        if (resolvedCatId) setSelectedCategoryId((prev) => (prev ? prev : resolvedCatId));
-        if (resolvedBrandId) {
-          setSelectedBrandId((prev) => (prev ? prev : resolvedBrandId));
-          if (resolvedBrandName) {
-            setSelectedBrandName((prev) => (prev ? prev : resolvedBrandName));
-            setBrandResults((prev) => {
-              if (prev.find((b) => b.id === resolvedBrandId)) return prev;
-              return [{ id: resolvedBrandId, name: resolvedBrandName }, ...prev];
-            });
-          }
-        }
-        if (resolvedSizeId) setSelectedSizeId((prev) => (prev ? prev : resolvedSizeId));
-        if (resolvedStatusId) setSelectedStatusId((prev) => (prev ? prev : resolvedStatusId));
-        if (resolvedPkgId) {
-          const initialPkg = item.package_size_id ?? 3;
-          setPackageSizeId((prev) => (prev === initialPkg ? resolvedPkgId : prev));
-        }
-        if (resolvedColorIds.length > 0) setSelectedColorIds((prev) => (prev.length > 0 ? prev : resolvedColorIds));
-        if (d.is_unisex !== undefined) {
-          const initialUnisex = Boolean(item.is_unisex);
-          setIsUnisex((prev) => (prev === initialUnisex ? Boolean(d.is_unisex) : prev));
-        }
-        if (resolvedPrice) {
-          const initialPrice = String(item.price);
-          setPrice((prev) => (prev === initialPrice ? resolvedPrice : prev));
-        }
-
-        // Persist missing detail fields so the next open doesn't need a refetch
-        // and "Push" has the required IDs even outside the modal.
-        try {
-          const patch: Record<string, unknown> = { id: item.id, title: item.title, price: item.price };
-          let changed = false;
-          if (!item.category_id && resolvedCatId) { patch.category_id = resolvedCatId; changed = true; }
-          if (!item.brand_id && resolvedBrandId) {
-            patch.brand_id = resolvedBrandId;
-            if (resolvedBrandName) patch.brand_name = resolvedBrandName;
-            changed = true;
-          }
-          if (!item.size_id && resolvedSizeId) { patch.size_id = resolvedSizeId; changed = true; }
-          if (!item.size_label && (d.size_title || sizeObj?.title || sizeObj?.name)) {
-            patch.size_label = String(d.size_title || sizeObj?.title || sizeObj?.name || '');
-            changed = true;
-          }
-          if (!item.status_id && resolvedStatusId) { patch.status_id = resolvedStatusId; changed = true; }
-          if (!item.package_size_id && resolvedPkgId) { patch.package_size_id = resolvedPkgId; changed = true; }
-          if ((!Array.isArray(item.color_ids) || item.color_ids.length === 0) && resolvedColorIds.length > 0) {
-            patch.color_ids = JSON.stringify(resolvedColorIds);
-            changed = true;
-          }
-          const localDesc = typeof item.description === 'string' ? item.description : '';
-          const liveDesc = typeof d.description === 'string' ? d.description : '';
-          if (!localDesc.trim() && liveDesc.trim()) { patch.description = liveDesc; changed = true; }
-          if (Array.isArray(item.item_attributes) && item.item_attributes.length === 0 && d.item_attributes && Array.isArray(d.item_attributes)) {
-            patch.item_attributes = JSON.stringify(d.item_attributes);
-            changed = true;
-          }
-          if (changed) {
-            window.vinted.upsertWardrobeItem(patch as { title: string; price: number; id?: number }).catch((err) => {
-              console.warn('[EditModal] Failed to persist hydrated details:', err);
-            });
-          }
-        } catch {
-          /* ignore persistence errors */
-        }
-
-        // Parse materials from item_attributes (array of {code, ids})
-        if (d.item_attributes && Array.isArray(d.item_attributes)) {
-          const matAttr = (d.item_attributes as { code: string; ids?: number[] }[]).find((a) => a.code === 'material');
-          if (matAttr?.ids) setSelectedMaterialIds(matAttr.ids);
-        }
-        // Pre-fill niche fields
-        if (d.isbn) setIsbn(String(d.isbn));
-        if (d.measurement_length) setMeasurementLength(String(d.measurement_length));
-        if (d.measurement_width) setMeasurementWidth(String(d.measurement_width));
-
-        // ── Reverse-lookup brand_id from brand_title ──
-        if (!resolvedBrandId && resolvedBrandName) {
-          window.vinted.searchBrands(resolvedBrandName, resolvedCatId || undefined).then((br: { ok: boolean; data?: unknown }) => {
-            const brands = (br.ok && br.data && typeof br.data === 'object')
-              ? ((br.data as Record<string, unknown>).brands as { id: number; title: string }[] | undefined) ?? []
-              : [];
-            const exactMatch = brands.find((b) => b.title.toLowerCase() === resolvedBrandName.toLowerCase());
-            if (exactMatch) {
-              console.log('[EditModal] Reverse-lookup brand_id:', exactMatch.id, exactMatch.title);
-              setSelectedBrandId(exactMatch.id);
-              setSelectedBrandName(exactMatch.title);
-              setBrandResults((prev) => {
-                if (prev.find((b) => b.id === exactMatch.id)) return prev;
-                return [{ id: exactMatch.id, name: exactMatch.title }, ...prev];
-              });
-            }
-          }).catch(() => undefined);
-        }
-
-        // ── Store DOM-scraped text values for reverse lookup ──
-        // These get matched against ontology options when the category-change
-        // useEffect loads sizes, materials, colours, and package sizes.
-        const domColourStr = d._dom_colours as string | undefined;
-        const domMatStr = d._dom_materials as string | undefined;
-        const domSizeStr = d._dom_size as string | undefined;
-        const domPkgStr = d._dom_parcel_size as string | undefined;
-
-        if (domColourStr) setDomColours(domColourStr);
-        if (domMatStr) {
-          setDomMaterials(domMatStr);
-          // Pre-select materials using negative placeholder IDs (DOM-scraped, no API lookup)
-          // These get matched against real IDs when/if the materials API loads.
-          if (selectedMaterialIds.length === 0) {
-            const matNames = domMatStr.split(',').map((s: string) => s.trim()).filter(Boolean);
-            setSelectedMaterialIds(matNames.map((_: string, i: number) => -(i + 1)));
-          }
-        }
-        if (domSizeStr) setDomSize(domSizeStr);
-        if (domPkgStr) setDomParcelSize(domPkgStr);
-
-        // ── Photos with IDs (for reorder/remove + save) ──
-        // Prefer the photo list from the live Vinted edit-page data (has IDs).
-        try {
-          // If we already have local pending photos, don't overwrite the plan from live.
-          // (Those local paths are the user's intended changes.)
-          const existingLocalPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
-          if (existingLocalPaths.length === 0) {
-            const rawPhotos = (d.photos ?? []) as Record<string, unknown>[];
-            if (Array.isArray(rawPhotos) && rawPhotos.length > 0) {
-              const existing: PhotoPlanItem[] = rawPhotos
-                .map((p) => ({
-                  type: 'existing' as const,
-                  id: Number(p.id || 0),
-                  url: String(p.url || ''),
-                }))
-                .filter((p) => !!p.url);
-              if (existing.length > 0) {
-                setPhotoPlanItems(existing);
-                setPhotoPlanOriginalExistingIds(
-                  existing
-                    .map((p) => (p.type === 'existing' ? p.id : 0))
-                    .filter((id) => id > 0)
-                );
-              }
-            }
-          }
-        } catch {
-          /* ignore */
-        }
-
-        console.log('[EditModal] DOM-scraped values:', {
-          colours: domColourStr, materials: domMatStr,
-          size: domSizeStr, parcel: domPkgStr,
-        });
-
-        // ── Immediate colour lookup from allColors (already loaded) ──
-        if (domColourStr && resolvedColorIds.length === 0) {
-          const colourNames = domColourStr.split(',').map((s: string) => s.trim()).filter(Boolean);
-          // Ontology returns objects with .name (not .title) and .entity_id (the color ID for the API)
-          window.vinted.getOntology('color').then((colors: Record<string, unknown>[]) => {
-            const matched: number[] = [];
-            for (const name of colourNames) {
-              const found = (Array.isArray(colors) ? colors : []).find((c) => {
-                const cName = String(c.name || c.title || '');
-                return cName.toLowerCase() === name.toLowerCase();
-              });
-              if (found) {
-                // Use entity_id (the Vinted color ID) if available, otherwise use id
-                matched.push(Number(found.entity_id ?? found.id));
-              }
-            }
-            if (matched.length > 0) {
-              console.log('[EditModal] Reverse-lookup color_ids:', matched);
-              setSelectedColorIds(matched);
-            }
-          }).catch(() => undefined);
-        }
-      }).catch((err) => {
-        if (cancelled) return;
-        console.error('[EditModal] Item detail fetch failed:', err);
-      }).finally(() => {
-        if (cancelled) return;
-        setDetailLoading(false);
-      });
-
-    };
-
-    void checkAndFetch();
-
-    return () => {
-      cancelled = true;
-    };
   }, [item.id, item.vinted_item_id]);
 
   const openPhotoPicker = () => {
@@ -1711,6 +1444,38 @@ function EditItemModal({
     setPhotoPlanItems((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  // ── Fetch Materials when category, brand, or status changes ──
+  useEffect(() => {
+    if (!selectedCategoryId || detailLoading) return;
+
+    // Fetch materials & attribute config via POST /attributes
+    const catId = selectedCategoryId;
+    window.vinted.getMaterials(catId, item.vinted_item_id, selectedBrandId || undefined, selectedStatusId || undefined).then((r: { ok: boolean; data?: unknown }) => {
+      console.log('[EditModal] getMaterials RAW:', JSON.stringify(r));
+      const { materials, availableFields: fields, nicheAttributes: niche } = extractFromAttributes(r);
+      console.log('[EditModal] getMaterials result:', { ok: r?.ok, count: materials.length, fields, niche: niche.length });
+      setMaterialOptions(materials);
+      if (fields.length > 0) setAvailableFields(fields);
+      setNicheAttributes(niche);
+      // Reverse-lookup material IDs from DOM-scraped material names
+      if (domMaterials && materials.length > 0 && (selectedMaterialIds.length === 0 || selectedMaterialIds.some((id) => id < 0))) {
+        const matNames = domMaterials.split(',').map((s) => s.trim()).filter(Boolean);
+        const matched: number[] = [];
+        for (const name of matNames) {
+          const found = materials.find((m: { id: number; title: string }) => m.title.toLowerCase() === name.toLowerCase());
+          if (found) matched.push(found.id);
+        }
+        if (matched.length > 0) {
+          console.log('[EditModal] Reverse-lookup material_ids:', matched);
+          setSelectedMaterialIds(matched);
+        }
+      }
+    }).catch((err) => {
+      console.error('[EditModal] getMaterials failed:', err);
+      setMaterialOptions([]);
+    });
+  }, [selectedCategoryId, selectedBrandId, selectedStatusId, item.vinted_item_id, detailLoading]);
+
   // ── Fetch category-specific options when category changes ──
   useEffect(() => {
     if (!selectedCategoryId) return;
@@ -1745,32 +1510,7 @@ function EditItemModal({
       }
     }).catch(() => setSizeOptions([]));
 
-    // Fetch materials & attribute config via POST /attributes
-    window.vinted.getMaterials(catId, item.vinted_item_id).then((r: { ok: boolean; data?: unknown }) => {
-      console.log('[EditModal] getMaterials RAW:', JSON.stringify(r));
-      const { materials, availableFields: fields, nicheAttributes: niche } = extractFromAttributes(r);
-      console.log('[EditModal] getMaterials result:', { ok: r?.ok, count: materials.length, fields, niche: niche.length });
-      setMaterialOptions(materials);
-      if (fields.length > 0) setAvailableFields(fields);
-      setNicheAttributes(niche);
-      // Reverse-lookup material IDs from DOM-scraped material names
-      // Also try reverse-lookup if we have placeholder IDs (negative) from DOM scraping
-      if (domMaterials && materials.length > 0 && (selectedMaterialIds.length === 0 || selectedMaterialIds.some((id) => id < 0))) {
-        const matNames = domMaterials.split(',').map((s) => s.trim()).filter(Boolean);
-        const matched: number[] = [];
-        for (const name of matNames) {
-          const found = materials.find((m: { id: number; title: string }) => m.title.toLowerCase() === name.toLowerCase());
-          if (found) matched.push(found.id);
-        }
-        if (matched.length > 0) {
-          console.log('[EditModal] Reverse-lookup material_ids:', matched);
-          setSelectedMaterialIds(matched);
-        }
-      }
-    }).catch((err) => {
-      console.error('[EditModal] getMaterials failed:', err);
-      setMaterialOptions([]);
-    });
+
 
     // Fetch package sizes — response: { package_sizes: [{ id, title, ... }] }
     const vintedItemId = item.vinted_item_id ?? undefined;
@@ -1789,7 +1529,7 @@ function EditItemModal({
         // If still default and API response has a "recommended" one, use it
         if (packageSizeId <= 3) {
           const recommended = pkgs.find((p: Record<string, unknown>) => (p as Record<string, unknown>).is_recommended === true);
-          if (recommended) setPackageSizeId(recommended.id);
+          if (recommended && recommended.id) setPackageSizeId(recommended.id as number);
         }
       }
     }).catch(() => undefined);
@@ -1923,25 +1663,62 @@ function EditItemModal({
       sizeOptions.length > 0 &&
       (availableFields.includes('size') || (availableFields.length === 0 && !!domSize));
 
+    const updates: Record<string, unknown> = {
+      title,
+      description,
+      price: Number(price),
+      status_id: selectedStatusId,
+      category_id: selectedCategoryId || null,
+      brand_id: selectedBrandId || null,
+      brand_name: selectedBrandId ? selectedBrandName : null,
+      size_id: selectedSizeId || null,
+      package_size_id: packageSizeId || null,
+      is_unisex: isUnisex,
+      color_ids: selectedColorIds,
+      isbn: isbn || null,
+      measurement_length: measurementLength ? Number(measurementLength) : null,
+      measurement_width: measurementWidth ? Number(measurementWidth) : null,
+      collection_id: selectedCollectionId || null,
+      model_id: selectedModelId || null,
+      item_attributes: selectedMaterialIds.length > 0 ? [{ code: 'material', ids: selectedMaterialIds }] : null,
+    };
+
+    // Check if we need to remove the model/collection if category changed
+    if (!availableFields.includes('model') && updates.collection_id) {
+      updates.collection_id = null;
+      updates.model_id = null;
+    }
+
+    // `updates` contains most of the fields we want to send to the backend.
+    // `payload` will combine `updates` with other derived fields and photo data.
     const payload: Record<string, unknown> = {
       id: item.id,
+      ...updates,
+      // `updates.color_ids` is `selectedColorIds`, but we need `finalColorIds` which includes fallback.
+      color_ids: JSON.stringify(finalColorIds),
+      // `updates.price` is `Number(price)`, but we need `parseFloat(price) || 0`.
+      price: parseFloat(price) || 0,
+      // `updates.is_unisex` is boolean, but we need 1 or 0.
+      is_unisex: isUnisex ? 1 : 0,
+      // `updates.measurement_length` is `Number(measurementLength)`, but we need `parseFloat`.
+      measurement_length: measurementLength ? parseFloat(measurementLength) : null,
+      // `updates.measurement_width` is `Number(measurementWidth)`, but we need `parseFloat`.
+      measurement_width: measurementWidth ? parseFloat(measurementWidth) : null,
+      // `updates.title` and `updates.description` are raw, but we need trimmed.
       title: title.trim(),
       description: description.trim(),
-      price: parseFloat(price) || 0,
-      condition: conditionStr,
-      brand_id: selectedBrandId || null,
+      // `updates.brand_name` is raw, but we need trimmed.
       brand_name: selectedBrandName.trim(),
-      category_id: selectedCategoryId || null,
-      color_ids: JSON.stringify(finalColorIds),
-      status_id: selectedStatusId || null,
-      package_size_id: packageSizeId,
-      item_attributes: JSON.stringify(attrs),
-      is_unisex: isUnisex ? 1 : 0,
-      isbn: isbn || null,
-      measurement_length: measurementLength ? parseFloat(measurementLength) : null,
-      measurement_width: measurementWidth ? parseFloat(measurementWidth) : null,
-      photo_urls: JSON.stringify(existingUrls),
-      local_image_paths: JSON.stringify(newPaths),
+
+      // Fields not in `updates`
+      condition: conditionStr,
+      // Pass the fully computed/reordered photo paths/URIs for the bridge to diff
+      photo_urls: photoPlanItems.map((p) => p.type === 'existing' ? p.url : p.path),
+      // NEW: track which existing photo IDs the user intends to keep (by explicitly selecting them)
+      retained_photo_ids: photoPlanItems
+        .filter((p) => p.type === 'existing' && p.id > 0)
+        .map((p) => p.id as number),
+      local_image_paths: JSON.stringify(newPaths), // Still needed for local-only items
       status: item.vinted_item_id ? 'discrepancy' : item.status,
       __photo_plan: {
         original_existing_ids: photoPlanOriginalExistingIds,
@@ -1989,9 +1766,78 @@ function EditItemModal({
         onClick={(e) => e.stopPropagation()}
         className="animate-fadeInScale"
       >
-        <h3 style={{ margin: '0 0 24px', fontSize: font.size.xl, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
-          Edit Listing
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 24px' }}>
+          <h3 style={{ margin: 0, fontSize: font.size.xl, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
+            Edit Listing
+          </h3>
+          {item.vinted_item_id && (
+            <button
+              type="button"
+              onClick={async (e) => {
+                const btn = e.currentTarget;
+                btn.textContent = 'Syncing...';
+                btn.disabled = true;
+
+                await window.vinted.openExternal(`https://www.vinted.co.uk/items/${item.vinted_item_id}/edit?hq_sync=true`);
+
+                setTimeout(async () => {
+                  try {
+                    await reloadItem();
+                    btn.textContent = '✅ Synced!';
+
+                    const fetchModels = async () => {
+                      if (!selectedCategoryId || !selectedBrandId) return;
+                      setModelsLoading(true);
+                      try {
+                        const res = await window.vinted.getModels(selectedCategoryId, selectedBrandId);
+                        if (res?.ok) {
+                          const data = res.data as Record<string, unknown>;
+                          const rawModels = (data.models ?? []) as Record<string, unknown>[];
+                          const opts = rawModels.map((m) => ({
+                            id: Number(m.id),
+                            name: String(m.title || m.name || ''),
+                            children: Array.isArray(m.children)
+                              ? (m.children as Record<string, unknown>[]).map((c) => ({ id: Number(c.id), name: String(c.title || c.name || '') }))
+                              : undefined,
+                          }));
+                          setModelOptions(opts);
+
+                          // Auto-resolve missing collection ID if a model ID exists
+                          if (selectedModelId && !selectedCollectionId) {
+                            const matchedCol = opts.find((col) =>
+                              col.children && col.children.some((child) => child.id === selectedModelId)
+                            );
+                            if (matchedCol) {
+                              setSelectedCollectionId(matchedCol.id);
+                            }
+                          }
+                        } else {
+                          setModelOptions([]);
+                        }
+                      } catch (err) {
+                        console.error('[EditModal] Failed to fetch luxury models:', err);
+                      } finally {
+                        setModelsLoading(false);
+                      }
+                    };
+                    await fetchModels();
+
+                  } catch {
+                    btn.textContent = 'Sync with Extension';
+                  } finally {
+                    setTimeout(() => {
+                      btn.textContent = 'Sync with Extension';
+                      btn.disabled = false;
+                    }, 2000);
+                  }
+                }, 4000);
+              }}
+              style={{ ...btnSecondary, ...btnSmall, color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}
+            >
+              Sync with Extension
+            </button>
+          )}
+        </div>
 
         {detailLoading && (
           <div style={{ background: colors.infoBg, border: `1px solid rgba(96, 165, 250, 0.25)`, borderRadius: 8, padding: spacing.sm, marginBottom: spacing.md, fontSize: font.size.sm, color: colors.info }}>
@@ -2215,85 +2061,111 @@ function EditItemModal({
           />
 
           {/* ── Material (Category-specific dropdown, multi-select up to 3) ──
-               Show if materialOptions loaded from API, OR if DOM scraping found materials */}
-          {(materialOptions.length > 0 || domMaterials) && (
+               Show if materialOptions loaded from API, OR if we already have selected materials */}
+          {(materialOptions.length > 0 || selectedMaterialIds.length > 0) && (
             <SearchableSelect
               label="Material (max 3)"
-              options={materialOptions.length > 0
-                ? materialOptions.map((m) => ({ id: m.id, name: m.title }))
-                : domMaterials.split(',').map((s, i) => ({ id: -(i + 1), name: s.trim() }))
-              }
+              options={materialOptions.map((m) => ({ id: m.id, name: m.title }))}
               value={selectedMaterialIds}
-              onChange={(v) => setSelectedMaterialIds(Array.isArray(v) ? v : [v])}
-              placeholder="Search materials..."
+              onChange={(val) => {
+                if (Array.isArray(val)) {
+                  if (val.length <= 3) setSelectedMaterialIds(val as number[]);
+                } else if (val) {
+                  const num = Number(val);
+                  if (selectedMaterialIds.length < 3 && !selectedMaterialIds.includes(num)) {
+                    setSelectedMaterialIds([...selectedMaterialIds, num]);
+                  }
+                } else {
+                  setSelectedMaterialIds([]);
+                }
+              }}
               maxSelections={3}
+              placeholder="Select materials..."
             />
           )}
 
           {/* ── Model/Collection (Luxury brands like Chanel, LV, etc.) ── */}
-          {availableFields.includes('model') && modelOptions.length > 0 && (
+          {(availableFields.includes('model') || selectedModelId || selectedCollectionId || modelOptions.length > 0) && (
             <div>
               <label style={labelStyle}>Model / Collection</label>
-              <select
-                value={selectedCollectionId}
-                onChange={(e) => {
-                  const cid = Number(e.target.value);
-                  setSelectedCollectionId(cid);
-                  setSelectedModelId(0);
-                }}
-                style={{ ...glassSelect, width: '100%', marginBottom: spacing.sm }}
-              >
-                <option value={0}>— Select Collection —</option>
-                {modelOptions.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-              {selectedCollectionId > 0 && (() => {
-                const collection = modelOptions.find((m) => m.id === selectedCollectionId);
-                if (collection?.children && collection.children.length > 0) {
-                  return (
-                    <select
-                      value={selectedModelId}
-                      onChange={(e) => setSelectedModelId(Number(e.target.value))}
-                      style={{ ...glassSelect, width: '100%' }}
-                    >
-                      <option value={0}>— Select Model —</option>
-                      {collection.children.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  );
-                }
-                return null;
-              })()}
-              {modelsLoading && (
-                <div style={{ color: colors.textMuted, fontSize: font.size.xs, marginTop: 4 }}>Loading models...</div>
-              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <select
+                  style={{ ...glassSelect, width: '100%' }}
+                  value={selectedCollectionId || ''}
+                  onChange={(e) => {
+                    setSelectedCollectionId(e.target.value ? Number(e.target.value) : null);
+                    setSelectedModelId(null);
+                  }}
+                >
+                  <option value="">-- Select Collection --</option>
+                  {modelOptions.map((c) => (
+                    <option key={`col-${c.id}`} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  style={{ ...glassSelect, width: '100%' }}
+                  value={selectedModelId || ''}
+                  onChange={(e) => setSelectedModelId(e.target.value ? Number(e.target.value) : null)}
+                  disabled={!selectedCollectionId}
+                >
+                  <option value="">-- Select Model --</option>
+                  {modelOptions
+                    .find((c) => c.id === selectedCollectionId)
+                    ?.children?.map((m) => (
+                      <option key={`mod-${m.id}`} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
             </div>
           )}
 
           {/* ── ISBN (Books category) ── */}
-          {availableFields.includes('isbn') && (
+          {(availableFields.includes('isbn') || isbn) && (
             <div>
               <label style={labelStyle}>ISBN</label>
-              <input type="text" value={isbn} onChange={(e) => setIsbn(e.target.value)}
-                placeholder="Enter ISBN number..."
-                style={{ ...glassInput, width: '100%' }} />
+              <input
+                type="text"
+                value={isbn}
+                onChange={(e) => setIsbn(e.target.value)}
+                style={{ ...glassInput, width: '100%' }}
+                placeholder="e.g. 9780123456789"
+              />
             </div>
           )}
 
-          {/* ── Measurements (Sized clothing) ── */}
-          {availableFields.includes('measurements') && (
-            <div>
-              <label style={labelStyle}>Measurements (cm)</label>
-              <div style={{ display: 'flex', gap: spacing.sm }}>
-                <input type="number" step="0.1" value={measurementLength} onChange={(e) => setMeasurementLength(e.target.value)}
-                  placeholder="Length" style={{ ...glassInput, flex: 1 }} />
-                <input type="number" step="0.1" value={measurementWidth} onChange={(e) => setMeasurementWidth(e.target.value)}
-                  placeholder="Width" style={{ ...glassInput, flex: 1 }} />
+          {/* ── Measurements ── */}
+          {((availableFields.includes('measurement_length') && availableFields.includes('measurement_width')) ||
+            measurementLength ||
+            measurementWidth) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={labelStyle}>Length (cm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={measurementLength}
+                    onChange={(e) => setMeasurementLength(e.target.value)}
+                    style={{ ...glassInput, width: '100%' }}
+                    placeholder="Length in cm"
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Width (cm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={measurementWidth}
+                    onChange={(e) => setMeasurementWidth(e.target.value)}
+                    style={{ ...glassInput, width: '100%' }}
+                    placeholder="Width in cm"
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* ── Dynamic niche attributes (video_game_platform, etc.) ── */}
           {nicheAttributes.map((attr) => (

@@ -200,8 +200,8 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:getSizes', catalogId),
   openEditDebugWindow: (itemId: number) =>
     ipcRenderer.invoke('wardrobe:openEditDebugWindow', itemId),
-  getMaterials: (catalogId: number, itemId?: number) =>
-    ipcRenderer.invoke('wardrobe:getMaterials', catalogId, itemId),
+  getMaterials: (catalogId: number, itemId?: number, brandId?: number, statusId?: number) =>
+    ipcRenderer.invoke('wardrobe:getMaterials', catalogId, itemId, brandId, statusId),
   getPackageSizes: (catalogId: number, itemId?: number) =>
     ipcRenderer.invoke('wardrobe:getPackageSizes', catalogId, itemId),
   getConditions: (catalogId: number) =>

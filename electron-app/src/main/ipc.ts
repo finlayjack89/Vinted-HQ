@@ -259,9 +259,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('wardrobe:getSizes', (_event, catalogId: number) =>
     bridge.fetchOntologySizes(catalogId)
   );
-  ipcMain.handle('wardrobe:getMaterials', async (_event, catalogId: number, itemId?: number) => {
+  ipcMain.handle('wardrobe:getMaterials', async (_event, catalogId: number, itemId?: number, brandId?: number, statusId?: number) => {
     // Reverted to Python bridge for materials, as browser logic is moving to Chrome Ext
-    return bridge.fetchOntologyMaterials(catalogId, itemId);
+    return bridge.fetchOntologyMaterials(catalogId, itemId, brandId, statusId);
   });
   ipcMain.handle('wardrobe:getPackageSizes', (_event, catalogId: number, itemId?: number) =>
     bridge.fetchOntologyPackageSizes(catalogId, itemId)
@@ -280,44 +280,4 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('wardrobe:getItemDetail', (_event, itemId: number) =>
     bridge.fetchItemDetail(itemId)
   );
-
-  // ─── Deep Sync: fetch full item details from Vinted API and save to local DB ──
-  ipcMain.handle('wardrobe:deepSync', async (_event, vintedItemId: number) => {
-    try {
-      // Step 1: Fetch full item detail from Vinted via the Python bridge
-      const result = await bridge.fetchItemDetail(vintedItemId);
-      if (!result.ok) {
-        return result; // Pass through the error
-      }
-
-      const itemData = (result as any).data?.item;
-      if (!itemData) {
-        return { ok: false, code: 'NO_ITEM_DATA', message: 'API returned no item data.' };
-      }
-
-      // Ensure the item has an id
-      if (!itemData.id) {
-        itemData.id = vintedItemId;
-      }
-
-      // Step 2: POST to our local /ingest/item endpoint to save to DB
-      const saveRes = await fetch('http://127.0.0.1:37421/ingest/item', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: itemData }),
-      });
-      const saveJson = await saveRes.json();
-
-      if (saveJson.ok) {
-        logger.info('wardrobe:deepSync', { vintedItemId, message: saveJson.message });
-      } else {
-        logger.warn('wardrobe:deepSync:save-failed', { vintedItemId, error: saveJson.message });
-      }
-
-      return saveJson;
-    } catch (err: any) {
-      logger.error('wardrobe:deepSync:error', { vintedItemId, error: err?.message });
-      return { ok: false, code: 'DEEP_SYNC_ERROR', message: err?.message || 'Unknown error' };
-    }
-  });
 }

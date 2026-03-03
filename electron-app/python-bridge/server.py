@@ -415,6 +415,8 @@ def ontology_sizes(
 def ontology_materials(
     catalog_id: int = Query(..., description="Category/catalog ID"),
     item_id: Optional[int] = Query(None, description="Item ID for context-specific materials"),
+    brand_id: Optional[int] = Query(None, description="Brand ID for brand-specific materials"),
+    status_id: Optional[int] = Query(None, description="Status ID for condition-specific materials"),
     proxy: Optional[str] = Query(None),
     transport_mode: Optional[str] = Query(None),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
@@ -422,7 +424,21 @@ def ontology_materials(
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
     x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
-    """Fetch materials for a category."""
+    """Fetch materials for a category. Uses local cache from extension if available."""
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if db_path:
+        try:
+            with sqlite3.connect(db_path, timeout=5.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT extra FROM vinted_ontology WHERE entity_type = 'category_attributes' AND entity_id = ?", (catalog_id,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    cached_data = json.loads(row[0])
+                    return {"ok": True, "data": cached_data}
+        except Exception as e:
+            print(f"Error reading materials from cache: {e}")
+
+    # Fallback to direct fetch
     if not x_vinted_cookie:
         return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
     try:
@@ -430,6 +446,8 @@ def ontology_materials(
             cookie=x_vinted_cookie,
             catalog_id=catalog_id,
             item_id=item_id,
+            brand_id=brand_id,
+            status_id=status_id,
             csrf_token=x_csrf_token,
             anon_id=x_anon_id,
             proxy=proxy,
@@ -945,53 +963,129 @@ async def ingest_single_item(request: Request):
 
             # Price
             price = 0.0
-            currency = "GBP"
+            currency = item.get("currency", "GBP")
             price_data = item.get("price")
             if isinstance(price_data, dict):
                 price = float(price_data.get("amount", 0))
-                currency = price_data.get("currency_code", "GBP")
+                currency = price_data.get("currency_code", currency)
             elif isinstance(item.get("price_numeric"), (str, int, float)):
                 try:
                     price = float(item.get("price_numeric"))
                 except (ValueError, TypeError):
                     pass
+            elif isinstance(price_data, (str, int, float)):
+                try:
+                    price = float(price_data)
+                except (ValueError, TypeError):
+                    pass
 
             # Photos
             photos = item.get("photos", [])
-            photo_urls = [p.get("url") for p in photos if isinstance(p, dict) and "url" in p]
+            photo_urls = []
+            for p in photos:
+                if isinstance(p, dict):
+                    url = p.get("full_size_url") or p.get("url") or p.get("image_url")
+                    if url: photo_urls.append(url)
+                elif isinstance(p, str):
+                    photo_urls.append(p)
             photo_urls_json = json.dumps(photo_urls) if photo_urls else "[]"
 
             # Brand
-            brand_data = item.get("brand_dto") or item.get("brand") or {}
-            brand_id = brand_data.get("id") if isinstance(brand_data, dict) else None
-            brand_name = brand_data.get("title") or brand_data.get("name") if isinstance(brand_data, dict) else None
-            if brand_name is None and isinstance(item.get("brand_title"), str):
-                brand_name = item.get("brand_title")
+            brand_id = item.get("brandId") or item.get("brand_id")
+            brand_name = None
+            if isinstance(item.get("brandTitle"), str): brand_name = item.get("brandTitle")
+            elif isinstance(item.get("brand_title"), str): brand_name = item.get("brand_title")
+            elif isinstance(item.get("brand"), str): brand_name = item.get("brand")
+            
+            brand_data = item.get("brand_dto") or (item.get("brand") if isinstance(item.get("brand"), dict) else {})
+            if isinstance(brand_data, dict) and brand_data:
+                brand_id = brand_id or brand_data.get("id")
+                brand_name = brand_name or brand_data.get("title") or brand_data.get("name")
 
             # Size
-            size_data = item.get("size") or {}
-            size_id = size_data.get("id") if isinstance(size_data, dict) else item.get("size_id")
-            size_label = size_data.get("title") or size_data.get("name") if isinstance(size_data, dict) else item.get("size_title")
+            size_id = item.get("sizeId") or item.get("size_id")
+            size_label = None
+            if isinstance(item.get("sizeTitle"), str): size_label = item.get("sizeTitle")
+            elif isinstance(item.get("size_title"), str): size_label = item.get("size_title")
+            elif isinstance(item.get("size"), str): size_label = item.get("size")
+            
+            size_data = item.get("size")
+            if isinstance(size_data, dict) and size_data:
+                size_id = size_id or size_data.get("id")
+                size_label = size_label or size_data.get("title") or size_data.get("name")
 
             # Category
-            category_id = item.get("catalog_id") or item.get("category_id")
+            category_id = item.get("catalogId") or item.get("catalog_id") or item.get("categoryId") or item.get("category_id")
 
             # Condition
-            condition = item.get("status") or item.get("condition")
-            if isinstance(condition, dict):
-                condition = condition.get("title") or condition.get("name")
+            status_id = item.get("statusId") or item.get("status_id")
+            condition = None
+            if isinstance(item.get("status"), str): condition = item.get("status")
+            elif isinstance(item.get("condition"), str): condition = item.get("condition")
+            else:
+                cond_data = item.get("status") or item.get("condition")
+                if isinstance(cond_data, dict) and cond_data:
+                    status_id = status_id or cond_data.get("id")
+                    condition = cond_data.get("title") or cond_data.get("name")
 
             # Colors
-            colors = item.get("color1") or item.get("colors") or item.get("color_ids")
+            colors = item.get("colorIds") or item.get("color_ids") or item.get("color1") or item.get("colors")
+            color_ids_json = None
             if isinstance(colors, list):
                 color_ids_json = json.dumps([c.get("id") if isinstance(c, dict) else c for c in colors])
             elif isinstance(colors, dict):
                 color_ids_json = json.dumps([colors.get("id")])
-            else:
-                color_ids_json = None
 
             # Package size
-            package_size_id = item.get("package_size_id")
+            package_size_id = item.get("packageSizeId") or item.get("package_size_id")
+
+            # ISBN
+            isbn = item.get("isbn") or item.get("isbn13")
+            
+            # Measurements
+            meas_width = item.get("measurementWidth") or item.get("measurement_width")
+            meas_length = item.get("measurementLength") or item.get("measurement_length")
+
+            # Materials (Extracted from itemAttributes array)
+            material_ids = []
+            attrs = item.get("itemAttributes") or item.get("item_attributes") or []
+            if isinstance(attrs, list):
+                for attr in attrs:
+                    if isinstance(attr, dict) and attr.get("code") == "material" and isinstance(attr.get("ids"), list):
+                        material_ids = attr.get("ids")
+                        break
+            # Note: We do not yet have an item_attributes column in this update block, 
+            # we should update the item_attributes json directly, or save it to a local var. 
+            item_attributes_json = json.dumps(attrs) if attrs else None
+
+            # Luxury Models (Chanel / Louis Vuitton)
+            model_obj = item.get("model")
+            model_has_children = item.get("modelHasChildren", False)
+            collection_id = None
+            model_id = None
+            if isinstance(model_obj, dict):
+                model_id = model_obj.get("id")
+            elif isinstance(item.get("model_id"), int):
+                model_id = item.get("model_id")
+            elif isinstance(model_obj, int):
+                # Using the ID directly from the payload. 
+                # If it has children, the selected ID is a collection ID.
+                # If it doesn't, we assume it's a specific model ID.
+                if model_has_children:
+                    collection_id = model_obj
+                else:
+                    model_id = model_obj
+
+            # ── Extracted Attributes Schema Cache ──
+            attr_schema = item.get("_hq_attributes_schema")
+            if attr_schema and isinstance(attr_schema, dict) and category_id:
+                cursor.execute("""
+                    INSERT INTO vinted_ontology (entity_type, entity_id, name, extra, fetched_at)
+                    VALUES ('category_attributes', ?, 'Schema', ?, unixepoch())
+                    ON CONFLICT(entity_type, entity_id) DO UPDATE SET 
+                        extra = excluded.extra,
+                        fetched_at = unixepoch()
+                """, (category_id, json.dumps(attr_schema)))
 
             # Update the master record with all deep fields
             cursor.execute('''
@@ -1009,6 +1103,12 @@ async def ingest_single_item(request: Request):
                     condition = COALESCE(?, condition),
                     color_ids = COALESCE(?, color_ids),
                     package_size_id = COALESCE(?, package_size_id),
+                    isbn = COALESCE(?, isbn),
+                    measurement_width = COALESCE(?, measurement_width),
+                    measurement_length = COALESCE(?, measurement_length),
+                    item_attributes = COALESCE(?, item_attributes),
+                    collection_id = COALESCE(?, collection_id),
+                    model_id = COALESCE(?, model_id),
                     updated_at = unixepoch()
                 WHERE id = ?
             ''', (
@@ -1019,6 +1119,12 @@ async def ingest_single_item(request: Request):
                 condition,
                 color_ids_json,
                 package_size_id,
+                isbn,
+                meas_width,
+                meas_length,
+                item_attributes_json,
+                collection_id,
+                model_id,
                 local_id
             ))
 
