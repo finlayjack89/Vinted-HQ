@@ -393,7 +393,21 @@ def ontology_sizes(
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
     x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
-    """Fetch sizes for a category."""
+    """Fetch sizes for a category. Uses local cache from extension if available."""
+    # Check pre-hydrated cache first (populated by extension's Deep Sync)
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if db_path:
+        try:
+            with sqlite3.connect(db_path, timeout=5.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT extra FROM vinted_ontology WHERE entity_type = 'category_sizes' AND entity_id = ?", (catalog_id,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    cached_data = json.loads(row[0])
+                    return {"ok": True, "data": cached_data}
+        except Exception as e:
+            print(f"Error reading sizes from cache: {e}")
+
     if not x_vinted_cookie:
         return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
     try:
@@ -925,6 +939,81 @@ def ingest_wardrobe(body: dict = Body(...)):
     except Exception as e:
         return _error_response("INGEST_ERROR", str(e), 500)
 
+# ─── Pre-Hydrated Ontology Ingest (Phase D.1b) ─────────────────────────────
+
+
+@app.post("/ingest/materials")
+def ingest_materials(body: dict = Body(...)):
+    """
+    Receive pre-hydrated attributes (materials schema) from the Chrome Extension.
+    Upserts into vinted_ontology as entity_type='category_attributes'.
+    """
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if not db_path:
+        return _error_response("NO_DB", "VINTED_DB_PATH env var not set", 500)
+
+    catalog_id = body.get("catalog_id")
+    attributes = body.get("attributes")
+
+    if not attributes or not isinstance(attributes, list):
+        return _error_response("INVALID_BODY", "attributes must be a non-empty array", 400)
+
+    if not catalog_id:
+        return _error_response("INVALID_BODY", "catalog_id is required", 400)
+
+    try:
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO vinted_ontology (entity_type, entity_id, name, extra, fetched_at)
+                VALUES ('category_attributes', ?, 'Schema', ?, unixepoch())
+                ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                    extra = excluded.extra,
+                    fetched_at = unixepoch()
+            """, (catalog_id, json.dumps({"attributes": attributes})))
+            conn.commit()
+
+        return {"ok": True, "message": f"Ingested {len(attributes)} attributes for catalog {catalog_id}."}
+    except Exception as e:
+        return _error_response("INGEST_ERROR", str(e), 500)
+
+
+@app.post("/ingest/sizes")
+def ingest_sizes(body: dict = Body(...)):
+    """
+    Receive pre-hydrated sizes from the Chrome Extension.
+    Upserts into vinted_ontology as entity_type='category_sizes'.
+    """
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if not db_path:
+        return _error_response("NO_DB", "VINTED_DB_PATH env var not set", 500)
+
+    catalog_id = body.get("catalog_id")
+    sizes = body.get("sizes")
+
+    if not sizes or not isinstance(sizes, list):
+        return _error_response("INVALID_BODY", "sizes must be a non-empty array", 400)
+
+    if not catalog_id:
+        return _error_response("INVALID_BODY", "catalog_id is required", 400)
+
+    try:
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO vinted_ontology (entity_type, entity_id, name, extra, fetched_at)
+                VALUES ('category_sizes', ?, 'Sizes', ?, unixepoch())
+                ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                    extra = excluded.extra,
+                    fetched_at = unixepoch()
+            """, (catalog_id, json.dumps({"size_groups": [{"id": catalog_id, "caption": "Sizes", "sizes": sizes}]})))
+            conn.commit()
+
+        return {"ok": True, "message": f"Ingested {len(sizes)} sizes for catalog {catalog_id}."}
+    except Exception as e:
+        return _error_response("INGEST_ERROR", str(e), 500)
+
+
 # ─── Deep Sync: single-item ingest from extension ──────────────────────────
 @app.post("/ingest/item")
 async def ingest_single_item(request: Request):
@@ -1153,7 +1242,8 @@ def get_local_item(item_id: int):
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT m.title, m.description, m.price, m.currency, m.condition
+                SELECT m.title, m.description, m.price, m.currency, m.condition,
+                       m.status_id, m.size_id, m.package_size_id
                 FROM inventory_master m
                 JOIN inventory_sync s ON m.id = s.local_id
                 WHERE s.vinted_item_id = ?

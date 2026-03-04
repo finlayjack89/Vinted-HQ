@@ -14,13 +14,55 @@
 console.log('[Vinted HQ] Content script injected on:', window.location.href);
 console.log('[Vinted HQ] pathname:', window.location.pathname, 'search:', window.location.search);
 
-// ── Listen for intercepted attributes from the Main World fetch interceptor ──
+// ── Listen for intercepted ontology data from the Main World fetch interceptor ──
 let capturedAttributes: any = null;
+let capturedSizes: any = null;
 window.addEventListener('message', (event) => {
     if (event.source !== window) return;
+
     if (event.data?.type === 'VINTED_HQ_ATTRIBUTES_CAPTURED') {
         capturedAttributes = event.data.payload;
-        console.log('[Vinted HQ] 🎯 Received intercepted attributes from Main World:', capturedAttributes);
+        const catalogId = event.data.catalogId;
+        console.log(`[Vinted HQ] 🎯 Received intercepted attributes (catalog ${catalogId}):`, capturedAttributes);
+
+        // POST to backend cache immediately
+        if (capturedAttributes?.attributes && catalogId) {
+            bridgeFetch('/ingest/materials', 'POST', {
+                catalog_id: Number(catalogId),
+                attributes: capturedAttributes.attributes
+            }).then(r => {
+                if (r.ok) console.log('[Vinted HQ] ✅ Attributes cached in backend.');
+                else console.warn('[Vinted HQ] ⚠️ Attributes cache response:', r.error);
+            }).catch(err => console.error('[Vinted HQ] Failed to cache attributes:', err));
+        }
+    }
+
+    if (event.data?.type === 'VINTED_HQ_SIZES_CAPTURED') {
+        capturedSizes = event.data.payload;
+        const catalogId = event.data.catalogId;
+        console.log(`[Vinted HQ] 🎯 Received intercepted sizes (catalog ${catalogId}):`, capturedSizes);
+
+        // POST to backend cache immediately
+        if (capturedSizes?.size_groups && catalogId) {
+            // Flatten size_groups into a flat sizes array for the backend
+            const allSizes: { id: number; title: string }[] = [];
+            for (const group of capturedSizes.size_groups) {
+                if (Array.isArray(group.sizes)) {
+                    for (const s of group.sizes) {
+                        allSizes.push({ id: s.id, title: s.title });
+                    }
+                }
+            }
+            if (allSizes.length > 0) {
+                bridgeFetch('/ingest/sizes', 'POST', {
+                    catalog_id: Number(catalogId),
+                    sizes: allSizes
+                }).then(r => {
+                    if (r.ok) console.log('[Vinted HQ] ✅ Sizes cached in backend.');
+                    else console.warn('[Vinted HQ] ⚠️ Sizes cache response:', r.error);
+                }).catch(err => console.error('[Vinted HQ] Failed to cache sizes:', err));
+            }
+        }
     }
 });
 
@@ -103,6 +145,96 @@ function setReactInputValue(el: HTMLInputElement | HTMLTextAreaElement, value: s
     }
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/**
+ * Simulate a full hardware click cycle on an element.
+ * Standard `.click()` fails on React Headless UI / Radix components because
+ * they guard on pointer events preceding mouse events for state hydration.
+ */
+function simulateReactClick(element: Element | null): boolean {
+    if (!element) return false;
+
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+
+    const commonInit: MouseEventInit = {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+        buttons: 1,
+        clientX: x,
+        clientY: y,
+    };
+
+    // Pointer events must precede mouse events for React 18+ and Radix UI
+    element.dispatchEvent(new PointerEvent('pointerdown', { ...commonInit, pointerId: 1, pointerType: 'mouse' }));
+    element.dispatchEvent(new MouseEvent('mousedown', commonInit));
+    element.dispatchEvent(new PointerEvent('pointerup', { ...commonInit, pointerId: 1, pointerType: 'mouse' }));
+    element.dispatchEvent(new MouseEvent('mouseup', commonInit));
+    element.dispatchEvent(new MouseEvent('click', commonInit));
+
+    return true;
+}
+
+// ─── Dropdown Puppeteers (Phase D.1) ────────────────────────────────────────
+
+/**
+ * Open a React Headless UI dropdown trigger, wait for portal render,
+ * then click the option matching the given data-testid.
+ */
+async function selectDropdownOption(
+    triggerSelector: string,
+    optionTestId: string,
+    label: string,
+): Promise<boolean> {
+    const trigger = document.querySelector(triggerSelector);
+    if (!trigger) {
+        console.warn(`[Vinted HQ] ⚠️ ${label} trigger not found: ${triggerSelector}`);
+        return false;
+    }
+
+    simulateReactClick(trigger);
+    // Wait for React to render the portal/menu
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const option = document.querySelector(`[data-testid="${optionTestId}"]`);
+    if (option) {
+        simulateReactClick(option);
+        console.log(`[Vinted HQ] ✅ Selected ${label}: ${optionTestId}`);
+        return true;
+    } else {
+        console.warn(`[Vinted HQ] ⚠️ ${label} option not found: ${optionTestId}`);
+        // Close the open menu by clicking away
+        document.body.click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return false;
+    }
+}
+
+async function selectCondition(statusId: number | string): Promise<boolean> {
+    return selectDropdownOption(
+        '[data-testid="condition-select-dropdown-input"], input#condition',
+        `condition-${statusId}`,
+        'Condition',
+    );
+}
+
+async function selectSize(sizeId: number | string): Promise<boolean> {
+    return selectDropdownOption(
+        '[data-testid="size-select-dropdown-input"], input#size, [data-testid*="size"][role="combobox"], input[name="size_id"]',
+        `size-${sizeId}`,
+        'Size',
+    );
+}
+
+async function selectPackageSize(packageSizeId: number | string): Promise<boolean> {
+    return selectDropdownOption(
+        '[data-testid="package_size-select-dropdown-input"], input#package_size, [data-testid*="package-size"][role="combobox"], input[name="package_size_id"]',
+        `package_size-${packageSizeId}`,
+        'Package Size',
+    );
 }
 
 /**
@@ -267,6 +399,29 @@ async function runAssistedEdit() {
         }
     } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to fill price:', e); }
 
+    // ── Dropdown Puppeteering (Phase D.1) ──
+    // Must be sequential — React Headless UI modals steal focus from each other
+    try {
+        if (data.status_id) {
+            const ok = await selectCondition(data.status_id);
+            if (ok) filled++;
+        }
+    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to select condition:', e); }
+
+    try {
+        if (data.size_id) {
+            const ok = await selectSize(data.size_id);
+            if (ok) filled++;
+        }
+    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to select size:', e); }
+
+    try {
+        if (data.package_size_id) {
+            const ok = await selectPackageSize(data.package_size_id);
+            if (ok) filled++;
+        }
+    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to select package size:', e); }
+
     if (filled > 0) {
         showBanner(`Autofilled ${filled} field(s) from local DB.`, 'success');
     } else {
@@ -305,6 +460,8 @@ function findItemInData(data: any, itemId: string): any {
     }
     return null;
 }
+
+
 
 async function runDeepSync() {
     const itemId = extractItemIdFromPathname();
@@ -363,6 +520,25 @@ async function runDeepSync() {
                     if (String(parsed.id) === itemId) {
                         data = parsed;
                         console.log(`[Vinted HQ] Successfully extracted itemEditModel JSON`, Object.keys(data));
+
+                        // ── Phase D.1b: Proactive Ontology Fetch ──
+                        // The sizes/materials schema is NOT pre-hydrated in SSR.
+                        // Instead, we ask our Main World fetch interceptor to call
+                        // the Vinted API directly — it uses Datadome's own wrapped
+                        // fetch, so our calls have perfect WAF telemetry.
+                        try {
+                            const catalogId = parsed.catalogId || parsed.catalog_id;
+                            if (catalogId) {
+                                console.log(`[Vinted HQ] 📡 Requesting proactive ontology fetch for catalog ${catalogId}...`);
+                                window.postMessage({
+                                    type: 'VINTED_HQ_FETCH_ONTOLOGY',
+                                    catalogId,
+                                }, '*');
+                            }
+                        } catch (ontologyErr) {
+                            console.warn('[Vinted HQ] ⚠️ Ontology fetch trigger failed (non-fatal):', ontologyErr);
+                        }
+
                         break;
                     }
                 } catch (e) {
@@ -400,16 +576,14 @@ async function runDeepSync() {
     // ── Use intercepted attributes from the Main World fetch interceptor ──
     // The fetch_interceptor.js (Main World, document_start) wraps window.fetch
     // and captures Vinted's OWN attributes response, relaying via postMessage.
-    // We wait up to 8 seconds for Vinted's React to make the call naturally.
     if (!capturedAttributes) {
         console.log('[Vinted HQ] ⏳ Waiting for intercepted attributes from Vinted React...');
-        const captured = await new Promise<any>((resolve) => {
-            // Check if already captured
+
+        const waitForCapture = (timeoutMs: number) => new Promise<any>((resolve) => {
             if (capturedAttributes) {
                 resolve(capturedAttributes);
                 return;
             }
-            // Set up a listener for future capture
             const handler = (event: MessageEvent) => {
                 if (event.source !== window) return;
                 if (event.data?.type === 'VINTED_HQ_ATTRIBUTES_CAPTURED') {
@@ -418,12 +592,48 @@ async function runDeepSync() {
                 }
             };
             window.addEventListener('message', handler);
-            // Timeout after 8 seconds
             setTimeout(() => {
                 window.removeEventListener('message', handler);
                 resolve(null);
-            }, 8000);
+            }, timeoutMs);
         });
+
+        // Initial wait (2 seconds) for organic fetches on page load (e.g., Handbags)
+        let captured = await waitForCapture(2000);
+
+        // Phase D.1b: UI Puppeteering Fallback
+        // If Vinted didn't fetch attributes on load (e.g., Sandals), we force it
+        // by simulating a click on the Material or Size dropdown.
+        if (!captured) {
+            console.log('[Vinted HQ] 🤖 Initial wait timeout. Attempting UI Puppeteering to trigger organic fetch...');
+
+            const triggers = document.querySelectorAll(
+                '[data-testid="material-select-dropdown-input"], [data-testid="size-select-dropdown-input"], [data-testid*="material"][role="combobox"], [data-testid*="size"][role="combobox"], input#material, input#size'
+            );
+
+            let clicked = false;
+            for (const trigger of Array.from(triggers)) {
+                const testId = trigger.getAttribute('data-testid') || trigger.id || 'unknown';
+                console.log(`[Vinted HQ] 🎯 Puppeteering click on dropdown: ${testId}`);
+                simulateReactClick(trigger);
+                clicked = true;
+
+                // Wait for React to process the click and initiate the fetch
+                await new Promise(r => setTimeout(r, 150));
+
+                // Click away to close the dropdown immediately
+                document.body.click();
+                break; // Clicking one is sufficient to trigger the category schema fetch
+            }
+
+            if (clicked) {
+                console.log('[Vinted HQ] ⏳ Waiting for organic fetch response...');
+                captured = await waitForCapture(6000);
+            } else {
+                console.warn('[Vinted HQ] ⚠️ Could not find Material or Size dropdowns to puppeteer.');
+            }
+        }
+
         if (captured) capturedAttributes = captured;
     }
 
