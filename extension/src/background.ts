@@ -159,7 +159,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
                         'x-anon-id': anonId,
                     },
                 })
-                    .then((res: Response) => res.json())
+                    .then((res: Response) => {
+                        // Vinted returns 404 for categories with no sizes (e.g. Handbags).
+                        // The 404 body is HTML, not JSON, so calling .json() would throw.
+                        if (res.status === 404) return { size_groups: [], code: 0 };
+                        if (!res.ok) return { error: `HTTP ${res.status}` };
+                        return res.json();
+                    })
                     .catch((err: Error) => ({ error: String(err) }));
             },
             args: [catalogId, cachedCsrfToken || '', cachedAnonId || ''],

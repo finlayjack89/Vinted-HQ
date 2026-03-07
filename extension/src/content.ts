@@ -611,14 +611,18 @@ async function runDeepSync() {
                 console.log(`[Vinted HQ] 🎯 Main World sizes fetch: ${allSizes.length} sizes from ${groups.length} groups`);
                 data._hq_sizes_schema = allSizes;
 
-                // Forward to Python bridge cache
-                bridgeFetch('/ingest/sizes', 'POST', {
-                    catalog_id: Number(catalogId),
-                    sizes: allSizes
-                }).then(r => {
-                    if (r.ok) console.log('[Vinted HQ] ✅ Sizes schema cached in backend.');
-                    else console.warn('[Vinted HQ] ⚠️ Sizes cache response:', r.error);
-                }).catch(err => console.error('[Vinted HQ] Failed to cache sizes:', err));
+                // Forward to Python bridge cache (skip if this category has no sizes)
+                if (allSizes.length > 0) {
+                    bridgeFetch('/ingest/sizes', 'POST', {
+                        catalog_id: Number(catalogId),
+                        sizes: allSizes
+                    }).then(r => {
+                        if (r.ok) console.log('[Vinted HQ] ✅ Sizes schema cached in backend.');
+                        else console.warn('[Vinted HQ] ⚠️ Sizes cache response:', r.error);
+                    }).catch(err => console.error('[Vinted HQ] Failed to cache sizes:', err));
+                } else {
+                    console.log('[Vinted HQ] ℹ️ Category has no sizes — skipping cache.');
+                }
             } else {
                 console.warn('[Vinted HQ] ⚠️ Main World sizes fetch failed:', sizesResult?.error);
             }
