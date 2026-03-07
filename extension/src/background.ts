@@ -136,6 +136,52 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
         return true;
     }
 
+    if (message.type === 'FETCH_SIZES_MAIN_WORLD') {
+        const tabId = sender.tab?.id;
+        if (!tabId) {
+            sendResponse({ ok: false, error: 'No active tab ID' });
+            return true;
+        }
+
+        const { catalogId } = message;
+        console.log(`[Vinted HQ BG] Executing Main World sizes fetch on tab ${tabId} for category ${catalogId}...`);
+
+        chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: (catId: number, csrfToken: string, anonId: string) => {
+                return fetch(`/api/v2/item_upload/size_groups?catalog_ids=${catId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*',
+                        'locale': 'en-GB',
+                        'x-csrf-token': csrfToken,
+                        'x-anon-id': anonId,
+                    },
+                })
+                    .then((res: Response) => res.json())
+                    .catch((err: Error) => ({ error: String(err) }));
+            },
+            args: [catalogId, cachedCsrfToken || '', cachedAnonId || ''],
+        })
+            .then((injectionResults: any[]) => {
+                const result = injectionResults?.[0]?.result;
+                if (result && !result.error) {
+                    console.log('[Vinted HQ BG] ✅ Main World sizes fetch succeeded:', result);
+                    sendResponse({ ok: true, data: result });
+                } else {
+                    console.warn('[Vinted HQ BG] ⚠️ Main World sizes fetch returned error:', result);
+                    sendResponse({ ok: false, error: result?.error || 'Empty result' });
+                }
+            })
+            .catch((err: Error) => {
+                console.error('[Vinted HQ BG] Main World sizes executeScript failed:', err);
+                sendResponse({ ok: false, error: String(err) });
+            });
+
+        return true;
+    }
+
     if (message.type === 'GET_VINTED_CSRF_TOKEN') {
         if (!sender.tab?.id) {
             sendResponse({ ok: false, error: 'No active tab ID found for script injection.' });

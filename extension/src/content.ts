@@ -462,7 +462,6 @@ function findItemInData(data: any, itemId: string): any {
 }
 
 
-
 async function runDeepSync() {
     const itemId = extractItemIdFromPathname();
     if (!itemId) {
@@ -521,24 +520,6 @@ async function runDeepSync() {
                         data = parsed;
                         console.log(`[Vinted HQ] Successfully extracted itemEditModel JSON`, Object.keys(data));
 
-                        // ── Phase D.1b: Proactive Ontology Fetch ──
-                        // The sizes/materials schema is NOT pre-hydrated in SSR.
-                        // Instead, we ask our Main World fetch interceptor to call
-                        // the Vinted API directly — it uses Datadome's own wrapped
-                        // fetch, so our calls have perfect WAF telemetry.
-                        try {
-                            const catalogId = parsed.catalogId || parsed.catalog_id;
-                            if (catalogId) {
-                                console.log(`[Vinted HQ] 📡 Requesting proactive ontology fetch for catalog ${catalogId}...`);
-                                window.postMessage({
-                                    type: 'VINTED_HQ_FETCH_ONTOLOGY',
-                                    catalogId,
-                                }, '*');
-                            }
-                        } catch (ontologyErr) {
-                            console.warn('[Vinted HQ] ⚠️ Ontology fetch trigger failed (non-fatal):', ontologyErr);
-                        }
-
                         break;
                     }
                 } catch (e) {
@@ -573,75 +554,79 @@ async function runDeepSync() {
     // Ensure the id is present
     if (!data.id) data.id = parseInt(itemId, 10);
 
-    // ── Use intercepted attributes from the Main World fetch interceptor ──
-    // The fetch_interceptor.js (Main World, document_start) wraps window.fetch
-    // and captures Vinted's OWN attributes response, relaying via postMessage.
-    if (!capturedAttributes) {
-        console.log('[Vinted HQ] ⏳ Waiting for intercepted attributes from Vinted React...');
+    // ── Phase D.1d: Extension-Mediated API Fetch ────────────────────────
+    // The ontology schema (materials with labels, sizes with labels) is NOT
+    // pre-hydrated in the SSR HTML. It's only available via Vinted's API.
+    // We use the background service worker to execute fetch() in the page's
+    // MAIN WORLD context — this uses Vinted's own Datadome-patched fetch,
+    // bypassing WAF restrictions that block server-side Python calls.
 
-        const waitForCapture = (timeoutMs: number) => new Promise<any>((resolve) => {
-            if (capturedAttributes) {
-                resolve(capturedAttributes);
-                return;
-            }
-            const handler = (event: MessageEvent) => {
-                if (event.source !== window) return;
-                if (event.data?.type === 'VINTED_HQ_ATTRIBUTES_CAPTURED') {
-                    window.removeEventListener('message', handler);
-                    resolve(event.data.payload);
-                }
-            };
-            window.addEventListener('message', handler);
-            setTimeout(() => {
-                window.removeEventListener('message', handler);
-                resolve(null);
-            }, timeoutMs);
-        });
+    const catalogId = data.catalogId || data.catalog_id;
 
-        // Initial wait (2 seconds) for organic fetches on page load (e.g., Handbags)
-        let captured = await waitForCapture(2000);
+    if (catalogId) {
+        console.log(`[Vinted HQ] 🔄 Fetching ontology schema via Main World for catalog ${catalogId}...`);
 
-        // Phase D.1b: UI Puppeteering Fallback
-        // If Vinted didn't fetch attributes on load (e.g., Sandals), we force it
-        // by simulating a click on the Material or Size dropdown.
-        if (!captured) {
-            console.log('[Vinted HQ] 🤖 Initial wait timeout. Attempting UI Puppeteering to trigger organic fetch...');
+        // Fetch attributes (materials schema) via Main World
+        try {
+            const attrResult: any = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({
+                    type: 'FETCH_ATTRIBUTES_MAIN_WORLD',
+                    catalogId: Number(catalogId),
+                }, (response) => resolve(response));
+            });
 
-            const triggers = document.querySelectorAll(
-                '[data-testid="material-select-dropdown-input"], [data-testid="size-select-dropdown-input"], [data-testid*="material"][role="combobox"], [data-testid*="size"][role="combobox"], input#material, input#size'
-            );
+            if (attrResult?.ok && attrResult.data?.attributes) {
+                const attrs = attrResult.data.attributes;
+                console.log(`[Vinted HQ] 🎯 Main World attributes fetch: ${attrs.length} attribute groups`);
+                data._hq_attributes_schema = attrResult.data;
 
-            let clicked = false;
-            for (const trigger of Array.from(triggers)) {
-                const testId = trigger.getAttribute('data-testid') || trigger.id || 'unknown';
-                console.log(`[Vinted HQ] 🎯 Puppeteering click on dropdown: ${testId}`);
-                simulateReactClick(trigger);
-                clicked = true;
-
-                // Wait for React to process the click and initiate the fetch
-                await new Promise(r => setTimeout(r, 150));
-
-                // Click away to close the dropdown immediately
-                document.body.click();
-                break; // Clicking one is sufficient to trigger the category schema fetch
-            }
-
-            if (clicked) {
-                console.log('[Vinted HQ] ⏳ Waiting for organic fetch response...');
-                captured = await waitForCapture(6000);
+                // Forward full schema to Python bridge cache
+                bridgeFetch('/ingest/materials', 'POST', {
+                    catalog_id: Number(catalogId),
+                    attributes: attrs
+                }).then(r => {
+                    if (r.ok) console.log('[Vinted HQ] ✅ Attributes schema cached in backend.');
+                    else console.warn('[Vinted HQ] ⚠️ Attributes cache response:', r.error);
+                }).catch(err => console.error('[Vinted HQ] Failed to cache attributes:', err));
             } else {
-                console.warn('[Vinted HQ] ⚠️ Could not find Material or Size dropdowns to puppeteer.');
+                console.warn('[Vinted HQ] ⚠️ Main World attributes fetch failed:', attrResult?.error);
             }
+        } catch (err) {
+            console.error('[Vinted HQ] ⚠️ FETCH_ATTRIBUTES_MAIN_WORLD error:', err);
         }
 
-        if (captured) capturedAttributes = captured;
-    }
+        // Fetch sizes via Main World
+        try {
+            const sizesResult: any = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({
+                    type: 'FETCH_SIZES_MAIN_WORLD',
+                    catalogId: Number(catalogId),
+                }, (response) => resolve(response));
+            });
 
-    if (capturedAttributes && capturedAttributes.attributes && capturedAttributes.attributes.length > 0) {
-        console.log('[Vinted HQ] ✅ Using intercepted attributes:', capturedAttributes);
-        data._hq_attributes_schema = capturedAttributes;
+            if (sizesResult?.ok && sizesResult.data?.size_groups) {
+                const groups = sizesResult.data.size_groups;
+                // Flatten sizes from all groups
+                const allSizes = groups.flatMap((g: any) => g.sizes || []);
+                console.log(`[Vinted HQ] 🎯 Main World sizes fetch: ${allSizes.length} sizes from ${groups.length} groups`);
+                data._hq_sizes_schema = allSizes;
+
+                // Forward to Python bridge cache
+                bridgeFetch('/ingest/sizes', 'POST', {
+                    catalog_id: Number(catalogId),
+                    sizes: allSizes
+                }).then(r => {
+                    if (r.ok) console.log('[Vinted HQ] ✅ Sizes schema cached in backend.');
+                    else console.warn('[Vinted HQ] ⚠️ Sizes cache response:', r.error);
+                }).catch(err => console.error('[Vinted HQ] Failed to cache sizes:', err));
+            } else {
+                console.warn('[Vinted HQ] ⚠️ Main World sizes fetch failed:', sizesResult?.error);
+            }
+        } catch (err) {
+            console.error('[Vinted HQ] ⚠️ FETCH_SIZES_MAIN_WORLD error:', err);
+        }
     } else {
-        console.warn('[Vinted HQ] ⚠️ No intercepted attributes available (Vinted may not have called the endpoint on this page).');
+        console.warn('[Vinted HQ] ⚠️ No catalogId found, skipping ontology fetch.');
     }
 
     // ── 4. DOM Fallbacks for RSC References ─────────────────────────────

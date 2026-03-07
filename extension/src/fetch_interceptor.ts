@@ -6,8 +6,8 @@
  * Vinted's own API responses and relays captured JSON to our Isolated World
  * content script via window.postMessage.
  *
- * Phase D.1b: Pure passive eavesdrop architecture. We intercept organic
- * Vinted React API calls because they possess valid Datadome telemetry.
+ * Pure passive eavesdrop architecture. We intercept organic Vinted React
+ * API calls because they possess valid Datadome telemetry.
  */
 
 (function () {
