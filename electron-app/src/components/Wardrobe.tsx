@@ -1430,7 +1430,6 @@ function EditItemModal({
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'timeout'>('idle');
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const syncStartTimeRef = useRef<number>(0);
   // Bumped after successful sync to force material/size/condition useEffects to re-run
   const [syncGeneration, setSyncGeneration] = useState(0);
 
@@ -1858,36 +1857,39 @@ function EditItemModal({
               onClick={async () => {
                 if (isSyncing) return;
 
-                // Record the start time in unix seconds (matching SQLite's unixepoch())
-                syncStartTimeRef.current = Math.floor(Date.now() / 1000);
+                // 1. Capture the item's current updated_at as our baseline
+                const initialUpdatedAt = item.updated_at ?? 0;
                 setIsSyncing(true);
                 setSyncStatus('syncing');
 
-                // Open Chrome in background so it doesn't steal focus from the Electron app
+                // 2. Open Chrome in background so it doesn't steal focus
                 await window.vinted.openExternal(`https://www.vinted.co.uk/items/${item.vinted_item_id}/edit?hq_sync=true`, { background: true });
 
-                // Start polling the local SQLite database for updated_at changes
+                // 3. Start strict polling loop (1500ms intervals, 30s safety timeout)
+                let pollCount = 0;
+                const MAX_POLLS = 20; // 20 × 1500ms = 30 seconds
+
                 syncIntervalRef.current = setInterval(async () => {
                   try {
-                    // Timeout guardrail: 45 seconds
-                    const elapsed = Math.floor(Date.now() / 1000) - syncStartTimeRef.current;
-                    if (elapsed > 45) {
+                    pollCount++;
+
+                    // Safety timeout: 30 seconds
+                    if (pollCount > MAX_POLLS) {
                       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
                       syncIntervalRef.current = null;
                       setIsSyncing(false);
                       setSyncStatus('timeout');
-                      // Reset to idle after showing timeout briefly
                       setTimeout(() => setSyncStatus('idle'), 4000);
                       return;
                     }
 
-                    // Poll: read the item's updated_at from SQLite via Electron IPC
+                    // 4. Poll: read the item's updated_at from SQLite via IPC
                     const polledItem = await window.vinted.getWardrobeItem(item.id);
                     if (!polledItem) return;
 
-                    // Check if the deep sync has landed (updated_at is newer than our start time)
-                    if (polledItem.updated_at && polledItem.updated_at > syncStartTimeRef.current) {
-                      // ✅ Sync complete! Clear interval and hydrate.
+                    // 5. Compare: has updated_at changed from our baseline?
+                    if (polledItem.updated_at && polledItem.updated_at !== initialUpdatedAt) {
+                      // ✅ Sync complete — the extension has written new data
                       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
                       syncIntervalRef.current = null;
 
@@ -1895,13 +1897,10 @@ function EditItemModal({
                       await reloadItem();
 
                       // Bump syncGeneration to force material/size/model useEffects to re-run
-                      // This is the key mechanism: the useEffects depend on syncGeneration,
-                      // so bumping it triggers a re-fetch from the now-populated SQLite cache.
                       setSyncGeneration((g) => g + 1);
 
                       setSyncStatus('success');
                       setIsSyncing(false);
-                      // Reset to idle after showing success briefly
                       setTimeout(() => setSyncStatus('idle'), 3000);
                     }
                   } catch (err) {
