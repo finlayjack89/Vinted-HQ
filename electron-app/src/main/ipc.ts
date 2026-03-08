@@ -67,8 +67,11 @@ export function registerIpcHandlers(): void {
   });
 
   // System — force Chrome so the Vinted HQ extension is available
-  ipcMain.handle('openExternal', (_event, url: string) => {
-    execFile('open', ['-a', 'Google Chrome', url]);
+  ipcMain.handle('openExternal', (_event, url: string, options?: { background?: boolean }) => {
+    const args: string[] = [];
+    if (options?.background) args.push('-g');
+    args.push('-a', 'Google Chrome', url);
+    execFile('open', args);
   });
 
   // Python bridge (Phase 2)

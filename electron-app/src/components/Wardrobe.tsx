@@ -1327,8 +1327,22 @@ function EditItemModal({
   const [nicheAttributes, setNicheAttributes] = useState<NicheAttribute[]>([]);
   const [nicheValues, setNicheValues] = useState<Record<string, number | number[] | string>>({});
   const [modelOptions, setModelOptions] = useState<{ id: number; name: string; children?: { id: number; name: string }[] }[]>([]);
-  const [selectedCollectionId, setSelectedCollectionId] = useState(0);
-  const [selectedModelId, setSelectedModelId] = useState(0);
+  const [selectedCollectionId, setSelectedCollectionId] = useState(() => {
+    // Read from separate DB columns (exist at runtime via SELECT m.*, not in TS type)
+    const itemAny = item as Record<string, unknown>;
+    if (typeof itemAny.collection_id === 'number' && itemAny.collection_id) return itemAny.collection_id;
+    // Fallback to model_metadata JSON
+    const meta = item.model_metadata as Record<string, unknown> | null;
+    if (meta && typeof meta.collection_id === 'number') return meta.collection_id;
+    return 0;
+  });
+  const [selectedModelId, setSelectedModelId] = useState(() => {
+    const itemAny = item as Record<string, unknown>;
+    if (typeof itemAny.model_id === 'number' && itemAny.model_id) return itemAny.model_id;
+    const meta = item.model_metadata as Record<string, unknown> | null;
+    if (meta && typeof meta.model_id === 'number') return meta.model_id;
+    return 0;
+  });
   const [isbn, setIsbn] = useState('');
   const [measurementLength, setMeasurementLength] = useState('');
   const [measurementWidth, setMeasurementWidth] = useState('');
@@ -1353,10 +1367,21 @@ function EditItemModal({
     return [];
   });
 
-  const reloadItem = async () => {
+  const reloadItem = async (): Promise<Record<string, unknown> | null> => {
     try {
       const freshItem = await window.vinted.getWardrobeItem(item.id);
       if (freshItem) {
+        // Diagnostic: log model-related fields from the SQLite row
+        console.log('[EditModal] reloadItem model fields:', {
+          collection_id: freshItem.collection_id,
+          model_id: freshItem.model_id,
+          model_metadata: freshItem.model_metadata,
+          category_id: freshItem.category_id,
+          brand_id: freshItem.brand_id,
+          updated_at: freshItem.updated_at,
+          allKeys: Object.keys(freshItem),
+        });
+
         setTitle(freshItem.title);
         setDescription(freshItem.description ?? '');
         setPrice(String(freshItem.price));
@@ -1388,16 +1413,26 @@ function EditItemModal({
         } else if (freshPaths.length > 0) {
           setPhotoPlanItems(freshPaths.map((p: string) => ({ type: 'new', path: p })));
         }
+        return freshItem as Record<string, unknown>;
       }
     } catch (err) {
       console.error('[EditModal] Failed to reload item:', err);
     }
+    return null;
   };
   const [photoPlanOriginalExistingIds, setPhotoPlanOriginalExistingIds] = useState<number[]>([]);
   const hasUnresolvedExistingPhotoIds = photoPlanItems.some((p) => p.type === 'existing' && p.id <= 0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  // ── Deep Sync polling state (Phase E.1) ──
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'timeout'>('idle');
+  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const syncStartTimeRef = useRef<number>(0);
+  // Bumped after successful sync to force material/size/condition useEffects to re-run
+  const [syncGeneration, setSyncGeneration] = useState(0);
 
   // ── Load static ontology data & fetch item detail for pre-filling ──
   useEffect(() => {
@@ -1408,6 +1443,16 @@ function EditItemModal({
       setBrandResults([{ id: item.brand_id, name: item.brand_name }]);
     }
   }, [item.id, item.vinted_item_id]);
+
+  // ── Cleanup sync interval on unmount (prevents leaks if modal closes mid-sync) ──
+  useEffect(() => {
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   const openPhotoPicker = () => {
     fileInputRef.current?.click();
@@ -1474,7 +1519,7 @@ function EditItemModal({
       console.error('[EditModal] getMaterials failed:', err);
       setMaterialOptions([]);
     });
-  }, [selectedCategoryId, selectedBrandId, selectedStatusId, item.vinted_item_id, detailLoading]);
+  }, [selectedCategoryId, selectedBrandId, selectedStatusId, item.vinted_item_id, detailLoading, syncGeneration]);
 
   // ── Fetch category-specific options when category changes ──
   useEffect(() => {
@@ -1552,7 +1597,43 @@ function EditItemModal({
         setBrandResults(opts);
       }
     }).catch(() => undefined);
-  }, [selectedCategoryId, item.vinted_item_id, detailLoading]);
+  }, [selectedCategoryId, item.vinted_item_id, detailLoading, syncGeneration]);
+
+  // ── Auto-fetch models when brand + category are set (initial load or post-sync) ──
+  useEffect(() => {
+    console.log('[EditModal] Model useEffect fired:', { selectedBrandId, selectedCategoryId, syncGeneration, modelOptionsLength: modelOptions.length, selectedModelId, selectedCollectionId });
+    if (!selectedBrandId || !selectedCategoryId) return;
+    // Only auto-fetch if we don't already have model options loaded
+    if (modelOptions.length > 0 && syncGeneration === 0) return;
+    setModelsLoading(true);
+    console.log('[EditModal] Fetching models for category', selectedCategoryId, 'brand', selectedBrandId);
+    window.vinted.getModels(selectedCategoryId, selectedBrandId).then((res: { ok: boolean; data?: unknown }) => {
+      console.log('[EditModal] getModels response:', JSON.stringify(res).substring(0, 500));
+      if (res?.ok) {
+        const data = res.data as Record<string, unknown>;
+        const rawModels = (data.models ?? []) as Record<string, unknown>[];
+        const opts = rawModels.map((m) => ({
+          id: Number(m.id),
+          name: String(m.title || m.name || ''),
+          children: Array.isArray(m.children)
+            ? (m.children as Record<string, unknown>[]).map((c) => ({ id: Number(c.id), name: String(c.title || c.name || '') }))
+            : undefined,
+        }));
+        setModelOptions(opts);
+        // Auto-resolve collection ID from model ID if needed
+        if (selectedModelId && !selectedCollectionId) {
+          const matchedCol = opts.find((col) =>
+            col.children && col.children.some((child) => child.id === selectedModelId)
+          );
+          if (matchedCol) setSelectedCollectionId(matchedCol.id);
+        }
+      } else {
+        setModelOptions([]);
+      }
+    }).catch((err) => {
+      console.error('[EditModal] Auto-fetch models failed:', err);
+    }).finally(() => setModelsLoading(false));
+  }, [selectedBrandId, selectedCategoryId, syncGeneration]);
 
   // ── Brand search handler ──
   const handleBrandSearch = async (keyword: string) => {
@@ -1773,72 +1854,97 @@ function EditItemModal({
           {item.vinted_item_id && (
             <button
               type="button"
-              onClick={async (e) => {
-                const btn = e.currentTarget;
-                btn.textContent = 'Syncing...';
-                btn.disabled = true;
+              disabled={isSyncing}
+              onClick={async () => {
+                if (isSyncing) return;
 
-                await window.vinted.openExternal(`https://www.vinted.co.uk/items/${item.vinted_item_id}/edit?hq_sync=true`);
+                // Record the start time in unix seconds (matching SQLite's unixepoch())
+                syncStartTimeRef.current = Math.floor(Date.now() / 1000);
+                setIsSyncing(true);
+                setSyncStatus('syncing');
 
-                setTimeout(async () => {
+                // Open Chrome in background so it doesn't steal focus from the Electron app
+                await window.vinted.openExternal(`https://www.vinted.co.uk/items/${item.vinted_item_id}/edit?hq_sync=true`, { background: true });
+
+                // Start polling the local SQLite database for updated_at changes
+                syncIntervalRef.current = setInterval(async () => {
                   try {
-                    await reloadItem();
-                    btn.textContent = '✅ Synced!';
+                    // Timeout guardrail: 45 seconds
+                    const elapsed = Math.floor(Date.now() / 1000) - syncStartTimeRef.current;
+                    if (elapsed > 45) {
+                      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+                      syncIntervalRef.current = null;
+                      setIsSyncing(false);
+                      setSyncStatus('timeout');
+                      // Reset to idle after showing timeout briefly
+                      setTimeout(() => setSyncStatus('idle'), 4000);
+                      return;
+                    }
 
-                    const fetchModels = async () => {
-                      if (!selectedCategoryId || !selectedBrandId) return;
-                      setModelsLoading(true);
-                      try {
-                        const res = await window.vinted.getModels(selectedCategoryId, selectedBrandId);
-                        if (res?.ok) {
-                          const data = res.data as Record<string, unknown>;
-                          const rawModels = (data.models ?? []) as Record<string, unknown>[];
-                          const opts = rawModels.map((m) => ({
-                            id: Number(m.id),
-                            name: String(m.title || m.name || ''),
-                            children: Array.isArray(m.children)
-                              ? (m.children as Record<string, unknown>[]).map((c) => ({ id: Number(c.id), name: String(c.title || c.name || '') }))
-                              : undefined,
-                          }));
-                          setModelOptions(opts);
+                    // Poll: read the item's updated_at from SQLite via Electron IPC
+                    const polledItem = await window.vinted.getWardrobeItem(item.id);
+                    if (!polledItem) return;
 
-                          // Auto-resolve missing collection ID if a model ID exists
-                          if (selectedModelId && !selectedCollectionId) {
-                            const matchedCol = opts.find((col) =>
-                              col.children && col.children.some((child) => child.id === selectedModelId)
-                            );
-                            if (matchedCol) {
-                              setSelectedCollectionId(matchedCol.id);
-                            }
-                          }
-                        } else {
-                          setModelOptions([]);
-                        }
-                      } catch (err) {
-                        console.error('[EditModal] Failed to fetch luxury models:', err);
-                      } finally {
-                        setModelsLoading(false);
-                      }
-                    };
-                    await fetchModels();
+                    // Check if the deep sync has landed (updated_at is newer than our start time)
+                    if (polledItem.updated_at && polledItem.updated_at > syncStartTimeRef.current) {
+                      // ✅ Sync complete! Clear interval and hydrate.
+                      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+                      syncIntervalRef.current = null;
 
-                  } catch {
-                    btn.textContent = 'Sync with Extension';
-                  } finally {
-                    setTimeout(() => {
-                      btn.textContent = 'Sync with Extension';
-                      btn.disabled = false;
-                    }, 2000);
+                      // Re-hydrate all fields from the freshly updated SQLite row
+                      await reloadItem();
+
+                      // Bump syncGeneration to force material/size/model useEffects to re-run
+                      // This is the key mechanism: the useEffects depend on syncGeneration,
+                      // so bumping it triggers a re-fetch from the now-populated SQLite cache.
+                      setSyncGeneration((g) => g + 1);
+
+                      setSyncStatus('success');
+                      setIsSyncing(false);
+                      // Reset to idle after showing success briefly
+                      setTimeout(() => setSyncStatus('idle'), 3000);
+                    }
+                  } catch (err) {
+                    console.error('[EditModal] Sync poll error:', err);
                   }
-                }, 4000);
+                }, 1500);
               }}
-              style={{ ...btnSecondary, ...btnSmall, color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}
+              style={{
+                ...btnSecondary,
+                ...btnSmall,
+                color: syncStatus === 'timeout' ? '#ff6b6b' : syncStatus === 'success' ? '#10b981' : '#10b981',
+                borderColor: syncStatus === 'timeout' ? 'rgba(255, 107, 107, 0.3)' : 'rgba(16, 185, 129, 0.3)',
+                opacity: isSyncing ? 0.8 : 1,
+                cursor: isSyncing ? 'not-allowed' : 'pointer',
+              }}
             >
-              Sync with Extension
+              {syncStatus === 'syncing' ? '⟳ Syncing from Vinted…' : syncStatus === 'success' ? '✅ Synced!' : syncStatus === 'timeout' ? '⏱ Sync timed out' : 'Sync with Extension'}
             </button>
           )}
         </div>
 
+        {isSyncing && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(17, 17, 17, 0.85)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            zIndex: 100, borderRadius: 12,
+          }}>
+            <div style={{
+              width: 40, height: 40, border: '3px solid rgba(16, 185, 129, 0.2)',
+              borderTopColor: '#10b981', borderRadius: '50%',
+              animation: 'hq-spin 0.8s linear infinite',
+            }} />
+            <div style={{ marginTop: 16, fontSize: 16, fontWeight: 600, color: '#10b981' }}>
+              Syncing from Vinted…
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+              This usually takes 5–10 seconds
+            </div>
+            <style>{`@keyframes hq-spin { to { transform: rotate(360deg) } }`}</style>
+          </div>
+        )}
         {detailLoading && (
           <div style={{ background: colors.infoBg, border: `1px solid rgba(96, 165, 250, 0.25)`, borderRadius: 8, padding: spacing.sm, marginBottom: spacing.md, fontSize: font.size.sm, color: colors.info }}>
             Loading additional listing details from Vinted… You can keep editing, but Save is disabled until this finishes.
@@ -1861,8 +1967,8 @@ function EditItemModal({
             display: 'flex',
             flexDirection: 'column',
             gap: spacing.xl,
-            opacity: saving ? 0.85 : 1,
-            pointerEvents: saving ? 'none' : 'auto',
+            opacity: saving || isSyncing ? 0.85 : 1,
+            pointerEvents: saving || isSyncing ? 'none' : 'auto',
           }}
         >
 
@@ -2259,8 +2365,8 @@ function EditItemModal({
 
           {/* ── Actions ── */}
           <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.sm, paddingTop: spacing.lg, borderTop: `1px solid ${colors.separator}` }}>
-            <button type="submit" style={{ ...btnPrimary, flex: 1, opacity: saving || detailLoading ? 0.7 : 1 }} disabled={saving || detailLoading}>
-              {saving ? 'Saving…' : detailLoading ? 'Loading details…' : 'Save Changes'}
+            <button type="submit" style={{ ...btnPrimary, flex: 1, opacity: saving || detailLoading || isSyncing ? 0.7 : 1 }} disabled={saving || detailLoading || isSyncing}>
+              {saving ? 'Saving…' : isSyncing ? 'Syncing…' : detailLoading ? 'Loading details…' : 'Save Changes'}
             </button>
             <button type="button" onClick={onClose} style={btnSecondary} disabled={saving}>Cancel</button>
           </div>

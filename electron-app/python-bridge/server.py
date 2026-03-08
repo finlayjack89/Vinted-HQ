@@ -1153,7 +1153,14 @@ async def ingest_single_item(request: Request):
             collection_id = None
             model_id = None
             if isinstance(model_obj, dict):
+                # Format A: {"id": 123} (simple dict with top-level id)
                 model_id = model_obj.get("id")
+                # Format B: {"name": "...", "metadata": {"collection_id": X, "model_id": Y}}
+                # Vinted's itemEditModel uses this richer format
+                if model_id is None and isinstance(model_obj.get("metadata"), dict):
+                    meta = model_obj["metadata"]
+                    collection_id = meta.get("collection_id")
+                    model_id = meta.get("model_id")
             elif isinstance(item.get("model_id"), int):
                 model_id = item.get("model_id")
             elif isinstance(model_obj, int):
@@ -1164,6 +1171,11 @@ async def ingest_single_item(request: Request):
                     collection_id = model_obj
                 else:
                     model_id = model_obj
+
+            # Diagnostic: trace model extraction
+            print(f"[ingest/item] MODEL DIAG: model_obj={model_obj!r} (type={type(model_obj).__name__}), "
+                  f"modelHasChildren={model_has_children}, "
+                  f"→ collection_id={collection_id}, model_id={model_id}")
 
             # ── Extracted Attributes Schema Cache ──
             attr_schema = item.get("_hq_attributes_schema")
@@ -1243,7 +1255,7 @@ def get_local_item(item_id: int):
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT m.title, m.description, m.price, m.currency, m.condition,
-                       m.status_id, m.size_id, m.package_size_id
+                       m.status_id, m.size_id, m.package_size_id, m.updated_at
                 FROM inventory_master m
                 JOIN inventory_sync s ON m.id = s.local_id
                 WHERE s.vinted_item_id = ?

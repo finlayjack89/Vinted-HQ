@@ -36,6 +36,19 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     ["requestHeaders", "extraHeaders"]
 );
 
+// ── Background Tab Deactivation for Deep Sync ──
+// When the Electron app triggers a deep sync by opening a Vinted edit URL
+// with ?hq_sync=true, we immediately deactivate the tab so it loads
+// invisibly in the background. The content script still runs normally
+// on inactive tabs — DOM parsing, fetch interception, and messaging
+// are all unaffected by tab visibility state.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.url && changeInfo.url.includes('hq_sync=true')) {
+        chrome.tabs.update(tabId, { active: false });
+        console.log(`[Vinted HQ BG] 🔇 Deactivated sync tab ${tabId} — running in background`);
+    }
+});
+
 chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.MessageSender, sendResponse: any) => {
     console.log('[Vinted HQ BG] Received message:', message);
 

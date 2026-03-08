@@ -216,7 +216,7 @@ declare global {
       setSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void>;
       setSettings: (partial: Partial<AppSettings>) => Promise<void>;
       // System
-      openExternal: (url: string) => Promise<void>;
+      openExternal: (url: string, options?: { background?: boolean }) => Promise<void>;
       // Python bridge
       bridgeHealth: () => Promise<{ ok: boolean; service?: string }>;
       bridgeSearch: (url: string, page?: number, proxy?: string) => Promise<BridgeResult>;

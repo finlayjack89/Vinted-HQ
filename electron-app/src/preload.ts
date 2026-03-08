@@ -51,7 +51,8 @@ contextBridge.exposeInMainWorld('vinted', {
   setSettings: (partial: Partial<AppSettings>) => ipcRenderer.invoke('settings:setAll', partial),
 
   // System
-  openExternal: (url: string) => ipcRenderer.invoke('openExternal', url),
+  openExternal: (url: string, options?: { background?: boolean }) =>
+    ipcRenderer.invoke('openExternal', url, options),
 
   // Python bridge (Phase 2)
   bridgeHealth: () => ipcRenderer.invoke('bridge:health'),
