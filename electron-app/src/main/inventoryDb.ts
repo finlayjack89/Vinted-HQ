@@ -43,6 +43,7 @@ export interface InventoryMasterRow {
   shipment_prices: string | null;    // JSON: { domestic, international }
   live_snapshot_hash: string | null;
   live_snapshot_fetched_at: number | null;
+  last_seen_at: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -459,6 +460,31 @@ export function setInventoryStatus(localId: number, status: string): void {
 export function deleteInventoryItem(localId: number): boolean {
   const result = db().prepare('DELETE FROM inventory_master WHERE id = ?').run(localId);
   return result.changes > 0;
+}
+
+/**
+ * Stamp an item as "seen" during the current wardrobe sync batch.
+ * Does NOT bump updated_at (this is sync bookkeeping, not a user edit).
+ */
+export function touchLastSeenAt(localId: number, syncBatchTime: number): void {
+  db().prepare('UPDATE inventory_master SET last_seen_at = ? WHERE id = ?')
+    .run(syncBatchTime, localId);
+}
+
+/**
+ * Reconciliation sweep: mark all items not seen in the current sync batch as 'removed'.
+ * Skips items already flagged 'removed' and items with status 'local_only' (never synced).
+ * Returns the number of items swept.
+ */
+export function sweepRemovedItems(syncBatchTime: number): number {
+  const result = db().prepare(`
+    UPDATE inventory_master
+    SET status = 'removed', updated_at = unixepoch()
+    WHERE last_seen_at < ?
+      AND status != 'removed'
+      AND status != 'local_only'
+  `).run(syncBatchTime);
+  return result.changes;
 }
 
 // ─── Inventory Sync ───

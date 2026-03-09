@@ -41,6 +41,8 @@ export default function Wardrobe() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; message?: string } | null>(null);
+  const [bulkSyncing, setBulkSyncing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; title: string; failed: number } | null>(null);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [ontologyAlert, setOntologyAlert] = useState<{ deletedCategories: unknown[]; affectedItems: unknown[] } | null>(null);
   const [actionBusy, setActionBusy] = useState<null | { kind: 'push' | 'pull'; localId: number }>(null);
@@ -126,6 +128,77 @@ export default function Wardrobe() {
 
   const handleRefreshOntology = async () => {
     await window.vinted.refreshOntology();
+  };
+
+  // ── Bulk Deep Sync Orchestrator ──
+  const handleBulkSync = async (): Promise<void> => {
+    // Filter to items that have a vinted_item_id (i.e., are live on Vinted)
+    const itemsToSync = items.filter((i) => i.vinted_item_id);
+    if (itemsToSync.length === 0) return;
+
+    setBulkSyncing(true);
+    let failedCount = 0;
+
+    for (let idx = 0; idx < itemsToSync.length; idx++) {
+      const currentItem = itemsToSync[idx];
+      setBulkProgress({ current: idx + 1, total: itemsToSync.length, title: currentItem.title, failed: failedCount });
+
+      try {
+        // 1. Capture initial updated_at as baseline
+        const initialUpdatedAt = currentItem.updated_at ?? 0;
+
+        // 2. Open the edit page in background Chrome
+        await window.vinted.openExternal(
+          `https://www.vinted.co.uk/items/${currentItem.vinted_item_id}/edit?hq_sync=true`,
+          { background: true },
+        );
+
+        // 3. The Waiter: poll until updated_at changes or timeout
+        const synced = await new Promise<boolean>((resolve) => {
+          let pollCount = 0;
+          const MAX_POLLS = 20; // 20 × 1500ms = 30 seconds
+
+          const interval = setInterval(async () => {
+            pollCount++;
+            if (pollCount > MAX_POLLS) {
+              clearInterval(interval);
+              resolve(false); // timed out — don't block the queue
+              return;
+            }
+            try {
+              const polledItem = await window.vinted.getWardrobeItem(currentItem.id);
+              if (polledItem?.updated_at && polledItem.updated_at !== initialUpdatedAt) {
+                clearInterval(interval);
+                resolve(true);
+              }
+            } catch {
+              // ignore individual poll errors
+            }
+          }, 1500);
+        });
+
+        if (!synced) {
+          console.warn(`[BulkSync] Timed out for item ${currentItem.id} (${currentItem.title})`);
+          failedCount++;
+        } else {
+          console.log(`[BulkSync] ✅ Synced item ${currentItem.id} (${currentItem.title})`);
+        }
+      } catch (err) {
+        console.error(`[BulkSync] Error syncing item ${currentItem.id}:`, err);
+        failedCount++;
+      }
+
+      // 4. Human-like delay between items (2-5 seconds)
+      if (idx < itemsToSync.length - 1) {
+        await new Promise((r) => setTimeout(r, 2000 + Math.random() * 3000));
+      }
+    }
+
+    // 5. Done — refresh the UI
+    setBulkSyncing(false);
+    setBulkProgress(null);
+    await loadItems();
+    console.log(`[BulkSync] Complete. ${itemsToSync.length - failedCount}/${itemsToSync.length} succeeded, ${failedCount} failed/timed out.`);
   };
 
   const handleRelist = async (localIds: number[]) => {
@@ -244,6 +317,21 @@ export default function Wardrobe() {
             </button>
             <button
               type="button"
+              onClick={handleBulkSync}
+              disabled={bulkSyncing || syncing}
+              style={{
+                ...btnSecondary,
+                ...btnSmall,
+                opacity: bulkSyncing ? 0.6 : 1,
+                cursor: bulkSyncing ? 'default' : 'pointer',
+              }}
+            >
+              {bulkSyncing && bulkProgress
+                ? `Deep Syncing ${bulkProgress.current}/${bulkProgress.total}…`
+                : '🔄 Bulk Deep Sync'}
+            </button>
+            <button
+              type="button"
               onClick={handleSync}
               disabled={syncing}
               style={{
@@ -264,6 +352,25 @@ export default function Wardrobe() {
         {syncing && syncProgress?.message && (
           <div style={{ marginTop: spacing.xs, fontSize: font.size.sm, color: colors.textSecondary }}>
             {syncProgress.message}
+          </div>
+        )}
+        {bulkSyncing && bulkProgress && (
+          <div style={{
+            marginTop: spacing.sm,
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            borderRadius: 8,
+            padding: `${spacing.sm} ${spacing.md}`,
+            fontSize: font.size.sm,
+            color: '#10b981',
+          }}>
+            <div style={{ fontWeight: 600 }}>
+              ⟳ Deep Syncing {bulkProgress.current}/{bulkProgress.total}
+              {bulkProgress.failed > 0 && <span style={{ color: '#ff6b6b', marginLeft: 8 }}>({bulkProgress.failed} timed out)</span>}
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
+              {bulkProgress.title}
+            </div>
           </div>
         )}
       </div>

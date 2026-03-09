@@ -154,6 +154,8 @@ function migrate(database: Database.Database): void {
   addIfMissing('shipment_prices', 'TEXT'); // JSON: { domestic, international }
   addIfMissing('live_snapshot_hash', 'TEXT');
   addIfMissing('live_snapshot_fetched_at', 'INTEGER');
+  // Wardrobe reconciliation: track when an item was last seen during a sync
+  addIfMissing('last_seen_at', 'INTEGER');
 }
 
 export function getDb(): Database.Database | null {

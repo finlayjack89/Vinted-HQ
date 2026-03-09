@@ -390,10 +390,12 @@ export async function pullFromVinted(userId: number): Promise<{
 }> {
   const requestId = crypto.randomUUID();
   const startedAtMs = Date.now();
+  const syncBatchTime = Math.floor(startedAtMs / 1000);
   const errors: string[] = [];
   let pulled = 0;
   let page = 1;
   let totalPages = 1;
+  let syncCompletedSuccessfully = true;
 
   // Use any scraping proxy, ignoring cooldown (one-off operation, not polling)
   const proxy = proxyService.getAnyScrapingProxy();
@@ -437,6 +439,7 @@ export async function pullFromVinted(userId: number): Promise<{
     const result = await bridge.fetchWardrobe(userId, page, 20, proxy);
     if (!result.ok) {
       errors.push(`Page ${page}: ${(result as { message?: string }).message}`);
+      syncCompletedSuccessfully = false;
       break;
     }
 
@@ -460,7 +463,7 @@ export async function pullFromVinted(userId: number): Promise<{
         // Ensure the item exists locally so we have a stable localId for caching, etc.
         // For existing items with a stored snapshot, we avoid overwriting local fields
         // until we've compared the live snapshot hash.
-        const localId = existing ? existing.id : upsertFromVintedItem(vintedItem, { source: 'wardrobe_list', list_fingerprint: listFingerprint });
+        const localId = existing ? existing.id : upsertFromVintedItem(vintedItem, { source: 'wardrobe_list', list_fingerprint: listFingerprint, syncBatchTime });
 
         // Sold items (closed + not draft) cannot be edited or relisted.
         // Skip the expensive detail extraction, but still ensure the local status reflects "sold".
@@ -476,10 +479,11 @@ export async function pullFromVinted(userId: number): Promise<{
 
           // Only upsert list data when transitioning into sold (avoids bumping updated_at every sync).
           if (existing && existing.status !== 'sold') {
-            upsertFromVintedItem(vintedItem, { source: 'wardrobe_list', list_fingerprint: listFingerprint });
+            upsertFromVintedItem(vintedItem, { source: 'wardrobe_list', list_fingerprint: listFingerprint, syncBatchTime });
           } else {
             // Still update the sync record timestamp (does not touch inventory_master.updated_at).
             inventoryDb.upsertSyncRecord(localId, vintedId, 'pull');
+            inventoryDb.touchLastSeenAt(localId, syncBatchTime);
           }
 
           // Ensure images exist at least once for UI performance.
@@ -523,6 +527,7 @@ export async function pullFromVinted(userId: number): Promise<{
 
             // Still update the sync record timestamp (does not touch inventory_master.updated_at).
             inventoryDb.upsertSyncRecord(localId, vintedId, 'pull');
+            inventoryDb.touchLastSeenAt(localId, syncBatchTime);
 
             // Ensure images exist at least once for UI performance.
             const hasCachedImages = Array.isArray(existing.local_image_paths) && existing.local_image_paths.length > 0;
@@ -727,6 +732,7 @@ export async function pullFromVinted(userId: number): Promise<{
           );
           pulled++;
           emitSyncProgress('pull', 'progress', pulled, totalEntries);
+          inventoryDb.touchLastSeenAt(localId, syncBatchTime);
           continue;
         }
 
@@ -750,6 +756,7 @@ export async function pullFromVinted(userId: number): Promise<{
           }
           pulled++;
           emitSyncProgress('pull', 'progress', pulled, totalEntries);
+          inventoryDb.touchLastSeenAt(localId, syncBatchTime);
           continue;
         }
         const liveChanged = (() => {
@@ -797,13 +804,14 @@ export async function pullFromVinted(userId: number): Promise<{
           }
           pulled++;
           emitSyncProgress('pull', 'progress', pulled, totalEntries);
+          inventoryDb.touchLastSeenAt(localId, syncBatchTime);
           continue;
         }
 
         // Safe to update local from live now.
         // For existing items, upsert list data after snapshot comparison to avoid silent overwrites.
         if (existing) {
-          upsertFromVintedItem(vintedItem, { source: 'wardrobe_list', list_fingerprint: listFingerprint });
+          upsertFromVintedItem(vintedItem, { source: 'wardrobe_list', list_fingerprint: listFingerprint, syncBatchTime });
         }
         if (itemDetail) {
           // Re-upsert with full detail data — fills in all the missing fields.
@@ -811,6 +819,7 @@ export async function pullFromVinted(userId: number): Promise<{
             source: 'detail',
             detail_hydrated_at: snapshotFetchedAt,
             detail_source: effectiveDetailSource,
+            syncBatchTime,
           });
         }
         logger.debug(
@@ -855,6 +864,18 @@ export async function pullFromVinted(userId: number): Promise<{
 
   // Post-sync backfill removed: scraping logic moved to Chrome Extension.
 
+  // ─── Wardrobe Reconciliation Sweep ───
+  // Mark items not seen during this full sync as 'removed'.
+  // Only runs when we successfully iterated all pages (avoids false positives on API errors).
+  if (syncCompletedSuccessfully) {
+    const swept = inventoryDb.sweepRemovedItems(syncBatchTime);
+    if (swept > 0) {
+      logger.info('wardrobe-reconciliation-sweep', { swept, syncBatchTime }, requestId);
+    }
+  } else {
+    logger.warn('wardrobe-reconciliation-sweep-skipped', { reason: 'sync_incomplete', syncBatchTime }, requestId);
+  }
+
   emitSyncProgress('pull', 'complete', pulled, pulled);
   logger.info(
     'wardrobe-pull-complete',
@@ -869,7 +890,7 @@ export async function pullFromVinted(userId: number): Promise<{
  */
 function upsertFromVintedItem(
   vintedItem: Record<string, unknown>,
-  opts?: { source?: 'wardrobe_list' | 'detail'; list_fingerprint?: string; detail_hydrated_at?: number; detail_source?: string }
+  opts?: { source?: 'wardrobe_list' | 'detail'; list_fingerprint?: string; detail_hydrated_at?: number; detail_source?: string; syncBatchTime?: number }
 ): number {
   const vintedId = Number(vintedItem.id);
   const priceObj = vintedItem.price as Record<string, unknown> | undefined;
@@ -899,14 +920,18 @@ function upsertFromVintedItem(
   const isHidden = vintedItem.is_hidden === true;
   const isClosed = vintedItem.is_closed === true;
   const isReserved = vintedItem.is_reserved === true;
-  // Item is sold when it's closed but NOT a draft (drafts are also "closed" conceptually)
-  const isSold = isClosed && !isDraft;
+  // Spec-compliant sold detection: prefer item_closing_action field,
+  // fall back to the legacy heuristic for older API payloads.
+  const closingAction = typeof vintedItem.item_closing_action === 'string'
+    ? vintedItem.item_closing_action
+    : '';
+  const isSold = isClosed && (closingAction === 'sold' || !isDraft);
 
   let status = 'live';
   if (isDraft) status = 'local_only';
   else if (isSold) status = 'sold';
-  else if (isReserved) status = 'reserved';
   else if (isHidden) status = 'hidden';
+  else if (isReserved) status = 'reserved';
 
   // Check if we already have this Vinted item locally
   const existing = inventoryDb.getInventoryItemByVintedId(vintedId);
@@ -1075,6 +1100,11 @@ function upsertFromVintedItem(
 
   // Link sync record
   inventoryDb.upsertSyncRecord(localId, vintedId, 'pull');
+
+  // Stamp as seen for reconciliation sweep
+  if (opts?.syncBatchTime) {
+    inventoryDb.touchLastSeenAt(localId, opts.syncBatchTime);
+  }
 
   return localId;
 }
