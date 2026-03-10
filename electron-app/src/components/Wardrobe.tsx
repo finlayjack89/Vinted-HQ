@@ -46,6 +46,7 @@ export default function Wardrobe() {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [ontologyAlert, setOntologyAlert] = useState<{ deletedCategories: unknown[]; affectedItems: unknown[] } | null>(null);
   const [actionBusy, setActionBusy] = useState<null | { kind: 'push' | 'pull'; localId: number }>(null);
+  const [backgroundSyncing, setBackgroundSyncing] = useState(false);
 
   // ── Data loading ──
   const loadItems = useCallback(async () => {
@@ -60,7 +61,20 @@ export default function Wardrobe() {
   }, []);
 
   useEffect(() => {
-    loadItems();
+    loadItems().then(async () => {
+      // After local DB is rendered, silently sync from Vinted in the background
+      try {
+        const userId = await window.vinted.getVintedUserId();
+        if (userId) {
+          setBackgroundSyncing(true);
+          await window.vinted.pullFromVinted(userId);
+          // onSyncProgress listener will call loadItems() and clear syncing state
+        }
+      } catch (err) {
+        console.warn('[Wardrobe] Background sync skipped:', err);
+        setBackgroundSyncing(false);
+      }
+    });
     window.vinted.getRelistQueue().then((data) => {
       setQueue(data.queue ?? []);
       setCountdown(data.countdown ?? 0);
@@ -90,6 +104,7 @@ export default function Wardrobe() {
         }));
       } else {
         setSyncing(false);
+        setBackgroundSyncing(false);
         setSyncProgress(null);
         loadItems();
       }
@@ -370,6 +385,16 @@ export default function Wardrobe() {
                   : 'Syncing...'
                 : 'Sync from Vinted'}
             </button>
+            {backgroundSyncing && !syncing && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: font.size.xs, color: colors.textMuted }}>
+                <span style={{
+                  width: 12, height: 12, border: '2px solid rgba(16,185,129,0.2)',
+                  borderTopColor: '#10b981', borderRadius: '50%',
+                  animation: 'hq-spin 0.8s linear infinite', display: 'inline-block',
+                }} />
+                Refreshing…
+              </span>
+            )}
           </div>
         </div>
         {syncing && syncProgress?.message && (
@@ -455,112 +480,118 @@ export default function Wardrobe() {
       </div>
 
       {/* ── Content ── */}
-      {loading ? (
-        <div style={{ textAlign: 'center', color: colors.textMuted, padding: spacing['4xl'] }}>
-          Loading wardrobe...
-        </div>
-      ) : (
-        <>
-          {subTab === 'all' && (
-            <ItemTable
-              items={items}
-              onRelist={(id) => handleRelist([id])}
-              onEdit={(item) => setEditingItem(item)}
-              onDelete={handleDelete}
-              showDiscrepancyBadge
-              emptyMessage="No items in your wardrobe. Sync from Vinted or create new listings."
-            />
-          )}
-          {subTab === 'live' && (
-            <ItemTable
-              items={liveItems}
-              onRelist={(id) => handleRelist([id])}
-              onEdit={(item) => setEditingItem(item)}
-              showDiscrepancyBadge
-              emptyMessage="No live listings. Sync from Vinted to import your wardrobe."
-            />
-          )}
-          {subTab === 'local' && (
-            <ItemTable
-              items={localItems}
-              onPush={handlePush}
-              onEdit={(item) => setEditingItem(item)}
-              onDelete={handleDelete}
-              emptyMessage="No local-only items. Create new listings or sync from Vinted."
-            />
-          )}
-          {subTab === 'discrepancy' && (
-            <DiscrepancyView
-              items={discrepancyItems}
-              onEdit={(item) => setEditingItem(item)}
-              onPush={handlePush}
-              onPull={handlePull}
-            />
-          )}
-          {subTab === 'queue' && (
-            <WaitingRoom
-              queue={queue}
-              countdown={countdown}
-              processing={processing}
-              onRemove={(localId) => window.vinted.dequeueRelist(localId)}
-              onClear={() => window.vinted.clearRelistQueue()}
-            />
-          )}
-        </>
-      )}
+      {
+        loading ? (
+          <div style={{ textAlign: 'center', color: colors.textMuted, padding: spacing['4xl'] }}>
+            Loading wardrobe...
+          </div>
+        ) : (
+          <>
+            {subTab === 'all' && (
+              <ItemTable
+                items={items}
+                onRelist={(id) => handleRelist([id])}
+                onEdit={(item) => setEditingItem(item)}
+                onDelete={handleDelete}
+                showDiscrepancyBadge
+                emptyMessage="No items in your wardrobe. Sync from Vinted or create new listings."
+              />
+            )}
+            {subTab === 'live' && (
+              <ItemTable
+                items={liveItems}
+                onRelist={(id) => handleRelist([id])}
+                onEdit={(item) => setEditingItem(item)}
+                showDiscrepancyBadge
+                emptyMessage="No live listings. Sync from Vinted to import your wardrobe."
+              />
+            )}
+            {subTab === 'local' && (
+              <ItemTable
+                items={localItems}
+                onPush={handlePush}
+                onEdit={(item) => setEditingItem(item)}
+                onDelete={handleDelete}
+                emptyMessage="No local-only items. Create new listings or sync from Vinted."
+              />
+            )}
+            {subTab === 'discrepancy' && (
+              <DiscrepancyView
+                items={discrepancyItems}
+                onEdit={(item) => setEditingItem(item)}
+                onPush={handlePush}
+                onPull={handlePull}
+              />
+            )}
+            {subTab === 'queue' && (
+              <WaitingRoom
+                queue={queue}
+                countdown={countdown}
+                processing={processing}
+                onRemove={(localId) => window.vinted.dequeueRelist(localId)}
+                onClear={() => window.vinted.clearRelistQueue()}
+              />
+            )}
+          </>
+        )
+      }
 
       {/* ── Edit Modal ── */}
-      {editingItem && (
-        <EditItemModal
-          item={editingItem}
-          onSave={handleSaveEdit}
-          onClose={() => setEditingItem(null)}
-        />
-      )}
+      {
+        editingItem && (
+          <EditItemModal
+            item={editingItem}
+            onSave={handleSaveEdit}
+            onClose={() => setEditingItem(null)}
+          />
+        )
+      }
 
       {/* ── Ontology Alert Modal ── */}
-      {ontologyAlert && (
-        <div style={modalOverlay} onClick={() => setOntologyAlert(null)}>
-          <div style={{ ...modalContent, maxWidth: 520 }} onClick={(e) => e.stopPropagation()} className="animate-fadeInScale">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: spacing.lg }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: radius.md,
-                background: colors.warningBg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.warning} strokeWidth="2">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
-                  Category Changes Detected
-                </h3>
-                <p style={{ margin: 0, fontSize: font.size.sm, color: colors.textSecondary }}>
-                  {(ontologyAlert.affectedItems as unknown[]).length} item(s) need attention
-                </p>
-              </div>
-            </div>
-            <div style={{ marginBottom: spacing.lg, maxHeight: 200, overflow: 'auto' }}>
-              {(ontologyAlert.affectedItems as { localId: number; title: string; oldCategory: string }[]).map((ai) => (
-                <div key={ai.localId} style={{ padding: '8px 0', borderBottom: `1px solid ${colors.separator}`, fontSize: font.size.sm }}>
-                  <span style={{ color: colors.textPrimary }}>{ai.title}</span>
-                  <span style={{ color: colors.textMuted, marginLeft: 8 }}>({ai.oldCategory})</span>
+      {
+        ontologyAlert && (
+          <div style={modalOverlay} onClick={() => setOntologyAlert(null)}>
+            <div style={{ ...modalContent, maxWidth: 520 }} onClick={(e) => e.stopPropagation()} className="animate-fadeInScale">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: spacing.lg }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: radius.md,
+                  background: colors.warningBg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.warning} strokeWidth="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
                 </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: spacing.sm }}>
-              <button type="button" onClick={() => { setOntologyAlert(null); setSubTab('discrepancy'); }} style={{ ...btnPrimary, ...btnSmall, flex: 1 }}>
-                Review Items
-              </button>
-              <button type="button" onClick={() => setOntologyAlert(null)} style={{ ...btnSecondary, ...btnSmall }}>
-                Dismiss
-              </button>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
+                    Category Changes Detected
+                  </h3>
+                  <p style={{ margin: 0, fontSize: font.size.sm, color: colors.textSecondary }}>
+                    {(ontologyAlert.affectedItems as unknown[]).length} item(s) need attention
+                  </p>
+                </div>
+              </div>
+              <div style={{ marginBottom: spacing.lg, maxHeight: 200, overflow: 'auto' }}>
+                {(ontologyAlert.affectedItems as { localId: number; title: string; oldCategory: string }[]).map((ai) => (
+                  <div key={ai.localId} style={{ padding: '8px 0', borderBottom: `1px solid ${colors.separator}`, fontSize: font.size.sm }}>
+                    <span style={{ color: colors.textPrimary }}>{ai.title}</span>
+                    <span style={{ color: colors.textMuted, marginLeft: 8 }}>({ai.oldCategory})</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: spacing.sm }}>
+                <button type="button" onClick={() => { setOntologyAlert(null); setSubTab('discrepancy'); }} style={{ ...btnPrimary, ...btnSmall, flex: 1 }}>
+                  Review Items
+                </button>
+                <button type="button" onClick={() => setOntologyAlert(null)} style={{ ...btnSecondary, ...btnSmall }}>
+                  Dismiss
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
 
