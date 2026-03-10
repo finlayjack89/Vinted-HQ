@@ -118,7 +118,7 @@ export type InventoryItem = {
   package_size_id: number | null;
   item_attributes: { code: string; ids: number[] }[];  // parsed from JSON
   is_unisex: boolean;
-  status: 'live' | 'local_only' | 'discrepancy' | 'action_required' | 'sold' | 'hidden' | 'reserved';
+  status: 'live' | 'active' | 'local_only' | 'discrepancy' | 'action_required' | 'sold' | 'hidden' | 'reserved' | 'deleted' | 'removed';
   extra_metadata: Record<string, unknown> | null;
   list_fingerprint: string | null;
   detail_hydrated_at: number | null;

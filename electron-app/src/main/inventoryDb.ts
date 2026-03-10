@@ -472,19 +472,42 @@ export function touchLastSeenAt(localId: number, syncBatchTime: number): void {
 }
 
 /**
- * Reconciliation sweep: mark all items not seen in the current sync batch as 'removed'.
+ * Reconciliation sweep: mark all items not seen in the current sync batch as 'local_only'.
+ * Disconnects them from Vinted by nullifying vinted_item_id so they become purely local drafts.
  * Skips items already flagged 'removed' and items with status 'local_only' (never synced).
  * Returns the number of items swept.
  */
 export function sweepRemovedItems(syncBatchTime: number): number {
-  const result = db().prepare(`
-    UPDATE inventory_master
-    SET status = 'removed', updated_at = unixepoch()
-    WHERE last_seen_at < ?
+  const d = db();
+
+  const idsToSweep = d.prepare(`
+    SELECT id FROM inventory_master
+    WHERE (last_seen_at IS NULL OR last_seen_at < ?)
       AND status != 'removed'
       AND status != 'local_only'
-  `).run(syncBatchTime);
-  return result.changes;
+  `).all(syncBatchTime) as { id: number }[];
+
+  if (idsToSweep.length === 0) return 0;
+
+  const sweepIds = idsToSweep.map(row => row.id);
+  const placeholders = sweepIds.map(() => '?').join(',');
+
+  const doSweep = d.transaction(() => {
+    d.prepare(`
+      UPDATE inventory_master
+      SET status = 'local_only', updated_at = unixepoch()
+      WHERE id IN (${placeholders})
+    `).run(...sweepIds);
+
+    d.prepare(`
+      UPDATE inventory_sync
+      SET vinted_item_id = NULL
+      WHERE local_id IN (${placeholders})
+    `).run(...sweepIds);
+  });
+
+  doSweep();
+  return sweepIds.length;
 }
 
 // ─── Inventory Sync ───

@@ -132,8 +132,25 @@ export default function Wardrobe() {
 
   // ── Bulk Deep Sync Orchestrator ──
   const handleBulkSync = async (): Promise<void> => {
-    // Filter to items that have a vinted_item_id (i.e., are live on Vinted)
-    const itemsToSync = items.filter((i) => i.vinted_item_id);
+    // Filter and sort items for Bulk Deep Sync:
+    // 1. Must have a vinted_item_id
+    // 2. Status must be one of: active, live, hidden, reserved
+    // 3. Sort order: Active/Live (newest->oldest) -> Hidden (newest->oldest) -> Reserved (newest->oldest)
+    const itemsToSync = items
+      .filter((i) => i.vinted_item_id && ['active', 'live', 'hidden', 'reserved'].includes(i.status.toLowerCase()))
+      .sort((a, b) => {
+        const priorityA = ['active', 'live'].includes(a.status.toLowerCase()) ? 3 : a.status.toLowerCase() === 'hidden' ? 2 : 1;
+        const priorityB = ['active', 'live'].includes(b.status.toLowerCase()) ? 3 : b.status.toLowerCase() === 'hidden' ? 2 : 1;
+
+        if (priorityA !== priorityB) {
+          return priorityB - priorityA; // Higher priority (active/live) first
+        }
+
+        // Within the same status, sort newest to oldest
+        const timeA = a.created_at ?? Number(a.id);
+        const timeB = b.created_at ?? Number(b.id);
+        return timeB - timeA;
+      });
     if (itemsToSync.length === 0) return;
 
     setBulkSyncing(true);
@@ -1957,7 +1974,7 @@ function EditItemModal({
           <h3 style={{ margin: 0, fontSize: font.size.xl, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
             Edit Listing
           </h3>
-          {item.vinted_item_id && (
+          {item.vinted_item_id && item.status !== 'removed' && (
             <button
               type="button"
               disabled={isSyncing}
