@@ -9,6 +9,7 @@ import Wardrobe from './components/Wardrobe';
 import Settings from './components/Settings';
 import Logs from './components/Logs';
 import Purchases from './components/Purchases';
+import SalesSuite from './components/SalesSuite';
 import ProxyStatus from './components/ProxyStatus';
 import {
   colors,
@@ -27,7 +28,7 @@ import {
 } from './theme';
 import type { SniperCountdownParams } from './types/global';
 
-type Tab = 'feed' | 'wardrobe' | 'proxies' | 'settings' | 'logs' | 'purchases';
+type Tab = 'feed' | 'wardrobe' | 'sales' | 'proxies' | 'settings' | 'logs' | 'purchases';
 
 /* ─── SVG Icons (inline for zero-dep) ───────────────────────── */
 
@@ -82,11 +83,18 @@ const icons: Record<Tab, JSX.Element> = {
       <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
     </svg>
   ),
+  sales: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  ),
 };
 
 const tabLabels: Record<Tab, string> = {
   feed: 'Feed',
   wardrobe: 'Wardrobe',
+  sales: 'Sales',
   proxies: 'Proxies',
   settings: 'Settings',
   logs: 'Logs',
@@ -229,7 +237,7 @@ export default function App() {
 
         {/* Nav Items */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: `0 ${spacing.sm}px` }}>
-          {(['feed', 'wardrobe', 'proxies', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
+          {(['feed', 'wardrobe', 'sales', 'proxies', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
             const active = tab === t;
             return (
               <button
@@ -309,6 +317,7 @@ export default function App() {
       >
         {tab === 'feed' && <Feed />}
         {tab === 'wardrobe' && <Wardrobe />}
+        {tab === 'sales' && <SalesSuite />}
         {tab === 'proxies' && <ProxyStatus />}
         {tab === 'settings' && <Settings />}
         {tab === 'logs' && <Logs />}

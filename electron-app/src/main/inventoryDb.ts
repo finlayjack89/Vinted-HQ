@@ -686,3 +686,42 @@ export function categoryRequiresSize(catalogId: number): boolean | null {
   }
   return null;
 }
+
+// ─── Inventory Photos (Relist Lineage) ───
+
+export interface InventoryPhotoRow {
+  internal_photo_id: string;
+  item_id: string;
+  vinted_photo_id: string | null;
+  generation: number;
+  original_url: string | null;
+}
+
+/**
+ * Insert or update a photo lineage record.
+ * Uses UPSERT so re-running a relist just bumps the generation/vinted_photo_id.
+ */
+export function upsertInventoryPhoto(
+  internalPhotoId: string,
+  itemId: string,
+  vintedPhotoId: string | null,
+  generation: number,
+  originalUrl: string | null,
+): void {
+  db().prepare(`
+    INSERT INTO inventory_photos (internal_photo_id, item_id, vinted_photo_id, generation, original_url)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(internal_photo_id) DO UPDATE SET
+      vinted_photo_id = excluded.vinted_photo_id,
+      generation = excluded.generation
+  `).run(internalPhotoId, itemId, vintedPhotoId, generation, originalUrl);
+}
+
+/**
+ * Get all photo records for a given item ID.
+ */
+export function getInventoryPhotos(itemId: string): InventoryPhotoRow[] {
+  return db()
+    .prepare('SELECT * FROM inventory_photos WHERE item_id = ?')
+    .all(itemId) as InventoryPhotoRow[];
+}

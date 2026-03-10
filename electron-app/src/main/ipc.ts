@@ -134,6 +134,13 @@ export function registerIpcHandlers(): void {
   // Purchases (Phase 6)
   ipcMain.handle('purchases:getAll', (_event, limit?: number) => purchases.getAllPurchases(limit));
 
+  // Sales
+  ipcMain.handle(
+    'sales:getAll',
+    (_event, userId: number, page?: number, perPage?: number) =>
+      bridge.fetchSales(userId, page ?? 1, perPage ?? 20)
+  );
+
   // Checkout (Phase 4)
   ipcMain.handle(
     'checkout:buy',

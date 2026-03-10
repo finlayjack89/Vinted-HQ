@@ -35,6 +35,8 @@ from vinted_client import (
     delete_listing as vinted_delete_listing,
     hide_listing as vinted_hide_listing,
     relist_item as vinted_relist_item,
+    fetch_sold_items as vinted_fetch_sold_items,
+    orchestrate_relist as vinted_orchestrate_relist,
 )
 from image_mutator import mutate_image
 
@@ -255,6 +257,41 @@ def wardrobe(
         return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
     try:
         data = vinted_fetch_wardrobe(
+            cookie=x_vinted_cookie,
+            user_id=user_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            page=page,
+            per_page=per_page,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+# ─── Sales Endpoints ────────────────────────────────────────────────────────
+
+
+@app.get("/sales")
+def sales(
+    user_id: int = Query(..., description="Vinted user ID"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Fetch user's sold items."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_sold_items(
             cookie=x_vinted_cookie,
             user_id=user_id,
             csrf_token=x_csrf_token,
@@ -848,6 +885,60 @@ async def relist(
         return _error_response(e.code, e.message, e.status_code or 500)
     except Exception as e:
         return _error_response("RELIST_ERROR", f"Relist failed: {e}", 500)
+
+
+@app.post("/relist-v2")
+async def relist_v2(
+    body: dict = Body(...),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """
+    V2 Stealth relist — downloads images from CDN, mutates with generation-based
+    deterministic mutations, and re-creates the listing.
+
+    Body: {
+      "old_item_id": int,
+      "item_data": { title, description, price, ... },
+      "photo_urls": ["https://images.vinted.net/..."],
+      "relist_count": int
+    }
+    """
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+
+    old_item_id = body.get("old_item_id")
+    item_data = body.get("item_data", {})
+    photo_urls = body.get("photo_urls", [])
+    relist_count = body.get("relist_count", 0)
+
+    if old_item_id is None:
+        return _error_response("INVALID_BODY", "old_item_id required", 400)
+    if not photo_urls:
+        return _error_response("INVALID_BODY", "photo_urls required (list of CDN URLs)", 400)
+
+    try:
+        result = vinted_orchestrate_relist(
+            cookie=x_vinted_cookie,
+            old_item_id=int(old_item_id),
+            item_data=item_data,
+            photo_urls=photo_urls,
+            relist_count=relist_count,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": result}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+    except Exception as e:
+        return _error_response("RELIST_ERROR", f"Relist V2 failed: {e}", 500)
 
 
 # ─── Dual Brain / Ingest Endpoints ──────────────────────────────────────────

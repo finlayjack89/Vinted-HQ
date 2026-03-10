@@ -127,6 +127,8 @@ contextBridge.exposeInMainWorld('vinted', {
   getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) =>
     ipcRenderer.invoke('logs:getAll', opts),
   getPurchases: (limit?: number) => ipcRenderer.invoke('purchases:getAll', limit),
+  getSales: (userId: number, page?: number, perPage?: number) =>
+    ipcRenderer.invoke('sales:getAll', userId, page ?? 1, perPage ?? 20),
   onSessionReconnected: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on('session:reconnected', handler);

@@ -304,6 +304,39 @@ export async function fetchWardrobe(
 }
 
 /**
+ * Fetch user's sold items.
+ */
+export async function fetchSales(
+  userId: number,
+  page = 1,
+  perPage = 20,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {
+    user_id: String(userId),
+    page: String(page),
+    per_page: String(perPage),
+    transport_mode: _transportMode(),
+  };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/sales?${qs}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return (await res.json()) as BridgeResult;
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
  * Fetch ontology categories.
  */
 export async function fetchOntologyCategories(proxy?: string): Promise<BridgeResult> {
@@ -707,6 +740,42 @@ export async function relistItem(
         old_item_id: oldItemId,
         item_data: itemData,
         image_bytes_b64: imageB64,
+        relist_count: relistCount,
+      }),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * V2 stealth relist: bridge downloads images from CDN URLs, mutates with
+ * generation-based deterministic mutations, then delete → wait → publish.
+ */
+export async function relistItemV2(
+  oldItemId: number,
+  itemData: Record<string, unknown>,
+  photoUrls: string[],
+  relistCount: number,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/relist-v2${qs ? '?' + qs : ''}`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        old_item_id: oldItemId,
+        item_data: itemData,
+        photo_urls: photoUrls,
         relist_count: relistCount,
       }),
     });

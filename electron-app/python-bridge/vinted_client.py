@@ -12,7 +12,7 @@ from urllib.parse import urlencode, urlparse, parse_qs
 
 from curl_cffi import requests, CurlMime
 
-from image_mutator import mutate_image, jitter_text
+from image_mutator import mutate_image, jitter_text, mutate_image_for_relist, jitter_text_zwsp
 
 # Impersonate Chrome for JA3/JA4 fingerprint ("chrome" = latest available target)
 IMPOSTOR = "chrome"
@@ -487,6 +487,42 @@ def fetch_wardrobe(
     """GET /api/v2/wardrobe/{user_id}/items — fetch user's own listings."""
     qs = urlencode({"page": page, "per_page": per_page, "order": "relevance"})
     api_url = f"{BASE_URL}/api/v2/wardrobe/{user_id}/items?{qs}"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}", transport_mode, user_agent=user_agent)
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+
+
+def fetch_sold_items(
+    cookie: str,
+    user_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    page: int = 1,
+    per_page: int = 20,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """GET /api/v2/users/{user_id}/items/sold — fetch user's sold items."""
+    qs = urlencode({"page": page, "per_page": per_page, "order": "newest_first"})
+    api_url = f"{BASE_URL}/api/v2/users/{user_id}/items/sold?{qs}"
 
     session = _get_session(proxy, transport_mode)
     headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}", transport_mode, user_agent=user_agent)
@@ -1779,6 +1815,167 @@ def relist_item(
     mutated_data["assigned_photos"] = photo_ids
     mutated_data["temp_uuid"] = upload_session_id
 
+    result = create_listing(
+        cookie=cookie,
+        item_data=mutated_data,
+        upload_session_id=upload_session_id,
+        csrf_token=csrf_token,
+        anon_id=anon_id,
+        proxy=proxy,
+        session=sticky_session,
+        transport_mode=transport_mode,
+        user_agent=user_agent,
+    )
+
+    return {
+        "ok": True,
+        "new_item": result,
+        "photo_ids": [p["id"] for p in photo_ids],
+        "upload_session_id": upload_session_id,
+    }
+
+
+# ─── V2 Stealth Relist Orchestrator (CDN download + generation mutation) ─────
+
+
+def _download_image_stealth(url: str, proxy: str | None = None) -> bytes:
+    """Download a high-res image from a Vinted CDN URL using curl_cffi.
+    Uses chrome110 impersonation to match real browser TLS fingerprint."""
+    session = requests.Session(impersonate="chrome110")
+    headers = {
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": BASE_URL + "/",
+        "Sec-Fetch-Dest": "image",
+        "Sec-Fetch-Mode": "no-cors",
+        "Sec-Fetch-Site": "cross-site",
+        "User-Agent": DIRECT_USER_AGENT,
+    }
+    req_kwargs: dict = {"url": url, "headers": headers, "timeout": 30}
+    if proxy:
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except Exception as e:
+        raise VintedError("IMAGE_DOWNLOAD_FAILED", f"Failed to download image: {e}")
+
+    if resp.status_code != 200:
+        raise VintedError(
+            "IMAGE_DOWNLOAD_FAILED",
+            f"HTTP {resp.status_code} fetching image from CDN",
+            resp.status_code,
+        )
+
+    return resp.content
+
+
+def orchestrate_relist(
+    cookie: str,
+    old_item_id: int,
+    item_data: dict,
+    photo_urls: list[str],
+    relist_count: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """
+    V2 stealth relist sequence with CDN image download and generation-based mutation.
+
+    Stealth flow:
+      1. Download high-res images from Vinted CDN via curl_cffi (chrome110)
+      2. Mutate each image with deterministic generation-based mutations
+      3. Upload mutated images with 1.5-3.5s jitter between uploads
+      4. Delete old listing
+      5. Wait 8.0-15.0s mandatory jitter (velocity flag avoidance)
+      6. Append 1-4 zero-width spaces to title/description
+      7. Create new listing via POST /api/v2/items
+
+    Args:
+        cookie: Full Vinted session cookie string.
+        old_item_id: The current live Vinted item ID to delete.
+        item_data: Listing fields (title, description, price, etc.) from local master.
+        photo_urls: List of Vinted CDN URLs to download and mutate.
+        relist_count: Current relist generation (controls mutation determinism).
+        csrf_token: CSRF token for write operations.
+        anon_id: Anonymous ID header value.
+        proxy: Proxy URL for the entire sequence.
+        transport_mode: 'PROXY' or 'DIRECT'.
+        user_agent: Override user-agent string.
+
+    Returns:
+        dict with {ok, new_item, photo_ids, upload_session_id}
+    """
+    # Single sticky session for the entire sequence
+    imp = DIRECT_IMPOSTOR if transport_mode == "DIRECT" else IMPOSTOR
+    sticky_session = requests.Session(impersonate=imp)
+    upload_session_id = str(uuid.uuid4())
+
+    # ── Step 1-3: Download, mutate, and upload all images ──
+    photo_ids = []
+    for i, url in enumerate(photo_urls):
+        # Step 1: Download from CDN
+        raw_bytes = _download_image_stealth(url, proxy=proxy)
+
+        # Step 2: Mutate with generation-based mutations
+        mutated_bytes = mutate_image_for_relist(raw_bytes, relist_count)
+
+        # Step 3: Upload mutated image
+        photo_uuid = str(uuid.uuid4())
+        result = upload_photo(
+            cookie=cookie,
+            image_bytes=mutated_bytes,
+            temp_uuid=photo_uuid,
+            csrf_token=csrf_token,
+            anon_id=anon_id,
+            proxy=proxy,
+            session=sticky_session,
+            transport_mode=transport_mode,
+            user_agent=user_agent,
+        )
+        photo_id = result.get("id")
+        if photo_id:
+            photo_ids.append({"id": photo_id, "orientation": 0})
+
+        # 1.5-3.5s jitter between uploads
+        if i < len(photo_urls) - 1:
+            time.sleep(random.uniform(1.5, 3.5))
+
+    if not photo_ids:
+        raise VintedError("UPLOAD_FAILED", "No photos were uploaded successfully")
+
+    # ── Step 4: Delete old listing ──
+    delete_listing(
+        cookie=cookie,
+        item_id=old_item_id,
+        csrf_token=csrf_token,
+        anon_id=anon_id,
+        proxy=proxy,
+        session=sticky_session,
+        transport_mode=transport_mode,
+        user_agent=user_agent,
+    )
+
+    # ── Step 5: Mandatory 8.0-15.0s jitter (velocity flag avoidance) ──
+    time.sleep(random.uniform(8.0, 15.0))
+
+    # ── Step 6: Jitter title and description with zero-width spaces ──
+    mutated_data = dict(item_data)
+    if "title" in mutated_data:
+        mutated_data["title"] = jitter_text_zwsp(mutated_data["title"], relist_count)
+    if "description" in mutated_data:
+        mutated_data["description"] = jitter_text_zwsp(
+            mutated_data["description"] or "", relist_count
+        )
+
+    # Replace photo references with newly uploaded ones
+    mutated_data["assigned_photos"] = photo_ids
+    mutated_data["temp_uuid"] = upload_session_id
+
+    # ── Step 7: Create new listing ──
     result = create_listing(
         cookie=cookie,
         item_data=mutated_data,

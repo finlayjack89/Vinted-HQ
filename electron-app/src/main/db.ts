@@ -107,6 +107,16 @@ function migrate(database: Database.Database): void {
       UNIQUE(local_id)
     );
 
+    -- Photo lineage tracker for relist image mutation pipeline
+    CREATE TABLE IF NOT EXISTS inventory_photos (
+      internal_photo_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      vinted_photo_id TEXT,
+      generation INTEGER DEFAULT 0,
+      original_url TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_inv_photos_item ON inventory_photos(item_id);
+
     -- Local ontology cache for categories, brands, attributes
     CREATE TABLE IF NOT EXISTS vinted_ontology (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

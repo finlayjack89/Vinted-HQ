@@ -2053,16 +2053,90 @@ async function processQueue(): Promise<void> {
       }
 
       const itemData = buildVintedItemData(item, { requiresSize: comp.requires_size });
-      // Apply deterministic whitespace jitter (same intent as Python relist).
-      const baseTitle = String(itemData.title || '').replace(/\s+$/g, '');
-      const baseDesc = String(itemData.description || '').replace(/\s+$/g, '');
-      itemData.title = entry.relistCount % 2 === 0 ? `${baseTitle} ` : baseTitle;
-      itemData.description = entry.relistCount % 2 === 0 ? `${baseDesc} ` : baseDesc;
 
-      entry.status = 'error';
-      entry.error = 'Relist logic moved to Chrome Extension';
+      // Extract photo URLs from local vault (Vinted CDN URLs)
+      const photoUrls: string[] = [];
+      const rawUrls = item.photo_urls;
+      if (Array.isArray(rawUrls)) {
+        for (const u of rawUrls) {
+          if (typeof u === 'string' && u.startsWith('http')) photoUrls.push(u);
+        }
+      }
+      if (photoUrls.length === 0) {
+        entry.status = 'error';
+        entry.error = 'No photo URLs found — sync the item first';
+        emitQueueUpdate();
+        logger.warn('relist-item-no-photo-urls', { localId: entry.localId, queueRequestId: requestId }, itemRequestId);
+        continue;
+      }
+
+      // Call V2 relist orchestrator on Python bridge
+      const relistResult = await bridge.relistItemV2(
+        item.vinted_item_id!,
+        itemData,
+        photoUrls,
+        entry.relistCount,
+      );
+
+      if (!relistResult.ok) {
+        const errResult = relistResult as { code: string; message: string };
+        // Surface Datadome errors with a user-friendly prompt
+        if (errResult.code === 'DATADOME_CHALLENGE') {
+          entry.status = 'error';
+          entry.error = 'Bot challenge detected — open Vinted in Chrome and solve the captcha, then retry';
+        } else {
+          entry.status = 'error';
+          entry.error = `Relist failed: [${errResult.code}] ${errResult.message}`;
+        }
+        emitQueueUpdate();
+        logger.warn(
+          'relist-item-bridge-error',
+          { localId: entry.localId, code: errResult.code, message: errResult.message, queueRequestId: requestId },
+          itemRequestId,
+        );
+        continue;
+      }
+
+      // Extract new item ID from bridge response
+      const relistData = (relistResult as { data: { new_item?: Record<string, unknown>; photo_ids?: number[] } }).data;
+      const newItemObj = relistData?.new_item;
+      const newItemId = newItemObj?.id ? Number(newItemObj.id) : null;
+
+      // Update sync record with new Vinted item ID
+      if (newItemId && newItemId > 0) {
+        inventoryDb.upsertSyncRecord(entry.localId, newItemId, 'push');
+      }
+      inventoryDb.incrementRelistCount(entry.localId);
+
+      // Track photo lineage in inventory_photos
+      const photoIds = relistData?.photo_ids ?? [];
+      for (let pi = 0; pi < photoUrls.length; pi++) {
+        const internalId = `${entry.localId}-photo-${pi}`;
+        const vintedPhotoId = pi < photoIds.length ? String(photoIds[pi]) : null;
+        inventoryDb.upsertInventoryPhoto(
+          internalId,
+          String(entry.localId),
+          vintedPhotoId,
+          entry.relistCount + 1,
+          photoUrls[pi],
+        );
+      }
+
+      entry.status = 'done';
       emitQueueUpdate();
-      continue;
+      logger.info(
+        'relist-item-done',
+        {
+          localId: entry.localId,
+          oldVintedId: item.vinted_item_id,
+          newVintedId: newItemId,
+          photoCount: photoIds.length,
+          generation: entry.relistCount + 1,
+          durationMs: Date.now() - itemStartedAtMs,
+          queueRequestId: requestId,
+        },
+        itemRequestId,
+      );
 
 
     } catch (err) {

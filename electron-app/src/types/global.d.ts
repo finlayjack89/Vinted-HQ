@@ -97,6 +97,30 @@ export type FeedItem = {
   fetched_at: number;
 };
 
+// ─── Sales Suite Types ───
+
+export type VintedSoldItem = {
+  id: number;
+  title: string;
+  brand_title: string | null;
+  collection_title: string | null;
+  model_title: string | null;
+  price: string;
+  service_fee: string | null;
+  total_item_price: string | null;
+  currency: string;
+  photo_url: string | null;
+  url: string;
+  status: string;
+  buyer_login: string | null;
+  buyer_id: number | null;
+  conversation_id: number | null;
+  transaction_id: number | null;
+  sold_at: string | null;
+  order_confirmed_at: string | null;
+  created_at: string | null;
+};
+
 // ─── Inventory Vault Types ───
 
 export type InventoryItem = {
@@ -256,6 +280,7 @@ declare global {
       onSessionReconnected: (callback: () => void) => () => void;
       getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) => Promise<LogEntry[]>;
       getPurchases: (limit?: number) => Promise<Purchase[]>;
+      getSales: (userId: number, page?: number, perPage?: number) => Promise<BridgeResult>;
 
       // Transport Mode (Hybrid Transport)
       getTransportMode: () => Promise<'PROXY' | 'DIRECT'>;
