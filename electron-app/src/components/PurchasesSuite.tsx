@@ -480,7 +480,7 @@ export default function PurchasesSuite() {
 
             <div style={{ display: 'flex', gap: spacing.xl, alignItems: 'flex-start' }}>
               {detailModal.photo_url && (
-                <img src={detailModal.photo_url} alt={detailModal.title}
+                <img src={detailModal.photo_url} alt={detailModal.title} crossOrigin="anonymous"
                   style={{ width: 120, height: 120, borderRadius: radius.lg, objectFit: 'cover', flexShrink: 0 }} />
               )}
               <div style={{ flex: 1 }}>
@@ -570,7 +570,7 @@ function PurchaseItemCard({
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onClick}>
       {/* Thumbnail */}
       {item.photo_url ? (
-        <img src={item.photo_url} alt={item.title} style={thumbnailStyle}
+        <img src={item.photo_url} alt={item.title} crossOrigin="anonymous" style={thumbnailStyle}
           onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
       ) : (
         <div style={{ ...thumbnailStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${colors.glassBorder}` }}>

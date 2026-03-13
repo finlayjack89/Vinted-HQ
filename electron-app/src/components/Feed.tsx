@@ -268,6 +268,7 @@ function FeedItemCard({
           <img
             src={item.photo_url}
             alt={item.title}
+            crossOrigin="anonymous"
             style={{
               width: '100%',
               height: '100%',

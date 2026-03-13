@@ -236,14 +236,15 @@ function DOMTextureUpdater({ texture }: { texture: THREE.DataTexture }): null {
 
 interface GlassMeshProps {
   id: string;
-  rect: { x: number; y: number; width: number; height: number };
+  rect: { x: number; y: number; width: number; height: number; scrolls: boolean };
   viewportHeight: number;
   mouseNorm: React.MutableRefObject<[number, number]>;
+  scrollOffsetRef: React.MutableRefObject<number>;
   domTexture: THREE.Texture;
   texSize: [number, number];
 }
 
-function GlassMesh({ id, rect, viewportHeight, mouseNorm, domTexture, texSize }: GlassMeshProps): JSX.Element {
+function GlassMesh({ id, rect, viewportHeight, mouseNorm, scrollOffsetRef, domTexture, texSize }: GlassMeshProps): JSX.Element {
   const meshRef = useRef<THREE.Mesh>(null);
 
   // Determine opacity based on element type
@@ -265,21 +266,31 @@ function GlassMesh({ id, rect, viewportHeight, mouseNorm, domTexture, texSize }:
     [isModal, isSidebar], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // Direct mesh position mutation on every frame — NO React re-renders
   useFrame(({ clock }) => {
     uniforms.uTime.value = clock.getElapsedTime();
     uniforms.uMouse.value.set(mouseNorm.current[0], 1.0 - mouseNorm.current[1]);
     uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
     uniforms.uDOMTexture.value = domTexture;
     uniforms.uTexSize.value.set(texSize[0], texSize[1]);
-    uniforms.uMeshRect.value.set(rect.x, rect.y, rect.width, rect.height);
+
+    // Apply scroll offset: for scrolling elements, subtract scrollTop from stored Y
+    const scrollY = rect.scrolls ? scrollOffsetRef.current : 0;
+    const screenY = rect.y - scrollY;
+
+    // Update mesh position via direct mutation (not React state)
+    if (meshRef.current) {
+      const x = rect.x + rect.width / 2;
+      const y = viewportHeight - screenY - rect.height / 2;
+      meshRef.current.position.set(x, y, 0);
+    }
+
+    // Update shader uniform with screen-space rect
+    uniforms.uMeshRect.value.set(rect.x, screenY, rect.width, rect.height);
   });
 
-  // Convert DOM coordinates to Three.js orthographic coordinates
-  const x = rect.x + rect.width / 2;
-  const y = viewportHeight - rect.y - rect.height / 2;
-
   return (
-    <mesh ref={meshRef} position={[x, y, 0]}>
+    <mesh ref={meshRef}>
       <planeGeometry args={[rect.width, rect.height]} />
       <shaderMaterial
         vertexShader={vertexShader}
@@ -295,7 +306,7 @@ function GlassMesh({ id, rect, viewportHeight, mouseNorm, domTexture, texSize }:
 /* ─── Scene: renders all tracked element meshes ──────────── */
 
 function GlassScene(): JSX.Element {
-  const { cards, version } = useTrackedCards();
+  const { cardsRef, scrollOffsetRef, version } = useTrackedCards();
   const { size, gl } = useThree();
   const mouseNorm = useRef<[number, number]>([0.5, 0.5]);
 
@@ -306,7 +317,7 @@ function GlassScene(): JSX.Element {
     Math.max(1, Math.floor(window.innerHeight / 2)),
   ];
 
-  // Listen for mouse moves on the document
+  // Global mouse listener — attached to document, not canvas
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       mouseNorm.current = [
@@ -318,8 +329,10 @@ function GlassScene(): JSX.Element {
     return () => document.removeEventListener('mousemove', handler);
   }, []);
 
+  // Build meshes from the mutable cards map
+  // Only re-runs when version changes (structural add/remove), not on scroll
   const meshes: JSX.Element[] = [];
-  cards.forEach((rect, id) => {
+  cardsRef.current.forEach((rect, id) => {
     if (rect.width > 0 && rect.height > 0) {
       meshes.push(
         <GlassMesh
@@ -328,6 +341,7 @@ function GlassScene(): JSX.Element {
           rect={rect}
           viewportHeight={size.height}
           mouseNorm={mouseNorm}
+          scrollOffsetRef={scrollOffsetRef}
           domTexture={domTexture}
           texSize={texSize}
         />,
@@ -374,9 +388,11 @@ export default function GlassCanvas(): JSX.Element {
           cam.bottom = 0;
           cam.updateProjectionMatrix();
           gl.setClearColor(0x000000, 0);
+          // Force pointer-events none on the actual canvas DOM element
+          gl.domElement.style.pointerEvents = 'none';
         }}
         resize={{ debounce: 100 }}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
       >
         <CameraSync />
         <GlassScene />

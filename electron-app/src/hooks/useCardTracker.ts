@@ -1,9 +1,12 @@
 /**
  * useCardTracker — DOM ↔ WebGL bridge for scroll-synced glass meshes
  *
- * Provides a React context that tracks DOM card bounding boxes and exposes
- * them to the WebGL canvas layer so glass refraction meshes can be positioned
- * precisely behind each card.
+ * PERFORMANCE-CRITICAL: This module bypasses React state entirely for
+ * scroll/resize updates. Bounding boxes are stored in a mutable Map
+ * accessed directly by the WebGL layer via a shared ref. Scroll offset
+ * is tracked as a simple number mutation. No React re-renders during scroll.
+ *
+ * React state is only used for structural changes (cards added/removed).
  */
 
 import React, {
@@ -18,20 +21,26 @@ import React, {
 /* ─── Types ──────────────────────────────────────────────── */
 
 export interface TrackedRect {
+  /** Initial x position (measured at mount time) */
   x: number;
+  /** Initial y position (measured at mount time, before scroll offset) */
   y: number;
   width: number;
   height: number;
+  /** Whether this element scrolls with <main> content */
+  scrolls: boolean;
 }
 
 interface CardTrackerContextValue {
-  /** Register or update a card's bounding rect */
-  set: (id: string, rect: TrackedRect) => void;
-  /** Remove a card from tracking */
-  remove: (id: string) => void;
-  /** Current map of all tracked card rects */
-  cards: Map<string, TrackedRect>;
-  /** Incremented on every change — lets consumers know to re-read */
+  /** Mutable map of all tracked card rects — read directly, no state */
+  cardsRef: React.MutableRefObject<Map<string, TrackedRect>>;
+  /** Mutable scroll offset of <main> — updated via direct mutation */
+  scrollOffsetRef: React.MutableRefObject<number>;
+  /** Register a card — only triggers re-render for structural changes */
+  register: (id: string, rect: TrackedRect) => void;
+  /** Unregister a card */
+  unregister: (id: string) => void;
+  /** Structural version — incremented only on add/remove, not scroll */
   version: number;
 }
 
@@ -41,22 +50,60 @@ const CardTrackerContext = createContext<CardTrackerContextValue | null>(null);
 
 export function CardTrackerProvider({ children }: { children: React.ReactNode }) {
   const cardsRef = useRef(new Map<string, TrackedRect>());
+  const scrollOffsetRef = useRef(0);
   const [version, setVersion] = useState(0);
 
-  const set = useCallback((id: string, rect: TrackedRect) => {
-    cardsRef.current.set(id, rect);
-    setVersion((v) => v + 1);
+  // Register: called once per card mount + on resize (rare)
+  const register = useCallback((id: string, rect: TrackedRect) => {
+    const existing = cardsRef.current.get(id);
+    // Only bump version if it's a NEW card (structural change)
+    if (!existing) {
+      cardsRef.current.set(id, rect);
+      setVersion((v) => v + 1);
+    } else {
+      // Silent update — no re-render, just mutate the ref
+      cardsRef.current.set(id, rect);
+    }
   }, []);
 
-  const remove = useCallback((id: string) => {
-    cardsRef.current.delete(id);
-    setVersion((v) => v + 1);
+  const unregister = useCallback((id: string) => {
+    if (cardsRef.current.has(id)) {
+      cardsRef.current.delete(id);
+      setVersion((v) => v + 1);
+    }
+  }, []);
+
+  // Global scroll listener — mutates scrollOffsetRef directly, NO re-renders
+  useEffect(() => {
+    const mainEl = document.querySelector('main');
+    if (!mainEl) return;
+
+    const onScroll = () => {
+      scrollOffsetRef.current = mainEl.scrollTop;
+    };
+
+    mainEl.addEventListener('scroll', onScroll, { passive: true });
+    // Initial read
+    scrollOffsetRef.current = mainEl.scrollTop;
+
+    return () => mainEl.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Global resize listener — remeasure all cards (rare event)
+  useEffect(() => {
+    const onResize = () => {
+      // Force structural re-render to remeasure all cards
+      setVersion((v) => v + 1);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const value: CardTrackerContextValue = {
-    set,
-    remove,
-    cards: cardsRef.current,
+    cardsRef,
+    scrollOffsetRef,
+    register,
+    unregister,
     version,
   };
 
@@ -67,91 +114,63 @@ export function CardTrackerProvider({ children }: { children: React.ReactNode })
 
 /**
  * Returns a ref callback to attach to a DOM card element.
- * Uses IntersectionObserver + scroll listener to keep the
- * bounding rect updated in the CardTracker context.
+ * Measures the element ONCE on mount and registers it.
+ * Does NOT re-measure on scroll — scroll offset is applied
+ * as a global Y-offset in the WebGL scene.
  */
-export function useTrackCard(id: string) {
+export function useTrackCard(id: string, scrolls = true) {
   const ctx = useContext(CardTrackerContext);
   const elRef = useRef<HTMLElement | null>(null);
-  const rafRef = useRef<number>(0);
+  const measuredRef = useRef(false);
 
-  const updateRect = useCallback(() => {
+  const measure = useCallback(() => {
     if (!elRef.current || !ctx) return;
     const rect = elRef.current.getBoundingClientRect();
-    ctx.set(id, {
+    const mainEl = document.querySelector('main');
+    const scrollTop = mainEl ? mainEl.scrollTop : 0;
+
+    ctx.register(id, {
       x: rect.x,
-      y: rect.y,
+      // Store the absolute Y (accounting for current scroll position)
+      y: rect.y + (scrolls ? scrollTop : 0),
       width: rect.width,
       height: rect.height,
+      scrolls,
     });
-  }, [id, ctx]);
-
-  // Throttled scroll handler via rAF
-  const onScroll = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(updateRect);
-  }, [updateRect]);
+    measuredRef.current = true;
+  }, [id, ctx, scrolls]);
 
   const refCallback = useCallback(
     (node: HTMLElement | null) => {
-      // Cleanup previous
       if (elRef.current && ctx) {
-        ctx.remove(id);
+        ctx.unregister(id);
+        measuredRef.current = false;
       }
 
       elRef.current = node;
-
       if (!node || !ctx) return;
 
-      // Initial measurement
-      updateRect();
+      // Measure once, after layout
+      requestAnimationFrame(() => measure());
 
-      // Observe visibility
-      const io = new IntersectionObserver(
-        () => updateRect(),
-        { threshold: [0, 0.1, 0.5, 1] },
-      );
-      io.observe(node);
-
-      // Observe resize
-      const ro = new ResizeObserver(() => updateRect());
+      // Observe resize (rare — window resize, layout shift)
+      const ro = new ResizeObserver(() => measure());
       ro.observe(node);
 
-      // Store cleanup
-      (node as any).__glassCleanup = () => {
-        io.disconnect();
-        ro.disconnect();
-        cancelAnimationFrame(rafRef.current);
-      };
+      (node as any).__glassCleanup = () => ro.disconnect();
     },
-    [id, ctx, updateRect],
+    [id, ctx, measure],
   );
 
-  // Listen for scroll on the nearest scrollable ancestor
+  // Cleanup on unmount
   useEffect(() => {
-    // We listen on both window and the main content area
-    const scrollContainer = document.querySelector('main');
-    if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', onScroll, { passive: true });
-    }
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll, { passive: true });
-
     return () => {
-      if (scrollContainer) {
-        scrollContainer.removeEventListener('scroll', onScroll);
-      }
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
-      cancelAnimationFrame(rafRef.current);
-
-      // Run element cleanup
       if (elRef.current) {
         (elRef.current as any).__glassCleanup?.();
-        ctx?.remove(id);
       }
+      ctx?.unregister(id);
     };
-  }, [id, ctx, onScroll]);
+  }, [id, ctx]);
 
   return refCallback;
 }
@@ -161,5 +180,9 @@ export function useTrackCard(id: string) {
 export function useTrackedCards() {
   const ctx = useContext(CardTrackerContext);
   if (!ctx) throw new Error('useTrackedCards must be used within CardTrackerProvider');
-  return { cards: ctx.cards, version: ctx.version };
+  return {
+    cardsRef: ctx.cardsRef,
+    scrollOffsetRef: ctx.scrollOffsetRef,
+    version: ctx.version,
+  };
 }
