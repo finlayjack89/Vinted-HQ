@@ -54,31 +54,47 @@ export function registerIpcHandlers(): void {
       const db = getDb();
       if (!db) return { ok: false, reason: 'NO_DB' };
 
-      // Check if extension has already synced session data
-      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('vinted_cookie_plain') as { value: string } | undefined;
-      if (row?.value) {
-        // Promote to encrypted storage immediately
-        secureStorage.storeCookie(row.value);
+      // Helper: check DB for a plaintext cookie written by the extension → bridge pipeline
+      const checkForCookie = () => {
+        return db.prepare('SELECT value FROM settings WHERE key = ?').get('vinted_cookie_plain') as { value: string } | undefined;
+      };
+
+      const promoteCookie = (cookie: string, meta: Record<string, unknown>) => {
+        secureStorage.storeCookie(cookie);
         db.prepare('DELETE FROM settings WHERE key = ?').run('vinted_cookie_plain');
         sessionService.emitSessionReconnected();
-        logger.info('session:synced-from-extension', { immediate: true });
+        logger.info('session:synced-from-extension', meta);
+      };
+
+      // 1. Instant check — cookie may already be cached from a recent extension harvest
+      const cached = checkForCookie();
+      if (cached?.value) {
+        promoteCookie(cached.value, { immediate: true });
         return { ok: true, source: 'cached' };
       }
 
-      // No cached session — open Vinted in default browser (Chrome) to trigger extension harvest
+      // 2. Brief poll (3s) — if Vinted is already open in Chrome, the extension
+      //    may just need a moment to harvest and POST to the bridge
+      for (let i = 0; i < 3; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const row = checkForCookie();
+        if (row?.value) {
+          promoteCookie(row.value, { waited_seconds: i + 1, phase: 'pre-open' });
+          return { ok: true, source: 'polled', waited: i + 1 };
+        }
+      }
+
+      // 3. Fallback — Vinted probably isn't open in Chrome; open it to trigger the extension
       shell.openExternal('https://www.vinted.co.uk/');
       logger.info('session:sync-opened-browser', { url: 'https://www.vinted.co.uk/' });
 
-      // Poll for the extension to harvest and the bridge to write cookie (up to 15s)
-      for (let i = 0; i < 15; i++) {
+      // 4. Continue polling (12s more) for the extension to harvest after the page loads
+      for (let i = 0; i < 12; i++) {
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const freshRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('vinted_cookie_plain') as { value: string } | undefined;
-        if (freshRow?.value) {
-          secureStorage.storeCookie(freshRow.value);
-          db.prepare('DELETE FROM settings WHERE key = ?').run('vinted_cookie_plain');
-          sessionService.emitSessionReconnected();
-          logger.info('session:synced-from-extension', { waited_seconds: i + 1 });
-          return { ok: true, source: 'polled', waited: i + 1 };
+        const row = checkForCookie();
+        if (row?.value) {
+          promoteCookie(row.value, { waited_seconds: i + 4, phase: 'post-open' });
+          return { ok: true, source: 'polled', waited: i + 4 };
         }
       }
 

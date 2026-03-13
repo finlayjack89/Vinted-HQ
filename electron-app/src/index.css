@@ -31,8 +31,25 @@ html, body, #root {
 /* ─── Liquid Glass Helper Classes ───────────────────────────── */
 
 .liquid-glass-panel {
+  position: relative;
   transform: translate3d(0, 0, 0);
   will-change: transform, backdrop-filter;
+}
+
+/* Diffuse specular shine on panels */
+.liquid-glass-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(255, 255, 255, 0.15) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
+  z-index: 2;
+  transition: background 0.15s ease;
 }
 
 .liquid-glass-panel::after {
@@ -74,6 +91,52 @@ html, body, #root {
   pointer-events: none;
 }
 
+/* ─── Modal Overlay — Chromium Containing Block Fix ────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Specular rim light — physical glass edge highlight tracking cursor */
+.modal-overlay > * {
+  position: relative;
+}
+
+.modal-overlay > *::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(255, 255, 255, 0.6) 0%,
+    transparent 50%
+  );
+  -webkit-mask-image: linear-gradient(transparent 50%, black 100%);
+  mask-image: linear-gradient(transparent 50%, black 100%);
+  -webkit-mask-clip: padding-box;
+  mask-clip: padding-box;
+  pointer-events: none;
+  z-index: 3;
+  transition: background 0.1s ease;
+}
+
 /* ─── Liquid Glass Card — Volumetric Lighting ──────────────── */
 
 .liquid-glass-card {
@@ -95,13 +158,7 @@ html, body, #root {
   );
   pointer-events: none;
   z-index: 2;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-/* Show the diffuse shine only when mouse variables are injected */
-.liquid-glass-card[style*="--mouse-x"]::before {
-  opacity: 1;
+  transition: background 0.15s ease;
 }
 
 /* Sharp edge highlight — masked to padding-box for glass bevel */
@@ -121,12 +178,7 @@ html, body, #root {
   mask-clip: padding-box;
   pointer-events: none;
   z-index: 2;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.liquid-glass-card[style*="--mouse-x"]::after {
-  opacity: 1;
+  transition: background 0.15s ease;
 }
 
 /* ─── Selection ─────────────────────────────────────────────── */

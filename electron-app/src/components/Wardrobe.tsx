@@ -360,7 +360,7 @@ export default function Wardrobe() {
   return (
     <div style={{ padding: spacing['2xl'], maxWidth: 1200, margin: '0 auto' }}>
       {actionBusy && (
-        <div style={modalOverlay}>
+        <div className="modal-overlay" style={modalOverlay}>
           <div
             style={{ ...modalContent, maxWidth: 420, textAlign: 'center', background: colors.bgElevated, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
             onClick={(e) => e.stopPropagation()}
@@ -695,7 +695,7 @@ export default function Wardrobe() {
       {/* ── Ontology Alert Modal ── */}
       {
         ontologyAlert && (
-          <div style={modalOverlay} onClick={() => setOntologyAlert(null)}>
+          <div className="modal-overlay" style={modalOverlay} onClick={() => setOntologyAlert(null)}>
             <div style={{ ...modalContent, maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: spacing.lg }}>
                 <div style={{
@@ -769,14 +769,14 @@ function ItemTable({
 }) {
   if (items.length === 0) {
     return (
-      <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
+      <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
         {emptyMessage}
       </div>
     );
   }
 
   return (
-    <div style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
+    <div className="liquid-glass-panel" style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -1047,7 +1047,7 @@ function DiscrepancyView({
 }) {
   if (items.length === 0) {
     return (
-      <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
+      <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
         No discrepancies. Local vault is in sync with Vinted.
       </div>
     );
@@ -1161,11 +1161,11 @@ function WaitingRoom({
 
       {/* Queue Table */}
       {queue.length === 0 ? (
-        <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
+        <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
           No items queued for relisting. Select items from the Live tab and click "Relist".
         </div>
       ) : (
-        <div style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
+        <div className="liquid-glass-panel" style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -2291,7 +2291,7 @@ function EditItemModal({
   const editPhotos = editLocalPaths.length > 0 ? editLocalPaths : editPhotoUrls;
 
   return (
-    <div style={modalOverlay} onClick={onClose}>
+    <div className="modal-overlay" style={modalOverlay} onClick={onClose}>
       <div
         style={{ ...modalContent, maxWidth: 640, maxHeight: '90vh', overflow: 'auto', padding: spacing['2xl'], position: 'relative' }}
         onClick={(e) => e.stopPropagation()}

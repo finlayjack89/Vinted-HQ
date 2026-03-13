@@ -107,6 +107,7 @@ export default function ProxyStatus() {
     <div style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       {/* Summary bar */}
       <div
+        className="liquid-glass-panel"
         style={{
           ...glassPanel,
           padding: `${spacing.lg}px ${spacing.xl}px`,
@@ -169,6 +170,7 @@ export default function ProxyStatus() {
             </p>
             {scrapingProxies.length === 0 ? (
               <div
+                className="liquid-glass-panel"
                 style={{
                   ...glassPanel,
                   padding: spacing['3xl'],

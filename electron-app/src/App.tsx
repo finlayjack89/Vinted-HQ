@@ -13,6 +13,7 @@ import PurchasesSuite from './components/PurchasesSuite';
 import SalesSuite from './components/SalesSuite';
 import AutoMessage from './components/AutoMessage';
 import ProxyStatus from './components/ProxyStatus';
+import GlassCanvas from './components/GlassCanvas';
 import {
   colors,
   font,
@@ -32,6 +33,9 @@ import {
   springGentle,
   springResponsive,
 } from './theme';
+import { useMousePosition } from './hooks/useMousePosition';
+import { useReducedMotion } from './hooks/useReducedMotion';
+import { CardTrackerProvider } from './hooks/useCardTracker';
 import type { SniperCountdownParams } from './types/global';
 
 type Tab = 'feed' | 'wardrobe' | 'sales' | 'automessage' | 'proxies' | 'settings' | 'logs' | 'purchases';
@@ -199,8 +203,22 @@ export default function App() {
     }
   };
 
+  const { ref: rootRef, onMouseMove: rootMouseMove, onMouseLeave: rootMouseLeave } = useMousePosition<HTMLDivElement>();
+  const prefersReducedMotion = useReducedMotion();
+
+  // Mount the WebGL canvas only on tabs with tracked cards and when reduced motion is not preferred
+  const showWebGLCanvas = !prefersReducedMotion && (tab === 'feed' || tab === 'purchases');
+
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: font.family }}>
+    <CardTrackerProvider>
+    <div
+      ref={rootRef}
+      onMouseMove={rootMouseMove}
+      onMouseLeave={rootMouseLeave}
+      style={{ display: 'flex', height: '100vh', fontFamily: font.family }}
+    >
+      {/* ─── WebGL Glass Refraction Layer ────────────────── */}
+      {showWebGLCanvas && <GlassCanvas />}
       {/* ─── Sidebar ──────────────────────────────────────── */}
       <motion.aside
         className="liquid-glass-panel"
@@ -369,6 +387,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={springGentle}
+            className="modal-overlay"
             style={modalOverlay}
           >
             <motion.div
@@ -445,7 +464,7 @@ export default function App() {
 
       {/* ─── Session Expired Modal ────────────────────────── */}
       {sessionExpired && (
-        <div style={{ ...modalOverlay, zIndex: 1002 }}>
+        <div className="modal-overlay" style={{ ...modalOverlay, zIndex: 1002 }}>
           <div style={{ ...modalContent, maxWidth: 480 }}>
             <div
               style={{
@@ -547,5 +566,6 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
+    </CardTrackerProvider>
   );
 }

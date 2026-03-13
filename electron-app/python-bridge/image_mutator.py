@@ -8,7 +8,7 @@ Three mutation strategies:
                               generation always produces the same perturbation
                               direction, while each new generation produces a
                               distinct fingerprint.
-  apply_fallback_mutation() — Non-linear mutations applied when the standard
+  apply_fallback_mutation() — Subtle non-linear mutations applied when the standard
                               clockface crop fails to alter the dHash enough.
 
 Generation-based mutations (Phase 2):
@@ -20,13 +20,13 @@ Generation-based mutations (Phase 2):
 
 Phase 4 — dHash Verification Loop:
   After the Phase 2 mutations, compute dHash of original and mutated images.
-  If Hamming distance < 10 (Vinted would flag as duplicate), apply Phase 6
-  fallback mutations and re-check.  Loop up to 3 times.
+  If Hamming distance < 5 (too close to Vinted's duplicate threshold), apply
+  subtle fallback mutations and re-check.  Loop up to 3 times.
 
-Phase 6 — Fallback Mutations:
-  Attempt 1: Asymmetric scale (4% X stretch, 2% Y compress)
-  Attempt 2: Micro Gaussian noise (sigma=15) on pixel arrays
-  Attempt 3: Aggressive 8% crop from top and bottom
+Phase 6 — Fallback Mutations (subtle / imperceptible):
+  Attempt 1: Micro hue rotation (2-5°) via channel mixing
+  Attempt 2: Very light Gaussian noise (sigma=3, barely visible)
+  Attempt 3: Gentle asymmetric crop (2-3% from one edge)
 """
 
 import io
@@ -49,9 +49,10 @@ except ImportError:
 MIN_CROP_DIM = 400
 
 # Minimum Hamming distance to pass Vinted's duplicate detection.
-# dHash produces 64-bit hashes; distance < 10 is considered a perceptual match.
-# We target 12 internally to account for JPEG quantization drift (~2 bits).
-MIN_DHASH_DISTANCE = 12
+# dHash produces 64-bit hashes; Vinted's match threshold is approximately 5 bits.
+# We target 5 to avoid unnecessary fallback escalation — the Phase 2 mutations
+# already change the binary fingerprint significantly even at low dHash distances.
+MIN_DHASH_DISTANCE = 5
 
 
 # ─── Legacy Random Mutation (existing behaviour, used by /upload) ────────────
@@ -77,16 +78,16 @@ def mutate_image(image_bytes: bytes, relist_count: int) -> bytes:
     # 1. Strip all metadata (EXIF, ICC profile, JFIF comments)
     img.info.clear()
 
-    # 2. Alternating rotation: +-0.5-1.0 degrees
-    angle = random.uniform(0.5, 1.0)
+    # 2. Alternating rotation: +-0.3-0.6 degrees (imperceptible)
+    angle = random.uniform(0.3, 0.6)
     if relist_count % 2 == 0:
         angle = -angle  # clockwise
 
     img = img.rotate(angle, resample=Image.BICUBIC, expand=False, fillcolor=None)
 
-    # 3. Random 1-3% edge crop
+    # 3. Random 1-2% edge crop
     w, h = img.size
-    crop_pct = random.uniform(0.01, 0.03)
+    crop_pct = random.uniform(0.01, 0.02)
     left = int(w * crop_pct)
     top = int(h * crop_pct)
     right = w - int(w * crop_pct)
@@ -139,15 +140,17 @@ _CLOCKFACE_CROPS = [
 ]
 
 
-# ─── Phase 6 Fallback Mutations ─────────────────────────────────────────────
+# ─── Phase 6 Fallback Mutations (subtle / imperceptible) ─────────────────────
 
 
 def apply_fallback_mutation(img: Image.Image, attempt: int, generation: int = 0) -> Image.Image:
     """
-    Apply escalating non-linear mutations when standard clockface crop fails
-    to alter the dHash enough.  Each attempt level targets dHash's sensitivity
-    to large-scale gradient direction by applying structural transformations.
-    Attempts are applied CUMULATIVELY (attempt 2 includes attempt 1's work, etc).
+    Apply subtle, imperceptible mutations when standard clockface crop fails
+    to alter the dHash enough.  Each attempt level is applied INDEPENDENTLY
+    (not cumulatively) to avoid stacking visible distortions.
+
+    All transforms are designed to shift the dHash perceptual hash while
+    remaining invisible to the human eye.
 
     Args:
         img: PIL Image (RGB) that has already been through Phase 2 mutation.
@@ -160,28 +163,52 @@ def apply_fallback_mutation(img: Image.Image, attempt: int, generation: int = 0)
     w, h = img.size
     rng = random.Random(generation * 100 + attempt)
 
-    if attempt >= 1:
-        # Rotation: 2-4° shifts the 9×8 gradient grid that dHash operates on
-        angle = rng.uniform(2.0, 4.0) * (1 if generation % 2 == 0 else -1)
-        img = img.rotate(angle, resample=Image.BICUBIC, expand=False)
-        w, h = img.size
+    if attempt == 1:
+        # Micro hue rotation (2-5°): shift colour channels by tiny amounts.
+        # This changes the gradient directions that dHash measures but is
+        # imperceptible to the human eye (similar to white balance drift).
+        angle_deg = rng.uniform(2.0, 5.0)
+        angle_rad = angle_deg * 3.14159 / 180.0
+        cos_a = np.cos(angle_rad)
+        sin_a = np.sin(angle_rad)
+        # Apply rotation in RGB color space (simplified hue shift)
+        arr = np.array(img, dtype=np.float32)
+        r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+        new_r = np.clip(r * cos_a - g * sin_a * 0.3, 0, 255)
+        new_g = np.clip(g * cos_a + r * sin_a * 0.3, 0, 255)
+        arr[:, :, 0] = new_r
+        arr[:, :, 1] = new_g
+        img = Image.fromarray(arr.astype(np.uint8), mode="RGB")
 
-    if attempt >= 2:
-        # Gaussian noise (sigma=25): scrambles fine gradients in the thumbnail
+    elif attempt == 2:
+        # Very light Gaussian noise (sigma=3): barely visible, shifts
+        # fine-grained gradients enough to alter the dHash thumbnail.
         arr = np.array(img, dtype=np.int16)
-        noise = np.random.default_rng(seed=generation * 1000 + attempt).normal(0, 25, arr.shape).astype(np.int16)
+        noise = np.random.default_rng(seed=generation * 1000 + attempt).normal(0, 3, arr.shape).astype(np.int16)
         arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
         img = Image.fromarray(arr, mode="RGB")
 
-    if attempt >= 3:
-        # Aggressive asymmetric crop: 15% off top, 10% off left
-        # This shifts the content significantly within the dHash grid
-        top_crop = int(h * 0.15)
-        left_crop = int(w * 0.10)
-        new_w = w - left_crop
-        new_h = h - top_crop
-        if new_w >= MIN_CROP_DIM and new_h >= MIN_CROP_DIM:
-            img = img.crop((left_crop, top_crop, w, h))
+    elif attempt == 3:
+        # Gentle asymmetric crop: 2-3% off one edge only.
+        # Shifts content within the dHash grid without visibly changing the image.
+        edge = rng.choice(["top", "bottom", "left", "right"])
+        pct = rng.uniform(0.02, 0.03)
+        if edge == "top":
+            crop_px = int(h * pct)
+            if (h - crop_px) >= MIN_CROP_DIM:
+                img = img.crop((0, crop_px, w, h))
+        elif edge == "bottom":
+            crop_px = int(h * pct)
+            if (h - crop_px) >= MIN_CROP_DIM:
+                img = img.crop((0, 0, w, h - crop_px))
+        elif edge == "left":
+            crop_px = int(w * pct)
+            if (w - crop_px) >= MIN_CROP_DIM:
+                img = img.crop((crop_px, 0, w, h))
+        else:  # right
+            crop_px = int(w * pct)
+            if (w - crop_px) >= MIN_CROP_DIM:
+                img = img.crop((0, 0, w - crop_px, h))
 
     return img
 
@@ -240,8 +267,11 @@ def mutate_image_for_relist(image_bytes: bytes, generation: int) -> bytes:
     """
     Apply deterministic, generation-based mutations to bypass perceptual hashing.
     Includes a closed-loop dHash verification step: if the Hamming distance between
-    original and mutated is < 10, escalating fallback mutations are applied until
-    the distance is safe (up to 3 attempts).
+    original and mutated is < MIN_DHASH_DISTANCE, subtle fallback mutations are
+    applied until the distance is safe (up to 3 attempts).
+
+    All mutations are designed to be IMPERCEPTIBLE to the human eye while
+    producing a distinct binary and perceptual fingerprint.
 
     Args:
         image_bytes: Raw JPEG/PNG/WebP bytes of the original image.
@@ -270,12 +300,12 @@ def mutate_image_for_relist(image_bytes: bytes, generation: int) -> bytes:
     # 1. Strip all EXIF / ICC metadata
     img.info.clear()
 
-    # 2. Alternating brightness (even) / contrast (odd) micro-shift (±1-2%)
+    # 2. Alternating brightness (even) / contrast (odd) micro-shift (±1%)
     if generation % 2 == 0:
-        factor = rng.uniform(0.98, 1.02)
+        factor = rng.uniform(0.99, 1.01)
         img = ImageEnhance.Brightness(img).enhance(factor)
     else:
-        factor = rng.uniform(0.98, 1.02)
+        factor = rng.uniform(0.99, 1.01)
         img = ImageEnhance.Contrast(img).enhance(factor)
 
     # 3. Clockface geometric crop — generation mod 12 selects position
@@ -312,7 +342,7 @@ def mutate_image_for_relist(image_bytes: bytes, generation: int) -> bytes:
         if distance >= MIN_DHASH_DISTANCE:
             break  # Safe — mutation is sufficient
 
-        # Not enough divergence; apply escalating fallback
+        # Not enough divergence; apply subtle fallback
         img = apply_fallback_mutation(img, attempt, generation=generation)
 
     # 5. Export as JPEG (quality=95, optimize=True)
@@ -359,3 +389,4 @@ def jitter_text_zwsp(text: str, generation: int) -> str:
     rng = random.Random(generation + 0xCAFE)  # offset seed to differ from image RNG
     count = rng.randint(1, 4)
     return text.rstrip() + ("\u200B" * count)
+

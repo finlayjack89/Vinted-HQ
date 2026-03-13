@@ -1873,7 +1873,6 @@ function buildVintedItemData(item: inventoryDb.InventoryItemJoined, opts?: { req
       international: normalizedShipmentPrices.international ?? null,
     },
     color_ids: normalizedColorIds,
-    assigned_photos: [], // Photos handled separately during relist/push
     measurement_length: item.measurement_length || null,
     measurement_width: item.measurement_width || null,
     item_attributes: normalizedAttributes,

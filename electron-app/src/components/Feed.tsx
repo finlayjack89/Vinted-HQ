@@ -19,8 +19,8 @@ import {
   springResponsive,
   staggerFast,
 } from '../theme';
-import { useMousePosition } from '../hooks/useMousePosition';
 import GlassSkeleton from './GlassSkeleton';
+import { useTrackCard } from '../hooks/useCardTracker';
 import type { FeedItem } from '../types/global';
 
 export default function Feed() {
@@ -231,15 +231,14 @@ function FeedItemCard({
   isBuying: boolean;
   isDegraded?: boolean;
 }) {
-  const { ref, onMouseMove, onMouseLeave } = useMousePosition<HTMLDivElement>();
+  // Track this card's bounding box for the WebGL refraction layer
+  const trackRef = useTrackCard(`feed-${item.id}`);
 
   return (
     <motion.div
-      ref={ref}
-      className="liquid-glass-card"
+      ref={isDegraded ? undefined : (trackRef as any)}
+      className={isDegraded ? 'liquid-glass-card' : undefined}
       onClick={onToggle}
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
       variants={{
         hidden: { y: 20, opacity: 0 },
         visible: { y: 0, opacity: 1 },
@@ -252,13 +251,15 @@ function FeedItemCard({
         cursor: 'pointer',
         display: 'flex',
         flexDirection: 'column',
-        background: liquidGlassCard.background,
+        // When WebGL is active (not degraded), make background transparent
+        // so the refraction mesh shows through
+        background: isDegraded ? liquidGlassCard.background : 'transparent',
         backdropFilter: isDegraded
           ? 'blur(16px) saturate(130%)'
-          : liquidGlassCard.backdropFilter,
+          : 'none',
         WebkitBackdropFilter: isDegraded
           ? 'blur(16px) saturate(130%)'
-          : liquidGlassCard.WebkitBackdropFilter,
+          : 'none',
       }}
     >
       {/* Image */}

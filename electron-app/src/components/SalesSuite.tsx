@@ -405,7 +405,7 @@ export default function SalesSuite() {
 
       {/* Error banner */}
       {error && (
-        <div style={{ ...glassPanel, padding: `${spacing.lg}px ${spacing.xl}px`, display: 'flex', alignItems: 'center', gap: spacing.md, borderColor: 'rgba(248, 113, 113, 0.3)' }}>
+        <div className="liquid-glass-panel" style={{ ...glassPanel, padding: `${spacing.lg}px ${spacing.xl}px`, display: 'flex', alignItems: 'center', gap: spacing.md, borderColor: 'rgba(248, 113, 113, 0.3)' }}>
           <div style={{ width: 36, height: 36, borderRadius: radius.md, background: colors.errorBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={colors.error} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
@@ -426,7 +426,7 @@ export default function SalesSuite() {
       {loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           {[1, 2, 3].map(i => (
-            <div key={i} style={{ ...glassPanel, padding: spacing.xl, height: 120, display: 'flex', alignItems: 'center', gap: spacing.xl }}>
+            <div key={i} className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing.xl, height: 120, display: 'flex', alignItems: 'center', gap: spacing.xl }}>
               <div style={{ ...thumbnailStyle, background: colors.glassHighlight }} />
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ width: '40%', height: 14, background: colors.glassHighlight, borderRadius: radius.sm }} />
@@ -440,7 +440,7 @@ export default function SalesSuite() {
 
       {/* Empty state */}
       {!loading && items.length === 0 && !error && (
-        <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center' }}>
+        <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: spacing.lg }}>💰</div>
           <h3 style={{ margin: '0 0 8px', fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
             No {statusTab === 'all' ? 'sold orders' : statusTab.replace('_', ' ') + ' orders'} yet

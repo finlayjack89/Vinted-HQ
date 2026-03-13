@@ -325,28 +325,60 @@ def get_purchases_api(
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
     x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
-    """Fetch user's bought orders."""
+    """Fetch user's bought orders.
+
+    Vinted's API ignores `type=bought` and returns all/sold orders regardless.
+    Workaround: fetch both type=sold and type=bought, then subtract sold
+    transaction_ids from the bought response to isolate actual purchases.
+    """
     if not x_vinted_cookie:
         return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
     try:
-        data = vinted_fetch_bought_items(
+        common_kwargs = dict(
             cookie=x_vinted_cookie,
-            status=status,
             csrf_token=x_csrf_token,
             anon_id=x_anon_id,
             proxy=proxy,
-            page=page,
-            per_page=per_page,
             transport_mode=transport_mode,
             user_agent=x_vinted_user_agent,
         )
-        # Debug: see what the API actually returns for type=bought
-        if isinstance(data, dict):
-            orders = data.get("my_orders", [])
-            titles = [o.get("title", "?") for o in orders[:3]] if orders else []
-            statuses = [o.get("status", "?") for o in orders[:3]] if orders else []
-            print(f"[purchases-api] type=bought returned {len(orders)} orders. Titles: {titles}, Statuses: {statuses}")
-        return {"ok": True, "data": data}
+
+        # 1) Fetch what the API returns for type=bought (may include sold items)
+        bought_data = vinted_fetch_bought_items(
+            status=status, page=page, per_page=per_page, **common_kwargs
+        )
+
+        # 2) Fetch sold items to build an exclusion set
+        #    Fetch enough pages to cover the full sold history for accurate filtering
+        sold_ids: set[int] = set()
+        sold_page = 1
+        while True:
+            sold_data = vinted_fetch_sold_items(
+                status="all", page=sold_page, per_page=100, **common_kwargs
+            )
+            sold_orders = sold_data.get("my_orders", []) if isinstance(sold_data, dict) else []
+            if not sold_orders:
+                break
+            for o in sold_orders:
+                tid = o.get("transaction_id")
+                if tid:
+                    sold_ids.add(tid)
+            # If we got fewer than requested, we've reached the end
+            if len(sold_orders) < 100:
+                break
+            sold_page += 1
+            # Safety cap to avoid infinite loops
+            if sold_page > 10:
+                break
+
+        # 3) Filter: keep only orders whose transaction_id is NOT in the sold set
+        if isinstance(bought_data, dict) and "my_orders" in bought_data:
+            all_orders = bought_data["my_orders"]
+            filtered = [o for o in all_orders if o.get("transaction_id") not in sold_ids]
+            print(f"[purchases-api] Filtering: {len(all_orders)} total -> {len(filtered)} purchases ({len(sold_ids)} sold IDs excluded)")
+            bought_data["my_orders"] = filtered
+
+        return {"ok": True, "data": bought_data}
     except VintedError as e:
         return _error_response(e.code, e.message, e.status_code or 500)
 

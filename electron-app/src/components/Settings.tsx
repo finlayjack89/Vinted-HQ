@@ -55,6 +55,7 @@ function SniperSpentDisplay({ sniperId, budgetLimit }: { sniperId: number; budge
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <motion.section
+      className="liquid-glass-panel"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={springResponsive}

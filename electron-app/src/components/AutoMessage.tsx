@@ -132,7 +132,7 @@ function GlobalDelaySettings() {
   if (!loaded) return null;
 
   return (
-    <div style={{ ...glassPanel, padding: spacing.md, marginBottom: spacing.lg }}>
+    <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing.md, marginBottom: spacing.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
         <h3 style={{ ...sectionTitle, margin: 0, fontSize: font.size.base }}>
           Delay Between Messages
@@ -273,7 +273,7 @@ function PresetManager({
   };
 
   return (
-    <div style={{ ...glassPanel, padding: spacing.lg, marginBottom: spacing.lg }}>
+    <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing.lg, marginBottom: spacing.lg }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md }}>
         <h3 style={{ ...sectionTitle, margin: 0, fontSize: font.size.lg }}>Preset Messages</h3>
         <button style={{ ...btnSecondary, ...btnSmall }} onClick={() => setShowAdd(!showAdd)}>
@@ -466,7 +466,7 @@ function ConfigForm({
   }, [messageText]);
 
   return (
-    <div style={{ ...glassPanel, padding: spacing.xl, marginBottom: spacing.lg }}>
+    <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing.xl, marginBottom: spacing.lg }}>
       <h3 style={{ ...sectionTitle, marginBottom: spacing.md }}>
         {initial ? 'Edit Rule' : 'Create Rule'}
       </h3>

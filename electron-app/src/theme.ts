@@ -343,15 +343,10 @@ export const sectionDesc: CSSProperties = {
 export const modalOverlay: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: colors.overlay,
-  backdropFilter: 'blur(12px)',
-  WebkitBackdropFilter: 'blur(12px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   zIndex: 1000,
-  transform: 'translate3d(0, 0, 0)',
-  willChange: 'transform',
 };
 
 export const modalContent: CSSProperties = {

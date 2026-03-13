@@ -25,6 +25,8 @@ import {
   transition,
   shadows,
 } from '../theme';
+import { useTrackCard } from '../hooks/useCardTracker';
+import { useMousePosition } from '../hooks/useMousePosition';
 import type { VintedSoldItem, BoughtOrderRow, BridgeResult } from '../types/global';
 
 /* ─── Status tab definitions ─────────────────────────── */
@@ -262,6 +264,9 @@ export default function PurchasesSuite() {
 
   /* ─── Styles ───────────────────────────────────────── */
 
+  // Mouse position for modal specular lighting
+  const { ref: modalMouseRef, onMouseMove: modalMouseMove, onMouseLeave: modalMouseLeave } = useMousePosition<HTMLDivElement>();
+
   const cardStyle: React.CSSProperties = {
     ...glassPanel,
     padding: spacing.xl,
@@ -271,6 +276,10 @@ export default function PurchasesSuite() {
     transition: transition.base,
     cursor: 'pointer',
     border: '1px solid transparent',
+    // Transparent background for WebGL refraction layer
+    background: 'transparent',
+    backdropFilter: 'none',
+    WebkitBackdropFilter: 'none',
   };
 
   const cardHoverStyle: React.CSSProperties = {
@@ -334,16 +343,8 @@ export default function PurchasesSuite() {
     return badge(colors.glassBg, colors.textSecondary);
   };
 
-  const overlayStyle: React.CSSProperties = {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0,0,0,0.6)',
-    backdropFilter: 'blur(6px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 9999,
-  };
+  // Use the CSS .modal-overlay class instead of inline backdrop-filter
+  // to get the Chromium-safe ::before pseudo-element approach
 
   const modalStyle: React.CSSProperties = {
     ...glassPanel,
@@ -389,7 +390,7 @@ export default function PurchasesSuite() {
 
       {/* Error banner */}
       {error && (
-        <div style={{ ...glassPanel, padding: `${spacing.lg}px ${spacing.xl}px`, display: 'flex', alignItems: 'center', gap: spacing.md, borderColor: 'rgba(248, 113, 113, 0.3)' }}>
+        <div className="liquid-glass-panel" style={{ ...glassPanel, padding: `${spacing.lg}px ${spacing.xl}px`, display: 'flex', alignItems: 'center', gap: spacing.md, borderColor: 'rgba(248, 113, 113, 0.3)' }}>
           <div style={{ width: 36, height: 36, borderRadius: radius.md, background: colors.errorBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={colors.error} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
@@ -410,7 +411,7 @@ export default function PurchasesSuite() {
       {loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
           {[1, 2, 3].map(i => (
-            <div key={i} style={{ ...glassPanel, padding: spacing.xl, height: 120, display: 'flex', alignItems: 'center', gap: spacing.xl }}>
+            <div key={i} className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing.xl, height: 120, display: 'flex', alignItems: 'center', gap: spacing.xl }}>
               <div style={{ ...thumbnailStyle, background: colors.glassHighlight }} />
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ width: '40%', height: 14, background: colors.glassHighlight, borderRadius: radius.sm }} />
@@ -424,7 +425,7 @@ export default function PurchasesSuite() {
 
       {/* Empty state */}
       {!loading && items.length === 0 && !error && (
-        <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center' }}>
+        <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: spacing.lg }}>🛒</div>
           <h3 style={{ margin: '0 0 8px', fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
             No {statusTab === 'all' ? 'purchases' : statusTab.replace('_', ' ') + ' purchases'} yet
@@ -457,8 +458,15 @@ export default function PurchasesSuite() {
 
       {/* Detail Modal */}
       {detailModal && (
-        <div style={overlayStyle} onClick={(e) => { if (e.target === e.currentTarget) setDetailModal(null); }}>
-          <div style={modalStyle}>
+        <div
+          className="modal-overlay"
+          ref={modalMouseRef}
+          onMouseMove={modalMouseMove}
+          onMouseLeave={modalMouseLeave}
+          style={{ zIndex: 9999 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setDetailModal(null); }}
+        >
+          <div style={{ ...modalStyle, position: 'relative' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: font.size.xl, fontWeight: font.weight.bold, color: colors.textPrimary }}>
                 Purchase Details
@@ -555,9 +563,10 @@ function PurchaseItemCard({
   onClick: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const trackRef = useTrackCard(`purchase-${item.transaction_id}`);
 
   return (
-    <div style={{ ...cardStyle, ...(hovered ? cardHoverStyle : {}) }}
+    <div ref={trackRef} style={{ ...cardStyle, ...(hovered ? cardHoverStyle : {}) }}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onClick}>
       {/* Thumbnail */}
       {item.photo_url ? (
