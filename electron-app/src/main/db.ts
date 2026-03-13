@@ -281,6 +281,31 @@ function migrate(database: Database.Database): void {
   if (!logCols.some((c) => c.name === 'receiver_username')) {
     database.prepare('ALTER TABLE auto_message_logs ADD COLUMN receiver_username TEXT').run();
   }
+
+  // One-shot migration: clear bought_orders table that was polluted with sold items
+  // (bug: type param was briefly changed to order_type, causing sold items to be cached as bought)
+  const boughtPurged = database.prepare("SELECT value FROM settings WHERE key = 'bought_orders_purged_v1'").get() as { value: string } | undefined;
+  if (!boughtPurged) {
+    database.prepare('DELETE FROM bought_orders').run();
+    database.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('bought_orders_purged_v1', '1', unixepoch())").run();
+  }
+
+  // One-shot migration: clean $undefined RSC reference strings from numeric columns.
+  // The Chrome extension's deep sync stored Next.js RSC "$undefined" literals as text
+  // in integer columns (status_id, brand_id, etc.), breaking the relist pipeline.
+  const rscCleaned = database.prepare("SELECT value FROM settings WHERE key = 'rsc_undefined_cleaned_v1'").get() as { value: string } | undefined;
+  if (!rscCleaned) {
+    const rscNumericCols = [
+      'status_id', 'brand_id', 'size_id', 'category_id', 'package_size_id',
+      'collection_id', 'model_id', 'video_game_rating_id',
+    ];
+    for (const col of rscNumericCols) {
+      database.prepare(`UPDATE inventory_master SET ${col} = NULL WHERE typeof(${col}) = 'text' AND ${col} LIKE '$%'`).run();
+    }
+    // Also force re-sync for any affected items so next deep sync re-fetches valid data
+    database.prepare("UPDATE inventory_master SET detail_hydrated_at = NULL WHERE detail_source = 'extension' AND status_id IS NULL").run();
+    database.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('rsc_undefined_cleaned_v1', '1', unixepoch())").run();
+  }
 }
 
 export function getDb(): Database.Database | null {

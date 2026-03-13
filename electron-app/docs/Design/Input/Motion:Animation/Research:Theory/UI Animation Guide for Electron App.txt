@@ -1,0 +1,185 @@
+﻿Advanced Motion and Animation Architecture Guide: Liquid Glass and Fluid Navigation Systems
+Executive Summary
+The modern evolution of desktop application interfaces demands more than static visual states; it requires an interconnected, physics-driven spatial environment. The following architectural blueprint establishes the comprehensive framework for integrating a fluid motion and optical rendering system into the "Vinted HQ" React/Electron application. Transitioning from rudimentary CSS keyframe animations to a dynamic, mass-spring-damper kinetic model requires a fundamental restructuring of the user interface layer. The target aesthetic builds upon the established "Revolut-inspired dark fintech theme," elevating it through the precise programmatic application of "Liquid Glass" optical refractions, volumetric specular highlights, and continuous layout choreography.
+This document synthesizes theoretical physics, Scalable Vector Graphics (SVG) manipulation, and React component lifecycle management to provide a definitive implementation guide. It details the exact mathematical parameters, Chromium rendering pipeline optimizations, and state-machine logic required to construct an interface that reacts to user input with physical plausibility while strictly preserving the performance budget required for the application's core background operations: stealth HTTP networking via the Python Bridge, SQLite inventory management, and aggressive Vinted API polling. The resulting specifications serve as the authoritative reference for configuring subsequent AI-driven code generation and component refactoring.
+1. Theoretical Foundation of Fluid Motion Mechanics
+The transition from traditional web animations to fluid interfaces necessitates abandoning linear or Bezier-curve time interpolations in favor of simulated physics. Physical motion models ground the interface in reality, allowing components to respond to user interactions dynamically, predictably, and with interruptible trajectories.1
+1.1. Harmonic Oscillators and Spring Dynamics
+The fundamental engine of fluid UI motion is the damped harmonic oscillator. When a user interacts with a component—such as clicking a navigation tab or triggering a modal—they are conceptually displacing a mass from its equilibrium state. The system's natural attempt to return to equilibrium is described by Hooke's Law, which states that the restoring force    is proportional to the displacement    and the stiffness constant    2:
+  
+
+A purely elastic spring governed only by Hooke's Law would oscillate indefinitely. To create a usable and settling interface, kinetic energy must be dissipated from the system. This dissipation is achieved through a damping force   , which is proportional to the velocity    (or the first derivative of displacement with respect to time,   ) and a damping coefficient    3:
+  
+
+Applying Newton's Second Law of Motion (  ), the total acceleration    of the UI element at any given computational frame is derived from the sum of the restoring spring force and the opposing damping force, divided by the element's mass    3:
+  
+
+The resulting differential equation governs the exact pixel-by-pixel trajectory of the component. The visual characteristic of this trajectory is fundamentally determined by the damping ratio, denoted by    (zeta).5 The damping ratio categorizes the resulting motion into three distinct physical regimes:
+1. Underdamped (  ): The system overshoots the equilibrium point and oscillates with a gradually decaying amplitude.5 In UI terms, this produces a "bouncy" or elastic effect, often used to draw attention to error states or to provide playful feedback.7
+2. Critically Damped (  ): The system returns to equilibrium as rapidly as mathematically possible without oscillating.5 This is the ideal state for snappy, responsive interface elements where speed and precision are paramount, such as rapid toggle switches.
+3. Overdamped (  ): The system returns to equilibrium slowly and heavily, without oscillating, akin to an object moving through a highly viscous fluid like heavy motor oil.6 This creates a sense of immense mass and authority, suitable for large, screen-obscuring overlays.
+1.2. Translation of Perceptual Metrics to Physical Constants
+While raw mass, stiffness, and damping values are physically accurate, they are difficult to intuitively manipulate when designing an interface. Modern interface design languages, most notably those pioneered by Apple, abstract these raw physical properties into more designer-friendly parameters: Perceptual Duration (or Response) and Bounce.8
+To programmatically integrate these abstract design concepts into the absolute physical constants required by animation libraries (such as Framer Motion or React Spring), the following mathematical conversions are utilized. These derivations assume a constant base mass (  ) to simplify the calculation matrix 8:
+Stiffness (  ):
+The stiffness constant is derived from the desired perceptual duration of the animation:
+  
+
+Damping (  ):
+The damping coefficient requires a piecewise calculation depending on whether the desired bounce is positive (underdamped) or negative (overdamped).
+For scenarios where bounce   :
+  
+
+For scenarios where bounce   :
+  
+
+By embedding these conversion formulas directly into the application's theme configuration, developers and AI agents can reason about interface motion in terms of user-centric time and elasticity, while the rendering engine executes mathematically flawless physics.
+
+
+  
+
+
+
+1.3. Application-Wide Kinetic Profile Definitions
+Based on the established physical models and the requirement for a premium, Revolut-inspired fintech aesthetic, the Vinted HQ application must implement a standardized set of kinetic profiles. These profiles act as global constants and must be applied systematically across the React component tree to ensure systemic consistency.
+   1. The 'Responsive' Profile (Critically Damped to Slightly Underdamped):
+   * Mathematical Parameters: Mass: 1, Stiffness: ~300-400, Damping: 0.6-0.8.11
+   * Architectural Application: This profile is strictly reserved for micro-interactions requiring immediate, tactile user feedback. Within the Vinted HQ architecture, this applies directly to the myriad of configuration toggles in Settings.tsx (e.g., the verificationEnabled or sessionAutoSubmitEnabled switches).12 The exceptionally high stiffness ensures the visual element snaps instantly to the user's input vector, while the medium damping coefficient permits a microscopic, rapidly decaying bounce that mimics the physical resistance of hardware buttons.7
+   2. The 'Smooth' Profile (Underdamped):
+   * Mathematical Parameters: Mass: 1, Stiffness: ~100-200, Damping: 0.3-0.5.11
+   * Architectural Application: Designed for macro-spatial transitions where elements traverse significant distances across the viewport. This profile governs the primary routing mechanism when the user navigates between the Feed, Settings, Logs, and Purchases virtual screens defined in App.tsx.12 The deliberately lower damping ratio creates a fluid, gliding motion that visually connects the origin and destination states without feeling sluggish.
+   3. The 'Gentle' Profile (Overdamped):
+   * Mathematical Parameters: Mass: 1, Stiffness: ~50-100, Damping: 0.8-1.2.11
+   * Architectural Application: This profile manages movement strictly along the Z-axis, specifically for rendering large-scale overlays, pop-ups, and modals. When the critical SniperCountdownParams modal is invoked by the sniperService.ts IPC broadcast 12, it must command immediate user attention without jarring the visual cortex. The overdamped physical properties ensure the modal settles into its final coordinates with a heavy, authoritative inertia, projecting system stability.7
+2. Optical Simulation Architecture: The Liquid Glass Engine
+The application's legacy design system relied on foundational Glassmorphism, utilizing standard CSS properties such as backdrop-filter: blur(20px) saturate(180%) coupled with semi-transparent RGBA backgrounds.13 While this provides a basic frosted aesthetic, it entirely lacks the physical plausibility required for a tier-one execution. To achieve the "Liquid Glass" aesthetic popularized by iOS 26 and advanced spatial interfaces, the rendering engine must transcend simple planar blurring and simulate true optical refraction and dynamic volumetric light tracking.15
+2.1. The Trilayer Composition of Liquid Glass
+Authentic Liquid Glass is not a single CSS property but rather a highly orchestrated composite visual effect engineered through multiple overlapping rendering layers. It requires the precise real-time simulation of three distinct physical phenomena 15:
+   1. Frosted Translucency (The Substrate): The foundational layer that diffuses the background pixels, creating initial depth of field and ensuring text contrast and legibility.
+   2. Optical Refraction (The Lens): The complex distortion of the background image caused by light bending through a simulated curved medium. This specific layer creates the illusion of physical thickness, bevels, and material mass at the edges of the UI elements.15
+   3. Specular Highlights (The Environment): Dynamic, highly localized reflections of simulated light sources on the surface of the virtual glass. These highlights must shift dynamically based on the user's input vectors (acting as the proxy for environmental light).15
+Because native Document Object Model (DOM) web rendering engines do not possess built-in volumetric 3D material shaders, this entire effect must be synthesized through a complex orchestration of CSS Custom Properties, high-frequency JavaScript event listeners, and low-level Scalable Vector Graphic (SVG) filter primitives.15
+2.2. Engineering Refraction via SVG <feDisplacementMap>
+The core differentiator—and the most computationally intensive aspect—of Liquid Glass is true refraction. Standard CSS backdrop-filter algorithms only process pixels strictly within the target element's 2D bounding box and are limited to convolution matrices (blurs) or color metric alterations (brightness, contrast, saturation).19 They fundamentally cannot move pixels spatially. To simulate light bending across a lens, the architecture must implement the SVG <feDisplacementMap> filter primitive.15
+The mathematical mechanism of the <feDisplacementMap> operates by accepting an input graphic (the captured background pixels) and shifting each individual pixel based on the specific color values sampled from a secondary, hidden image, known as a displacement map or normal map.15
+Displacement Channel Mathematics: The displacement map encodes directional spatial shifts within its Red and Green color channels. The SVG filter engine interprets these 8-bit color values (ranging from 0 to 255) as a normalized displacement matrix ranging from -1.0 to 1.0 19:
+   * A sample value of 128 (Hex #80) represents neutral optical space; the index evaluates to 0.0, and no pixel displacement occurs.19
+   * Values greater than 128 (approaching 255/White) result in positive spatial shifts. Pixels are translated rightward on the X-axis (if mapped to Red) and downward on the Y-axis (if mapped to Green).15
+   * Values less than 128 (approaching 0/Black) result in negative spatial shifts. Pixels are translated leftward on the X-axis and upward on the Y-axis.15
+The SVG Filter Rendering Pipeline: To construct the Liquid Glass component within the React application, a monolithic SVG definition block must be injected into the root of the DOM (e.g., inside index.html 12 or the absolute top-level App.tsx). This block is hidden from the layout flow but heavily referenced by the UI components.15 The filter pipeline executes sequentially:
+   1. Source Capture: The filter captures the SourceGraphic, representing the background DOM elements sitting strictly behind the target glass component.
+   2. Base Diffusion: An <feGaussianBlur> primitive applies a baseline frosted effect to the source, eliminating sharp background details that would otherwise break the illusion of thick glass.15
+   3. Map Injection: An <feImage> primitive loads the highly specific displacement map texture—a precisely authored PNG or SVG containing the red/green gradient geometry matching the border radii of the Vinted HQ UI components.
+   4. Refraction Processing: The <feDisplacementMap> primitive accepts the blurred source and the displacement texture. The configuration attributes xChannelSelector="R" and yChannelSelector="G" dictate the coordinate warping logic.19 The crucial scale attribute acts as the refractive index, controlling the severe intensity of the distortion.
+   5. Compositing: The newly distorted background is blended back with the base UI layer using <feBlend>.15
+Once this pipeline is defined in the DOM, it is applied to the application's React components (such as the glassPanel definitions in theme.ts 12) using the advanced CSS property backdrop-filter: url(#liquid-glass-filter).20 It is imperative to note that this specific implementation—routing SVG filters through CSS backdrop properties—is heavily optimized for Chromium-based environments. Because the Vinted HQ application is compiled using Electron Forge 12, the embedded Chromium engine provides the exact requisite support for this advanced technique.19
+
+
+  
+
+
+
+2.3. Dynamic Volumetric Lighting and Specular Tracking
+Refraction alone simulates mass, but it does not anchor the element in the user's physical environment. To complete the Liquid Glass paradigm, the components must react dynamically to a simulated primary light source. In a traditional desktop environment, the user's cursor acts as the proxy for this environmental illumination.21 As the cursor traverses the viewport, a sharp, localized specular highlight must track across the surface and catch the physical edges of the glass components.15
+This effect demands a high-frequency input tracking loop securely mapped to the CSS rendering tree:
+   1. Coordinate Tracking Loop: The application must deploy a specialized React hook (e.g., useMousePosition) that attaches an onMouseMove event listener to the global window object or the specific parent container.23 Crucially, calculating the light position for individual cards (such as the FeedItem components rendered in Feed.tsx 12) requires translating absolute viewport coordinates into local component space. This is achieved by querying the DOM node's bounding rectangle and executing event.clientX - rect.left and event.clientY - rect.top.24
+   2. Variable Injection: To avoid triggering continuous React state re-renders (which would decimate application performance), the JavaScript loop must bypass the Virtual DOM and inject these calculated coordinates directly into the component's inline styles as CSS Custom Properties (e.g., --mouse-x, --mouse-y).25
+   3. Gradient Illumination: The component's CSS definitions utilize these injected variables to position highly specific radial-gradient declarations. A typical implementation for surface illumination appears as: background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(255,255,255,0.1) 0%, transparent 50%).14
+To achieve the ultimate fidelity seen in high-end design systems, this lighting technique is bifurcated. It is applied once as a diffuse, soft overlay across the entire component background (::before pseudo-element) to simulate general surface scattering. It is then applied a second time (::after pseudo-element), strictly constrained to the component's outer border using the CSS mask-image and padding-box properties, creating an intense, sharp line of light that perfectly simulates photons striking the physical bevel of the glass edge.16
+3. System-Level Navigation and State Choreography
+The Vinted HQ application's macro-structure is defined within App.tsx, featuring a fixed left-side navigation sidebar and a dynamically updating central content area that switches between the Feed, Settings, Logs, and Purchases modules.12 To satisfy the directive for fluid navigation reminiscent of the Revolut app 29, instantaneous component swapping is prohibited. The architecture demands precise spatial choreography to maintain user context during view transitions.
+3.1. Contextual Layout Routing and State Machines
+Standard React state management fundamentally relies on immediate unmounting of outgoing components and mounting of incoming components. To engineer fluid spatial transitions, the application must implement a layout animation orchestrator—specifically, the AnimatePresence component provided by the Framer Motion library 3—wrapping the main content <main> area.
+When the application's primary tab state mutates 12, the layout orchestrator intercepts the lifecycle events:
+   1. The Exit Phase: The outgoing component is prevented from unmounting immediately. Instead, it initiates its programmed exit animation. Utilizing the 'Smooth' kinetic profile (defined in Section 1.3), the component scales down marginally (scale: 0.96), fades its opacity to 0, and translates slightly down the Y-axis.12 The orchestrator must be configured with the mode="wait" directive, guaranteeing that the incoming component is entirely blocked from rendering until this exit sequence concludes.31
+   2. The Entrance Phase: Only upon the resolution of the exit phase is the incoming component mounted to the DOM. It initializes from a depressed spatial state (translateY: 16px, opacity: 0).12 It is then driven to its natural equilibrium origin (translateY: 0, opacity: 1, scale: 1) using the identical 'Smooth' spring physics.32
+This strict sequence of shared Z-axis and Y-axis movement creates the subconscious illusion that all application views exist permanently on a continuous, physical carousel resting beneath the stationary glass sidebar, rather than appearing out of the ether.
+
+
+  
+
+
+
+3.2. Staggered Render Sequences for High-Density Data Grids
+A crucial hallmark of premium, sophisticated UI design is the strict avoidance of monolithic, simultaneous data loading.33 When the application populates the Feed component with arrays of FeedItem objects fetched asynchronously from the Python Bridge 12, or when the Purchases history table renders rows 12, the individual elements must not flash onto the screen simultaneously.
+The architecture dictates the implementation of an End-Loaded Stagger sequence.33
+   * The Orchestration Mechanism: The parent container—such as the CSS Grid matrix housing the FeedItem components in Feed.tsx—must be upgraded to a motion.div acting as a variant orchestrator. Upon mounting, the parent triggers a global visible state.34
+   * The Stagger Declaration: Instead of passing the visible trigger to all children instantaneously, the parent transition configuration utilizes a staggerChildren property (e.g., set to 0.05 seconds). This delay creates a precise cascading wave effect across the grid.34
+   * The Individual Motion: Each child card utilizes the high-stiffness 'Responsive' kinetic profile. As its specific staggered trigger fires, it executes an entrance animation involving a slight upward translation (y: 20 to y: 0) and an opacity fade (0 to 1).32
+This staggering logic requires exceptional care in the specific context of the Vinted HQ application. Because the feedService.ts module in the Electron Main process executes continuous, recursive HTTP polling loops based on the user's pollingIntervalSeconds configuration 12, new arbitrage items are continually injected into the top of the React state array.12 A naive stagger implementation would cause the entire grid to re-animate every 5 seconds. The stagger system must be intelligent enough—utilizing Framer Motion's layout properties and keying mechanisms—to identify newly mounted DOM nodes versus existing nodes. The cascading animation must only apply to freshly scraped Vinted listings, sliding existing items smoothly down the grid to make room, thereby preventing visual disorientation.
+3.3. Z-Axis Elevation and High-Priority Modal Dynamics
+The Vinted HQ application features a singular, ultra-high-priority, time-sensitive interface element: the Sniper Countdown modal (SniperCountdownParams), managed by the complex state machine in sniperService.ts.12 When a newly scraped Vinted item matches a user's pre-configured autobuy criteria (price, keywords, condition), a 3-second countdown overlay must immediately dominate the user's attention, offering a brief window to abort the automated checkout process.12
+This highly critical transition requires aggressive movement on the Z-axis, simulating physical elevation significantly above the base glass interface 32:
+   1. Environmental Subordination: To command focus, the background environment (the entirety of the underlying App.tsx layout) is subjected to an animated <feColorMatrix> operation. This filter dynamically lowers the global brightness and significantly increases the Gaussian blur radius. This optical shift creates an artificial depth of field, visually pushing the main application away from the user's camera lens.15
+   2. The Modal Entrance: The central countdown container executes its entrance utilizing the 'Gentle' (overdamped) kinetic profile outlined in Section 1.3. It scales up from 0.8 to 1.0 while translating downwards from translateY(-40px).7 The heavy damping ratio ensures the modal feels substantial and massive. It must anchor the user's attention instantly, without a distracting or playful bounce that would undermine the urgency of an automated financial transaction.
+   3. The Countdown Indicator: The numerical countdown itself (3... 2... 1...) relies on a specific tabular-numeric font configuration to prevent horizontal jitter.12 It utilizes a discrete, highly localized spring animation on every single state change, employing the high-stiffness 'Responsive' profile. This provides a sharp, mechanical ticking rhythm, analogous to a physical stopwatch, heightening the urgency of the autobuy sequence.
+4. Implementation Blueprint for AI Orchestration
+To provide actionable instructions for subsequent AI coding agents tasked with rewriting the codebase, the application architecture must pivot from decentralized styles to a centralized motion configuration. The hardcoded CSS transitions currently scattered across index.css (such as .animate-fadeIn and .animate-slideUp) 12 and various inline styles must be systematically deprecated. They must be replaced with a unified, programmatic motion library.
+4.1. Motion Token Standardization and Injection
+The application's central design token repository, theme.ts 12, must be expanded to include exportable kinetic objects. Rather than forcing agents to write raw physics formulas inside every individual React component, the architect must define reusable, pre-calculated configuration constants.
+Target Implementation Structure:
+The following data structures must be injected into the theme.ts configuration file:
+   * transition.spring.responsive: { type: 'spring', stiffness: 350, damping: 25, mass: 1 }
+   * transition.spring.smooth: { type: 'spring', stiffness: 150, damping: 15, mass: 1 }
+   * transition.spring.gentle: { type: 'spring', stiffness: 75, damping: 15, mass: 1 }
+   * transition.stagger.fast: { staggerChildren: 0.05 }
+By establishing these programmatic tokens, the architecture guarantees that whether an AI agent is generating code for the settings input panels in Settings.tsx 12 or the alternating table rows in Logs.tsx 12, the underlying mechanical behavior remains mathematically identical across the entire software suite.
+4.2. Component Refactoring Directives for Agents
+When AI agents are deployed to refactor the existing React components, they must be constrained by the following layered implementation rules to ensure the Liquid Glass and fluid motion systems are built correctly:
+   1. The Structural Layer Substitution: Agents must convert standard semantic HTML tags (e.g., <div>, <aside>, <section>) into their motion-enabled equivalents (e.g., <motion.div>, <motion.aside>) provided by the Framer Motion API.34
+   2. The Optical Layer Application: Agents must apply the primary liquid-glass CSS class to these containers. The orchestrator must verify that the master <svg> node containing the <filter> and <feDisplacementMap> definitions is permanently mounted at the absolute root of the DOM (e.g., directly inside index.html 12 or the top level of App.tsx) to ensure it is globally referenceable via CSS by all components.19
+   3. The Interactive Light Layer Integration: Highly interactive elements, specifically the FeedItem cards, must be wrapped in the custom mouse-tracking React hook. The agent must programmatically attach the onMouseMove event listener, calculate the offset coordinates relative to the bounding box, and inject --mouse-x and --mouse-y into the component's style prop.21 The accompanying CSS must be generated to overlay the radial gradients using the ::before and ::after pseudo-elements, handling the diffuse surface shine and the precise border masking separately.16
+4.3. Managing the Asynchronous Polling Lifecycle
+The Vinted HQ application is heavily reliant on continuous, asynchronous data streams. The feedService.ts module executes HTTP requests to the Python Bridge based on the pollingIntervalSeconds configuration 12, pushing data payloads to the renderer process via IPC channels (feed:items).12
+The AI orchestrator must explicitly account for the UI state during these intense data fetch cycles. When the feed is actively awaiting a response from the bridge—or critically, if the Datadome WAF intercepts the request and delays the response 12—the UI grid must utilize Skeleton Loaders.
+However, instead of standard CSS pulse animations (like the existing .animate-pulse class 12), the skeletons should natively employ the Liquid Glass specular highlight mechanic. The CSS must be authored to pass a bright radial gradient automatically across the X-axis (animating background-position from -200% to 200% 12), simulating an environmental light moving across an empty, frosted glass chassis. This maintains absolute optical consistency even during network loading states.
+5. Performance Guardrails, System Integrity, and Stealth Safeguards
+Deploying highly complex optic simulations and physics calculations within the Chromium engine of an Electron application introduces severe architectural risks. The AI agent must be strictly instructed to build the UI defensively to protect the core functions of the arbitrage tool.
+5.1. Mitigating Filter Compound Rendering Bottlenecks
+The <feDisplacementMap> primitive is exceptionally computationally expensive because it requires pixel-by-pixel matrix calculations for every frame of rendering. If the user scrolls the dense Feed component rapidly, the continuous recalculation of the background distortion across dozens of cards will immediately overwhelm the Chromium compositor thread.
+The implementation must enforce strict hardware acceleration rules:
+   * Layer Promotion: Every Liquid Glass component must be forced onto its own dedicated GPU render layer. The agent must inject transform: translate3d(0, 0, 0) or will-change: transform, backdrop-filter into the CSS classes.37 This prevents Chromium from repainting the entire document object model every time the dynamic lighting updates on a mousemove event.
+   * Scroll-Linked Degradation: During high-velocity scrolling (detectable via scroll event listeners attached to the main content area), the application must dynamically downgrade the Liquid Glass effect. By temporarily transitioning the displacement scale attribute to 0, or removing the SVG filter reference entirely to leave only the Gaussian blur, the application can maintain a locked 60FPS. Once the scroll event concludes and the user stops moving, the displacement filter is smoothly re-engaged.
+   * DOM Pruning and Virtualization: The <Feed /> component relies on aggregating data arrays.12 As the feed grows to hundreds of items, maintaining active refraction filters on off-screen elements will crash the Electron renderer process. Virtualization (using libraries such as react-window or react-virtuoso) must be strictly coupled with the Liquid Glass implementation, ensuring that only the 10-15 visible nodes are calculating optics at any given time.
+5.2. Preventing Animation Memory Leaks and Thread Blocking
+The sniperService.ts heavily utilizes setTimeout for the autobuy countdown logic.12 The agent must be hyper-vigilant when tying these Node.js intervals to React state updates that trigger physical motion. If a component is unmounted while a physical spring animation is actively calculating its trajectory, or while an interval is pending, it causes severe memory leaks. The architecture dictates strict adherence to React useEffect cleanup functions to kill pending animations and clear requestAnimationFrame loops that manage the specular lighting tracking.
+Furthermore, the UI motion system must absolutely never block the JavaScript main thread. The Vinted HQ application orchestrates highly sensitive operations: the Python Bridge (vinted_client.py) is executing TLS-impersonated curl_cffi requests 12 and the Chrome Extension is sniffing CSRF tokens.12 If the UI thread is locked by inefficient animation calculations, IPC messages from the Python bridge or the SQLite database (better-sqlite3 12) will be delayed. This delay could result in skipped checkout state machines 12 or missed autobuy opportunities.
+By strictly adhering to this comprehensive architectural guide, the Vinted HQ application will successfully transition from a standard React/Electron administrative tool into a premium, fluid, and highly tactile desktop experience. This transition achieves the desired physical realism and modern aesthetic without compromising the system's aggressive scraping, anti-bot evasion, and orchestration capabilities.
+Works cited
+   1. Building Fluid Interfaces | Break Free Design Blog, accessed on March 13, 2026, https://www.breakfreegraphics.com/design-blog/building-fluid-interfaces/
+   2. Designing interaction — spring animations | by Patricio Reyes - Medium, accessed on March 13, 2026, https://medium.com/@patoreyes23/designing-interaction-spring-animations-c8b8788a4b2a
+   3. The physics behind spring animations - The Blog of Maxime Heckel, accessed on March 13, 2026, https://blog.maximeheckel.com/posts/the-physics-behind-spring-animations/
+   4. Spring-mass-damper theory - ReStackor, accessed on March 13, 2026, https://restackor.com/physics/response/spring-mass-damper
+   5. Damping - Wikipedia, accessed on March 13, 2026, https://en.wikipedia.org/wiki/Damping
+   6. 40.33 -- Mass-springs damped in oil, water - UCSB Physics, accessed on March 13, 2026, https://web.physics.ucsb.edu/~lecturedemonstrations/Composer/Pages/40.33.html
+   7. Physics-based animations spring to life - Nordcraft Blog, accessed on March 13, 2026, https://blog.nordcraft.com/physics-based-animations-spring-to-life
+   8. Effortless UI Spring Animations: A Two-Parameter Approach, accessed on March 13, 2026, https://www.kvin.me/posts/effortless-ui-spring-animations
+   9. Building Fluid Interfaces. How to create natural gestures and… | by Nathan Gitter - Medium, accessed on March 13, 2026, https://medium.com/@nathangitter/building-fluid-interfaces-ios-swift-9732bb934bf5
+   10. The Meaning, Maths, and Physics of SwiftUI Spring Animation: Amos Gyamfi's Manifesto, accessed on March 13, 2026, https://medium.com/@amosgyamfi/the-meaning-maths-and-physics-of-swiftui-spring-animation-amos-gyamfis-manifesto-0044755da208
+   11. Spring Launch Animation: Physics Concepts Explained - Educational Voice, accessed on March 13, 2026, https://educationalvoice.co.uk/spring-launch-animation/
+   12. finlayjack89/vinted-hq
+   13. Glassmorphism CSS Generator | SquarePlanet - HYPE4.Academy, accessed on March 13, 2026, https://hype4.academy/tools/glassmorphism-generator
+   14. How to Implement Glassmorphism in Web Design (CSS Examples) 2025 - franwbu, accessed on March 13, 2026, https://franwbu.com/blog/glassmorphism-in-web-design/
+   15. How to create Liquid Glass effects with CSS and SVG - LogRocket Blog, accessed on March 13, 2026, https://blog.logrocket.com/how-create-liquid-glass-effects-css-and-svg/
+   16. Recreating Apple's Liquid Glass Effect with Pure CSS - DEV Community, accessed on March 13, 2026, https://dev.to/kevinbism/recreating-apples-liquid-glass-effect-with-pure-css-3gpl
+   17. Getting Clarity on Apple's Liquid Glass - CSS-Tricks, accessed on March 13, 2026, https://css-tricks.com/getting-clarity-on-apples-liquid-glass/
+   18. How Liquid Glass works - pavel 1ar.ionov, accessed on March 13, 2026, https://1ar.io/updates/how-liquid-glass-works/
+   19. Liquid Glass in CSS (and SVG) | ekino-france - Medium, accessed on March 13, 2026, https://medium.com/ekino-france/liquid-glass-in-css-and-svg-839985fcb88d
+   20. Liquid Glass in the Browser: Refraction with CSS and SVG — kube.io, accessed on March 13, 2026, https://kube.io/blog/liquid-glass-css-svg/
+   21. Illuminating Interaction: Follow-the-mouse Flashlight Hover Effect With Minimal Code, accessed on March 13, 2026, https://medium.com/@jay.codes/illuminating-interaction-follow-the-mouse-flashlight-hover-effect-with-minimal-code-dad28cac1479
+   22. Summoning a Guiding Light That Follows Your Cursor Through the Dark - YouTube, accessed on March 13, 2026, https://www.youtube.com/watch?v=J18bHvYjSGE
+   23. useMousePosition, a React hook that tracks the mouse cursor position within the page • Josh W. Comeau, accessed on March 13, 2026, https://www.joshwcomeau.com/snippets/react-hooks/use-mouse-position/
+   24. React how to better track mouse movement on raycaster - Stack Overflow, accessed on March 13, 2026, https://stackoverflow.com/questions/74173361/react-how-to-better-track-mouse-movement-on-raycaster
+   25. Weekend hobby: Achieving Glassmorphism (ik ) with mouse glow - DEV Community, accessed on March 13, 2026, https://dev.to/nabous/weekend-hobby-playing-with-light-glass-and-css-1h2
+   26. 10 CSS Glassmorphism Effect Examples - Subframe, accessed on March 13, 2026, https://www.subframe.com/tips/css-glassmorphism-effect-examples
+   27. mask-image - CSS - MDN Web Docs, accessed on March 13, 2026, https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/mask-image
+   28. Apply effects to images with the CSS mask-image property | Articles - web.dev, accessed on March 13, 2026, https://web.dev/articles/css-masking
+   29. Recreating Revolut. A Step-by-Step Journey in UI/UX Design | by MOHIT SAHU | Bootcamp, accessed on March 13, 2026, https://medium.com/design-bootcamp/recreating-revolut-fbffc4dff746
+   30. Motion — JavaScript & React animation library, accessed on March 13, 2026, https://motion.dev/
+   31. React Animation | Keyframes, Transitions & Gestures - Motion.dev, accessed on March 13, 2026, https://motion.dev/docs/react-animation
+   32. STOP Bad UI! LOVABLE Explainer Style Part 2 Fluid Transitions & Clean UI After Effects Tutorial - YouTube, accessed on March 13, 2026, https://www.youtube.com/watch?v=GKnaC9rcQlo
+   33. Mastering UI Animation: The Art of Stagger Techniques - Aninix, accessed on March 13, 2026, https://www.aninix.com/wiki/how-to-create-a-good-stagger-in-the-ui-animation
+   34. Creating Staggered Animations with Framer Motion | by Kehinde Ridwan Onifade - Medium, accessed on March 13, 2026, https://medium.com/@onifkay/creating-staggered-animations-with-framer-motion-0e7dc90eae33
+   35. 3 Ways to Creating Staggered Animations in Framer, accessed on March 13, 2026, https://framer.university/blog/3-ways-to-creating-staggered-animations-in-framer
+   36. Framer Motion Staggered Animations Made Easy - YouTube, accessed on March 13, 2026, https://www.youtube.com/watch?v=6YOPRk8mTn0
+   37. CSS backdrop filter too slow - Stack Overflow, accessed on March 13, 2026, https://stackoverflow.com/questions/58033230/css-backdrop-filter-too-slow

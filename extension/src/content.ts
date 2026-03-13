@@ -730,6 +730,32 @@ async function runDeepSync() {
         }
     }
 
+    // ── 5. Sanitize RSC reference values ──────────────────────────────────
+    // Next.js RSC serializes JS `undefined` as "$undefined" and internal
+    // references as "$L5", "$Sreact.suspense" etc. These must be nullified
+    // before sending to the bridge to prevent them from being stored as
+    // literal strings in numeric database columns.
+    const rscFields = [
+        'statusId', 'status_id', 'brandId', 'brand_id', 'sizeId', 'size_id',
+        'catalogId', 'catalog_id', 'categoryId', 'category_id',
+        'packageSizeId', 'package_size_id', 'isbn', 'isbn13',
+        'measurementWidth', 'measurement_width', 'measurementLength', 'measurement_length',
+        'video_game_rating_id', 'collection_id', 'model_id',
+    ];
+    for (const field of rscFields) {
+        if (typeof data[field] === 'string' && data[field].startsWith('$')) {
+            console.log(`[Vinted HQ] 🧹 Sanitized RSC reference: ${field} = "${data[field]}" → null`);
+            data[field] = null;
+        }
+    }
+    // Also sanitize short-string text fields that might be RSC refs
+    for (const textField of ['brandTitle', 'brand_title', 'sizeTitle', 'size_title', 'condition']) {
+        if (typeof data[textField] === 'string' && data[textField].startsWith('$') && data[textField].length < 15) {
+            console.log(`[Vinted HQ] 🧹 Sanitized RSC reference: ${textField} = "${data[textField]}" → null`);
+            data[textField] = null;
+        }
+    }
+
     console.log('[Vinted HQ] Extracted item data keys:', Object.keys(data));
     console.log('[Vinted HQ] Posting to /ingest/item…');
 

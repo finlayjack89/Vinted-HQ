@@ -32,6 +32,16 @@ type DetailCompletenessResult = {
   detail_source: string | null;
 };
 
+/** Check if a value is a valid positive integer (guards against '$undefined' strings from RSC). */
+function isPositiveInt(value: unknown): boolean {
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0;
+  }
+  return false;
+}
+
 function coerceNumberArray(value: unknown): number[] {
   if (Array.isArray(value)) {
     return value.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0);
@@ -136,10 +146,10 @@ export async function getDetailCompleteness(localId: number): Promise<DetailComp
   const { requiresSize, known } = categoryId ? await resolveCategoryRequiresSize(categoryId) : { requiresSize: true, known: false };
 
   const missing: string[] = [];
-  if (!item.category_id) missing.push('category_id');
-  if (!item.brand_id) missing.push('brand_id');
-  if (!item.status_id) missing.push('status_id');
-  if (requiresSize && !item.size_id) missing.push('size_id');
+  if (!isPositiveInt(item.category_id)) missing.push('category_id');
+  if (!isPositiveInt(item.brand_id)) missing.push('brand_id');
+  if (!isPositiveInt(item.status_id)) missing.push('status_id');
+  if (requiresSize && !isPositiveInt(item.size_id)) missing.push('size_id');
 
   const desc = typeof item.description === 'string' ? item.description : '';
   if (!desc.trim()) missing.push('description');
@@ -276,16 +286,16 @@ function isCompleteForEditCached(item: inventoryDb.InventoryItemJoined): boolean
   const colorIds = coerceNumberArray(item.color_ids);
   const pkg = typeof item.package_size_id === 'number' ? item.package_size_id : Number(item.package_size_id ?? 0);
 
-  if (!item.category_id) return false;
-  if (!item.brand_id) return false;
-  if (!item.status_id) return false;
+  if (!isPositiveInt(item.category_id)) return false;
+  if (!isPositiveInt(item.brand_id)) return false;
+  if (!isPositiveInt(item.status_id)) return false;
   if (!desc.trim()) return false;
   if (colorIds.length === 0) return false;
   if (!Number.isFinite(pkg) || pkg <= 0) return false;
 
-  const requiresSize = inventoryDb.categoryRequiresSize(item.category_id);
+  const requiresSize = inventoryDb.categoryRequiresSize(Number(item.category_id));
   if (requiresSize === null) return false; // unknown => don't skip expensive detail fetch
-  if (requiresSize && !item.size_id) return false;
+  if (requiresSize && !isPositiveInt(item.size_id)) return false;
 
   return true;
 }

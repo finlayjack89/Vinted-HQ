@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Feed from './components/Feed';
 import Wardrobe from './components/Wardrobe';
 import Settings from './components/Settings';
@@ -27,6 +28,9 @@ import {
   spacing,
   transition,
   liquidGlassPanel,
+  springSmooth,
+  springGentle,
+  springResponsive,
 } from './theme';
 import type { SniperCountdownParams } from './types/global';
 
@@ -230,8 +234,11 @@ export default function App() {
         </defs>
       </svg>
       {/* ─── Sidebar ──────────────────────────────────────── */}
-      <aside
+      <motion.aside
         className="liquid-glass-panel"
+        initial={{ x: -SIDEBAR_WIDTH, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={springSmooth}
         style={{
           ...liquidGlassPanel,
           width: SIDEBAR_WIDTH,
@@ -247,7 +254,7 @@ export default function App() {
           WebkitBackdropFilter: 'url(#liquid-glass-refraction) blur(40px) saturate(150%)',
           borderRight: `1px solid rgba(255, 255, 255, 0.9)`,
           boxShadow: '1px 0 12px rgba(0, 0, 0, 0.03)',
-          borderRadius: 0, // Left sidebar is flush
+          borderRadius: 0,
           zIndex: 100,
           padding: `${spacing['2xl']}px 0`,
         }}
@@ -348,10 +355,14 @@ export default function App() {
             Session expired
           </div>
         )}
-      </aside>
+      </motion.aside>
 
       {/* ─── Main Content ─────────────────────────────────── */}
-      <main
+      <motion.main
+        animate={{
+          filter: countdown ? 'brightness(0.5) blur(8px)' : 'brightness(1) blur(0px)',
+        }}
+        transition={springGentle}
         style={{
           flex: 1,
           marginLeft: SIDEBAR_WIDTH,
@@ -360,78 +371,114 @@ export default function App() {
           background: colors.bgBase,
         }}
       >
-        {tab === 'feed' && <Feed />}
-        {tab === 'wardrobe' && <Wardrobe />}
-        {tab === 'sales' && <SalesSuite />}
-        {tab === 'automessage' && <AutoMessage />}
-        {tab === 'proxies' && <ProxyStatus />}
-        {tab === 'settings' && <Settings />}
-        {tab === 'logs' && <Logs />}
-        {tab === 'purchases' && <PurchasesSuite />}
-      </main>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={tab}
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.96 }}
+            transition={springSmooth}
+            style={{ height: '100%' }}
+          >
+            {tab === 'feed' && <Feed />}
+            {tab === 'wardrobe' && <Wardrobe />}
+            {tab === 'sales' && <SalesSuite />}
+            {tab === 'automessage' && <AutoMessage />}
+            {tab === 'proxies' && <ProxyStatus />}
+            {tab === 'settings' && <Settings />}
+            {tab === 'logs' && <Logs />}
+            {tab === 'purchases' && <PurchasesSuite />}
+          </motion.div>
+        </AnimatePresence>
+      </motion.main>
 
       {/* ─── Sniper Countdown Modal ───────────────────────── */}
-      {countdown && (
-        <div style={modalOverlay}>
-          <div style={{ ...modalContent, textAlign: 'center' }} className="animate-fadeInScale">
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: radius.lg,
-                background: colors.primaryMuted,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px',
-              }}
+      <AnimatePresence>
+        {countdown && (
+          <motion.div
+            key="sniper-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={springGentle}
+            style={modalOverlay}
+          >
+            <motion.div
+              key="sniper-modal"
+              initial={{ scale: 0.8, y: -40, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.8, y: -40, opacity: 0 }}
+              transition={springGentle}
+              style={{ ...modalContent, textAlign: 'center' }}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={colors.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-            </div>
-            <h3 style={{ margin: '0 0 6px', fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
-              {countdown.sniper.name}
-            </h3>
-            <p style={{ margin: '0 0 4px', fontSize: font.size.base, color: colors.textSecondary }}>
-              {countdown.item.title}
-            </p>
-            <p style={{ margin: '0 0 20px', fontWeight: font.weight.bold, color: colors.primary, fontSize: font.size.lg }}>
-              £{countdown.item.price}
-            </p>
-            <p
-              style={{
-                margin: '0 0 24px',
-                fontSize: font.size['3xl'],
-                fontWeight: font.weight.bold,
-                color: colors.textPrimary,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {countdownSeconds > 0 ? countdownSeconds : 'Buying...'}
-            </p>
-            <button
-              type="button"
-              onClick={handleCancelCountdown}
-              disabled={countdownSeconds <= 0}
-              style={{
-                ...btnDanger,
-                opacity: countdownSeconds > 0 ? 1 : 0.4,
-                cursor: countdownSeconds > 0 ? 'pointer' : 'default',
-                width: '100%',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: radius.lg,
+                  background: colors.primaryMuted,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px',
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={colors.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
+              <h3 style={{ margin: '0 0 6px', fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
+                {countdown.sniper.name}
+              </h3>
+              <p style={{ margin: '0 0 4px', fontSize: font.size.base, color: colors.textSecondary }}>
+                {countdown.item.title}
+              </p>
+              <p style={{ margin: '0 0 20px', fontWeight: font.weight.bold, color: colors.primary, fontSize: font.size.lg }}>
+                £{countdown.item.price}
+              </p>
+              <div style={{ margin: '0 0 24px' }}>
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={countdownSeconds}
+                    initial={{ scale: 1.15, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.85, opacity: 0 }}
+                    transition={springResponsive}
+                    style={{
+                      display: 'block',
+                      fontSize: font.size['3xl'],
+                      fontWeight: font.weight.bold,
+                      color: colors.textPrimary,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {countdownSeconds > 0 ? countdownSeconds : 'Buying...'}
+                  </motion.span>
+                </AnimatePresence>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelCountdown}
+                disabled={countdownSeconds <= 0}
+                style={{
+                  ...btnDanger,
+                  opacity: countdownSeconds > 0 ? 1 : 0.4,
+                  cursor: countdownSeconds > 0 ? 'pointer' : 'default',
+                  width: '100%',
+                }}
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ─── Session Expired Modal ────────────────────────── */}
       {sessionExpired && (
         <div style={{ ...modalOverlay, zIndex: 1002 }}>
-          <div style={{ ...modalContent, maxWidth: 480 }} className="animate-fadeInScale">
+          <div style={{ ...modalContent, maxWidth: 480 }}>
             <div
               style={{
                 width: 48,
@@ -517,11 +564,20 @@ export default function App() {
       )}
 
       {/* ─── Countdown Done Toast ─────────────────────────── */}
-      {countdownDone && !countdown && (
-        <div style={toastStyle} className="animate-slideUp">
-          {countdownDone}
-        </div>
-      )}
+      <AnimatePresence>
+        {countdownDone && !countdown && (
+          <motion.div
+            key="countdown-toast"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={springSmooth}
+            style={toastStyle}
+          >
+            {countdownDone}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

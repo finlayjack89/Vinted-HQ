@@ -340,6 +340,12 @@ def get_purchases_api(
             transport_mode=transport_mode,
             user_agent=x_vinted_user_agent,
         )
+        # Debug: see what the API actually returns for type=bought
+        if isinstance(data, dict):
+            orders = data.get("my_orders", [])
+            titles = [o.get("title", "?") for o in orders[:3]] if orders else []
+            statuses = [o.get("status", "?") for o in orders[:3]] if orders else []
+            print(f"[purchases-api] type=bought returned {len(orders)} orders. Titles: {titles}, Statuses: {statuses}")
         return {"ok": True, "data": data}
     except VintedError as e:
         return _error_response(e.code, e.message, e.status_code or 500)
@@ -1356,61 +1362,72 @@ async def ingest_single_item(request: Request):
                     photo_urls.append(p)
             photo_urls_json = json.dumps(photo_urls) if photo_urls else "[]"
 
+            # ── Sanitize Next.js RSC reference values ──
+            # Next.js RSC serializes JS `undefined` as the string "$undefined",
+            # and other internal refs as "$L5", "$Sreact.suspense" etc.
+            # These must be converted to None before storing in numeric columns.
+            def _sanitize_rsc(val):
+                if isinstance(val, str) and val.startswith('$'):
+                    return None
+                return val
+
             # Brand
-            brand_id = item.get("brandId") or item.get("brand_id")
+            brand_id = _sanitize_rsc(item.get("brandId") or item.get("brand_id"))
             brand_name = None
-            if isinstance(item.get("brandTitle"), str): brand_name = item.get("brandTitle")
-            elif isinstance(item.get("brand_title"), str): brand_name = item.get("brand_title")
-            elif isinstance(item.get("brand"), str): brand_name = item.get("brand")
+            if isinstance(item.get("brandTitle"), str) and not item.get("brandTitle", "").startswith("$"): brand_name = item.get("brandTitle")
+            elif isinstance(item.get("brand_title"), str) and not item.get("brand_title", "").startswith("$"): brand_name = item.get("brand_title")
+            elif isinstance(item.get("brand"), str) and not item.get("brand", "").startswith("$"): brand_name = item.get("brand")
             
             brand_data = item.get("brand_dto") or (item.get("brand") if isinstance(item.get("brand"), dict) else {})
             if isinstance(brand_data, dict) and brand_data:
-                brand_id = brand_id or brand_data.get("id")
+                brand_id = brand_id or _sanitize_rsc(brand_data.get("id"))
                 brand_name = brand_name or brand_data.get("title") or brand_data.get("name")
 
             # Size
-            size_id = item.get("sizeId") or item.get("size_id")
+            size_id = _sanitize_rsc(item.get("sizeId") or item.get("size_id"))
             size_label = None
-            if isinstance(item.get("sizeTitle"), str): size_label = item.get("sizeTitle")
-            elif isinstance(item.get("size_title"), str): size_label = item.get("size_title")
-            elif isinstance(item.get("size"), str): size_label = item.get("size")
+            if isinstance(item.get("sizeTitle"), str) and not item.get("sizeTitle", "").startswith("$"): size_label = item.get("sizeTitle")
+            elif isinstance(item.get("size_title"), str) and not item.get("size_title", "").startswith("$"): size_label = item.get("size_title")
+            elif isinstance(item.get("size"), str) and not item.get("size", "").startswith("$"): size_label = item.get("size")
             
             size_data = item.get("size")
             if isinstance(size_data, dict) and size_data:
-                size_id = size_id or size_data.get("id")
+                size_id = size_id or _sanitize_rsc(size_data.get("id"))
                 size_label = size_label or size_data.get("title") or size_data.get("name")
 
             # Category
-            category_id = item.get("catalogId") or item.get("catalog_id") or item.get("categoryId") or item.get("category_id")
+            category_id = _sanitize_rsc(
+                item.get("catalogId") or item.get("catalog_id") or item.get("categoryId") or item.get("category_id")
+            )
 
             # Condition
-            status_id = item.get("statusId") or item.get("status_id")
+            status_id = _sanitize_rsc(item.get("statusId") or item.get("status_id"))
             condition = None
-            if isinstance(item.get("status"), str): condition = item.get("status")
-            elif isinstance(item.get("condition"), str): condition = item.get("condition")
+            if isinstance(item.get("status"), str) and not item.get("status", "").startswith("$"): condition = item.get("status")
+            elif isinstance(item.get("condition"), str) and not item.get("condition", "").startswith("$"): condition = item.get("condition")
             else:
                 cond_data = item.get("status") or item.get("condition")
                 if isinstance(cond_data, dict) and cond_data:
-                    status_id = status_id or cond_data.get("id")
+                    status_id = status_id or _sanitize_rsc(cond_data.get("id"))
                     condition = cond_data.get("title") or cond_data.get("name")
 
             # Colors
             colors = item.get("colorIds") or item.get("color_ids") or item.get("color1") or item.get("colors")
             color_ids_json = None
             if isinstance(colors, list):
-                color_ids_json = json.dumps([c.get("id") if isinstance(c, dict) else c for c in colors])
+                color_ids_json = json.dumps([c.get("id") if isinstance(c, dict) else c for c in colors if not (isinstance(c, str) and c.startswith('$'))])
             elif isinstance(colors, dict):
                 color_ids_json = json.dumps([colors.get("id")])
 
             # Package size
-            package_size_id = item.get("packageSizeId") or item.get("package_size_id")
+            package_size_id = _sanitize_rsc(item.get("packageSizeId") or item.get("package_size_id"))
 
             # ISBN
-            isbn = item.get("isbn") or item.get("isbn13")
+            isbn = _sanitize_rsc(item.get("isbn") or item.get("isbn13"))
             
             # Measurements
-            meas_width = item.get("measurementWidth") or item.get("measurement_width")
-            meas_length = item.get("measurementLength") or item.get("measurement_length")
+            meas_width = _sanitize_rsc(item.get("measurementWidth") or item.get("measurement_width"))
+            meas_length = _sanitize_rsc(item.get("measurementLength") or item.get("measurement_length"))
 
             # Materials (Extracted from itemAttributes array)
             material_ids = []

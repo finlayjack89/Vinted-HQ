@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   colors,
   font,
@@ -21,7 +22,10 @@ import {
   radius,
   spacing,
   transition,
+  springResponsive,
+  staggerFast,
 } from '../theme';
+import GlassSkeleton from './GlassSkeleton';
 import type { LogEntry } from '../types/global';
 
 /* ─── Level badge config ────────────────────────────────────── */
@@ -120,9 +124,9 @@ export default function Logs() {
 
       {/* Table */}
       {loading ? (
-        <p style={{ color: colors.textMuted, padding: spacing.xl }} className="animate-pulse">
-          Loading...
-        </p>
+        <div style={{ padding: spacing.xl }}>
+          <GlassSkeleton height={40} count={8} borderRadius={radius.md} />
+        </div>
       ) : (
         <div style={{ ...glassTable, overflow: 'auto', maxHeight: 'calc(100vh - 180px)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: font.size.md }}>
@@ -134,12 +138,24 @@ export default function Logs() {
                 <th style={tableHeaderCell}>Payload</th>
               </tr>
             </thead>
-            <tbody>
+            <motion.tbody
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: {},
+                visible: { transition: staggerFast },
+              }}
+            >
               {logs.map((log) => {
                 const lc = levelColors[log.level] || levelColors.DEBUG;
                 return (
-                  <tr
+                  <motion.tr
                     key={log.id}
+                    variants={{
+                      hidden: { opacity: 0, y: 10 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    transition={springResponsive}
                     style={{ transition: transition.fast }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = tableRowHoverBg;
@@ -177,10 +193,10 @@ export default function Logs() {
                         <span style={{ color: colors.textMuted }}>—</span>
                       )}
                     </td>
-                  </tr>
+                  </motion.tr>
                 );
               })}
-            </tbody>
+            </motion.tbody>
           </table>
         </div>
       )}

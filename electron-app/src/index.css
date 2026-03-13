@@ -30,6 +30,11 @@ html, body, #root {
 
 /* ─── Liquid Glass Helper Classes ───────────────────────────── */
 
+.liquid-glass-panel {
+  transform: translate3d(0, 0, 0);
+  will-change: transform, backdrop-filter;
+}
+
 .liquid-glass-panel::after {
   content: '';
   position: absolute;
@@ -40,6 +45,33 @@ html, body, #root {
     inset -1px -1px 2px rgba(255, 255, 255, 0.4);
   pointer-events: none;
   z-index: 1;
+}
+
+/* ─── Liquid Glass Skeleton Shimmer ─────────────────────────── */
+
+.liquid-glass-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.40);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 20px;
+}
+
+.liquid-glass-skeleton::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  pointer-events: none;
 }
 
 /* ─── Selection ─────────────────────────────────────────────── */

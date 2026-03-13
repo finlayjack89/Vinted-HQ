@@ -3,7 +3,8 @@
  * Revolut-inspired glass card design
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { motion } from 'framer-motion';
 import {
   colors,
   font,
@@ -15,7 +16,11 @@ import {
   transition,
   shadows,
   badge,
+  springResponsive,
+  staggerFast,
 } from '../theme';
+import { useMousePosition } from '../hooks/useMousePosition';
+import GlassSkeleton from './GlassSkeleton';
 import type { FeedItem } from '../types/global';
 
 export default function Feed() {
@@ -168,7 +173,13 @@ export default function Feed() {
       </div>
 
       {/* Item grid */}
-      <div
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: {},
+          visible: { transition: staggerFast },
+        }}
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
@@ -186,12 +197,18 @@ export default function Feed() {
             isBuying={buyingId !== null}
           />
         ))}
-      </div>
+      </motion.div>
 
       {items.length === 0 && (
-        <p style={{ color: colors.textMuted, textAlign: 'center', padding: spacing['4xl'], fontSize: font.size.base }}>
-          No items yet. Polling runs every few seconds — check back shortly.
-        </p>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+            gap: spacing.xl,
+          }}
+        >
+          <GlassSkeleton height={280} count={6} />
+        </div>
       )}
     </div>
   );
@@ -212,23 +229,27 @@ function FeedItemCard({
   onBuy: (item: FeedItem) => void;
   isBuying: boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
+  const { ref, onMouseMove, onMouseLeave } = useMousePosition<HTMLDivElement>();
 
   return (
-    <div
+    <motion.div
+      ref={ref}
       onClick={onToggle}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+      variants={{
+        hidden: { y: 20, opacity: 0 },
+        visible: { y: 0, opacity: 1 },
+      }}
+      transition={springResponsive}
+      whileHover={{ y: -4, boxShadow: shadows.cardHover }}
       style={{
         ...liquidGlassCard,
         overflow: 'hidden',
         cursor: 'pointer',
         display: 'flex',
         flexDirection: 'column',
-        transition: transition.base,
-        background: hovered ? colors.glassBgHover : liquidGlassCard.background,
-        transform: hovered ? 'translateY(-4px)' : 'translateY(0)',
-        boxShadow: hovered ? shadows.cardHover : shadows.card,
+        background: liquidGlassCard.background,
       }}
     >
       {/* Image */}
@@ -250,8 +271,6 @@ function FeedItemCard({
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              transition: transition.slow,
-              transform: hovered ? 'scale(1.03)' : 'scale(1)',
             }}
           />
         ) : (
@@ -351,6 +370,6 @@ function FeedItemCard({
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

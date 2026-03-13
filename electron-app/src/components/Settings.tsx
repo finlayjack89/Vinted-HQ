@@ -4,12 +4,13 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   colors,
   font,
   glassPanel,
   recessedInput,
-  glassInput, // Restored for backward compatibility
+  glassInput,
   glassTextarea,
   glassSelect,
   btnPrimary,
@@ -21,6 +22,7 @@ import {
   badge,
   radius,
   spacing,
+  springResponsive,
 } from '../theme';
 import type { AppSettings, SearchUrl, Sniper } from '../types/global';
 
@@ -52,7 +54,10 @@ function SniperSpentDisplay({ sniperId, budgetLimit }: { sniperId: number; budge
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <section
+    <motion.section
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={springResponsive}
       style={{
         ...glassPanel,
         padding: spacing['2xl'],
@@ -62,7 +67,7 @@ function Section({ title, description, children }: { title: string; description?
       <h3 style={sectionTitle}>{title}</h3>
       {description && <p style={{ ...sectionDesc, marginBottom: spacing.lg }}>{description}</p>}
       <div>{children}</div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -472,7 +477,6 @@ export default function Settings() {
             borderRadius: radius.md,
             boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
           }}
-          className="animate-fadeIn"
         >
           ✓ Saved
         </div>

@@ -520,9 +520,9 @@ def fetch_sold_items(
     transport_mode: str | None = None,
     user_agent: str | None = None,
 ) -> dict:
-    """GET /api/v2/my_orders?order_type=sold — fetch user's sold orders."""
+    """GET /api/v2/my_orders?type=sold — fetch user's sold orders."""
     qs = urlencode({
-        "order_type": "sold",
+        "type": "sold",
         "status": status,
         "page": page,
         "per_page": per_page,
@@ -561,9 +561,9 @@ def fetch_bought_items(
     transport_mode: str | None = None,
     user_agent: str | None = None,
 ) -> dict:
-    """GET /api/v2/my_orders?order_type=bought — fetch user's bought orders."""
+    """GET /api/v2/my_orders?type=bought — fetch user's bought orders."""
     qs = urlencode({
-        "order_type": "bought",
+        "type": "bought",
         "status": status,
         "page": page,
         "per_page": per_page,

@@ -129,6 +129,37 @@ export const transition = {
   spring: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
 } as const;
 
+/* ─── Framer Motion Spring Tokens ───────────────────────────── */
+
+/** Micro-interactions: toggles, buttons, card entrances */
+export const springResponsive = {
+  type: 'spring' as const,
+  stiffness: 350,
+  damping: 25,
+  mass: 1,
+};
+
+/** Macro-spatial transitions: page routing, layout shifts */
+export const springSmooth = {
+  type: 'spring' as const,
+  stiffness: 150,
+  damping: 15,
+  mass: 1,
+};
+
+/** Z-axis elevation: modals, overlays, heavy panels */
+export const springGentle = {
+  type: 'spring' as const,
+  stiffness: 75,
+  damping: 15,
+  mass: 1,
+};
+
+/** Stagger configuration for data grid population */
+export const staggerFast = {
+  staggerChildren: 0.05,
+};
+
 /* ─── Reusable Style Objects (CSSProperties) ────────────────── */
 
 export const liquidGlassPanel: CSSProperties = {
