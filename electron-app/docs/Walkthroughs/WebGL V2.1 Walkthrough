@@ -1,0 +1,64 @@
+# Unified WebGL Liquid Glass — Walkthrough
+
+## Summary
+
+Replaced the hybrid CSS+WebGL approach with a **fully unified WebGL architecture**. A single global `<GlassCanvas>` overlay renders liquid glass refraction for every glass element — sidebar, modals, and cards — using Chromium 138's `context.drawElement` for live DOM texture capture and volumetric specular rim lighting driven by mouse position.
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+  A["App.tsx (CardTrackerProvider)"] --> B["GlassCanvas (z:9999, always-on)"]
+  B --> C[DOMTextureUpdater]
+  C -->|"context.drawElement(main)"| D["Live DOM → THREE.DataTexture"]
+  B --> E[GlassScene]
+  E --> F1["GlassMesh — Sidebar"]
+  E --> F2["GlassMesh — Feed Cards"]
+  E --> F3["GlassMesh — Purchase Cards"]
+  E --> F4["GlassMesh — Modal Overlays"]
+  F1 & F2 & F3 & F4 --> G["glassRefraction.glsl"]
+  G --> H["Live refraction + Volumetric specular + Rim light"]
+```
+
+---
+
+## Files Created / Modified
+
+| File | Change |
+|------|--------|
+| [main.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main.ts) | `app.commandLine.appendSwitch('use-angle', 'gl')` — Chrome 138 ANGLE fix |
+| [GlassCanvas.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/GlassCanvas.tsx) | **Complete rewrite** — z-index 9999, `context.drawElement` DOM capture, volumetric specular shader |
+| [glassRefraction.glsl](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/shaders/glassRefraction.glsl) | Live DOM texture sampling, barrel distortion, rim specular, edge lighting |
+| [App.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/App.tsx) | Unconditional `<GlassCanvas>`, sidebar tracking, modal tracking, removed CSS glass |
+| [Feed.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Feed.tsx) | Removed `isDegraded`, always transparent cards |
+| [PurchasesSuite.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/PurchasesSuite.tsx) | Removed `useMousePosition`, attached `useTrackCard` to modal, transparent bg |
+| [index.css](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/index.css) | Stripped all glass pseudo-elements (modal overlay, liquid-glass-card, skeleton) |
+| **[DELETED]** useReducedMotion.ts | No CSS fallback exists |
+
+---
+
+## Volumetric Specular System
+
+The shader implements a two-layer specular model driven by `uMouse`:
+
+1. **Diffuse specular** — broad, soft radial glow following the cursor across the glass surface (`smoothstep(0.6, 0.0, specDist) * 0.20`)
+2. **Rim specular** — concentrated highlight on panel borders near the cursor, simulating environmental light catching the glass edge (`rimMask * smoothstep(0.7, 0.0, specDist) * 0.45`)
+
+Per-element-type tuning:
+- **Modals**: Higher IOR (1.08), stronger blur (0.8), more opaque (0.7)
+- **Sidebar**: Medium IOR (1.06), medium blur (0.7), semi-opaque (0.65)
+- **Cards**: Subtle IOR (1.05), light blur (0.5), translucent (0.55)
+
+---
+
+## Verification
+
+- **TypeScript** — `npx tsc --noEmit` produces zero new errors (only pre-existing errors in unrelated files)
+- **Manual testing** — Run `npm run start` from `electron-app/` to verify:
+  - ANGLE switch in `chrome://gpu`
+  - Glass canvas rendering on all tabs
+  - Live refraction through sidebar/modals
+  - No CSS `backdrop-filter` active
+  - No Chrome 138 DOM disappearance

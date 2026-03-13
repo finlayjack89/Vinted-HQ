@@ -15,6 +15,10 @@ import * as proxyService from './main/proxyService';
 import { setupNetworkInterception } from './main/authCapture';
 import * as sessionService from './main/sessionService';
 
+// Force OpenGL backend — prevents Chrome 138 ANGLE regression
+// where toggling WebGL overlays causes DOM text/image disappearance
+app.commandLine.appendSwitch('use-angle', 'gl');
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();

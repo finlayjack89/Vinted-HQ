@@ -3,7 +3,7 @@
  * Revolut-inspired sidebar layout with liquid glass UI
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Feed from './components/Feed';
 import Wardrobe from './components/Wardrobe';
@@ -28,14 +28,12 @@ import {
   radius,
   spacing,
   transition,
-  liquidGlassPanel,
   springSmooth,
   springGentle,
   springResponsive,
 } from './theme';
 import { useMousePosition } from './hooks/useMousePosition';
-import { useReducedMotion } from './hooks/useReducedMotion';
-import { CardTrackerProvider } from './hooks/useCardTracker';
+import { CardTrackerProvider, useTrackCard } from './hooks/useCardTracker';
 import type { SniperCountdownParams } from './types/global';
 
 type Tab = 'feed' | 'wardrobe' | 'sales' | 'automessage' | 'proxies' | 'settings' | 'logs' | 'purchases';
@@ -204,10 +202,17 @@ export default function App() {
   };
 
   const { ref: rootRef, onMouseMove: rootMouseMove, onMouseLeave: rootMouseLeave } = useMousePosition<HTMLDivElement>();
-  const prefersReducedMotion = useReducedMotion();
 
-  // Mount the WebGL canvas only on tabs with tracked cards and when reduced motion is not preferred
-  const showWebGLCanvas = !prefersReducedMotion && (tab === 'feed' || tab === 'purchases');
+  // Track sidebar for WebGL glass refraction
+  const sidebarTrackRef = useTrackCard('sidebar');
+  // Merge motion ref with tracker ref for sidebar
+  const sidebarRef = useCallback((node: HTMLElement | null) => {
+    sidebarTrackRef(node);
+  }, [sidebarTrackRef]);
+
+  // Track modals for WebGL glass refraction
+  const sniperModalTrackRef = useTrackCard('modal-sniper');
+  const sessionModalTrackRef = useTrackCard('modal-session');
 
   return (
     <CardTrackerProvider>
@@ -217,16 +222,15 @@ export default function App() {
       onMouseLeave={rootMouseLeave}
       style={{ display: 'flex', height: '100vh', fontFamily: font.family }}
     >
-      {/* ─── WebGL Glass Refraction Layer ────────────────── */}
-      {showWebGLCanvas && <GlassCanvas />}
+      {/* ─── Unified WebGL Glass Refraction Layer (always-on) ── */}
+      <GlassCanvas />
       {/* ─── Sidebar ──────────────────────────────────────── */}
       <motion.aside
-        className="liquid-glass-panel"
+        ref={sidebarRef as any}
         initial={{ x: -SIDEBAR_WIDTH, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={springSmooth}
         style={{
-          ...liquidGlassPanel,
           width: SIDEBAR_WIDTH,
           minWidth: SIDEBAR_WIDTH,
           height: '100vh',
@@ -235,9 +239,7 @@ export default function App() {
           top: 0,
           display: 'flex',
           flexDirection: 'column',
-          background: 'rgba(255, 255, 255, 0.60)',
-          backdropFilter: 'url(#liquid-glass-refraction) blur(40px) saturate(150%)',
-          WebkitBackdropFilter: 'url(#liquid-glass-refraction) blur(40px) saturate(150%)',
+          background: 'transparent',
           borderRight: `1px solid rgba(255, 255, 255, 0.9)`,
           boxShadow: '1px 0 12px rgba(0, 0, 0, 0.03)',
           borderRadius: 0,
@@ -387,16 +389,16 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={springGentle}
-            className="modal-overlay"
             style={modalOverlay}
           >
             <motion.div
+              ref={sniperModalTrackRef as any}
               key="sniper-modal"
               initial={{ scale: 0.8, y: -40, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.8, y: -40, opacity: 0 }}
               transition={springGentle}
-              style={{ ...modalContent, textAlign: 'center' }}
+              style={{ ...modalContent, textAlign: 'center', background: 'transparent' }}
             >
               <div
                 style={{
@@ -464,8 +466,8 @@ export default function App() {
 
       {/* ─── Session Expired Modal ────────────────────────── */}
       {sessionExpired && (
-        <div className="modal-overlay" style={{ ...modalOverlay, zIndex: 1002 }}>
-          <div style={{ ...modalContent, maxWidth: 480 }}>
+        <div style={{ ...modalOverlay, zIndex: 1002 }}>
+          <div ref={sessionModalTrackRef} style={{ ...modalContent, maxWidth: 480, background: 'transparent' }}>
             <div
               style={{
                 width: 48,

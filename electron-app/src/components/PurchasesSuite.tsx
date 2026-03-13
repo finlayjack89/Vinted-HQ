@@ -26,7 +26,6 @@ import {
   shadows,
 } from '../theme';
 import { useTrackCard } from '../hooks/useCardTracker';
-import { useMousePosition } from '../hooks/useMousePosition';
 import type { VintedSoldItem, BoughtOrderRow, BridgeResult } from '../types/global';
 
 /* ─── Status tab definitions ─────────────────────────── */
@@ -264,8 +263,8 @@ export default function PurchasesSuite() {
 
   /* ─── Styles ───────────────────────────────────────── */
 
-  // Mouse position for modal specular lighting
-  const { ref: modalMouseRef, onMouseMove: modalMouseMove, onMouseLeave: modalMouseLeave } = useMousePosition<HTMLDivElement>();
+  // Track purchase detail modal for WebGL glass
+  const purchaseModalTrackRef = useTrackCard('modal-purchase-detail');
 
   const cardStyle: React.CSSProperties = {
     ...glassPanel,
@@ -343,8 +342,6 @@ export default function PurchasesSuite() {
     return badge(colors.glassBg, colors.textSecondary);
   };
 
-  // Use the CSS .modal-overlay class instead of inline backdrop-filter
-  // to get the Chromium-safe ::before pseudo-element approach
 
   const modalStyle: React.CSSProperties = {
     ...glassPanel,
@@ -459,14 +456,17 @@ export default function PurchasesSuite() {
       {/* Detail Modal */}
       {detailModal && (
         <div
-          className="modal-overlay"
-          ref={modalMouseRef}
-          onMouseMove={modalMouseMove}
-          onMouseLeave={modalMouseLeave}
-          style={{ zIndex: 9999 }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9998,
+          }}
           onClick={(e) => { if (e.target === e.currentTarget) setDetailModal(null); }}
         >
-          <div style={{ ...modalStyle, position: 'relative' }}>
+          <div ref={purchaseModalTrackRef} style={{ ...modalStyle, position: 'relative', background: 'transparent' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: font.size.xl, fontWeight: font.weight.bold, color: colors.textPrimary }}>
                 Purchase Details

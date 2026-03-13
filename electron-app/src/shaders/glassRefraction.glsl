@@ -1,27 +1,28 @@
 // ─── Liquid Glass Refraction Fragment Shader ────────────────────
-// Simulates frosted-glass refraction over a static warm-gradient
-// background texture. Uses barrel distortion for IOR simulation,
-// Fresnel edge brightening, and mouse-driven specular highlights.
+// Live DOM refraction + volumetric specular rim lighting.
+// Samples a live DOM texture captured via context.drawElement,
+// applies barrel distortion for IOR simulation, Fresnel edge
+// brightening, and mouse-driven specular highlights with
+// concentrated rim light on panel borders.
+//
+// This file is the reference copy — the shader is inlined
+// in GlassCanvas.tsx for bundle compatibility.
 
-precision mediump float;
+precision highp float;
 
 uniform float uTime;
-uniform vec2  uResolution;   // viewport size in px
-uniform vec2  uMouse;        // mouse position in normalised [0..1]
-uniform float uIOR;          // index of refraction (~1.05)
-uniform float uBlurStrength; // frosted blur intensity
-uniform float uOpacity;      // overall panel opacity
+uniform vec2  uResolution;
+uniform vec2  uMouse;
+uniform float uIOR;
+uniform float uBlurStrength;
+uniform float uOpacity;
+uniform sampler2D uDOMTexture;
+uniform vec2 uTexSize;
+uniform vec4 uMeshRect;
 
 varying vec2 vUv;
+varying vec2 vWorldPos;
 
-// ─── Warm gradient background (matches #FAF9F6 → #F0EFEB) ──
-vec3 warmGradient(vec2 uv) {
-  vec3 top    = vec3(0.980, 0.976, 0.965); // #FAF9F6
-  vec3 bottom = vec3(0.941, 0.937, 0.922); // #F0EFEB
-  return mix(bottom, top, uv.y);
-}
-
-// ─── Barrel distortion for refraction ────────────────────────
 vec2 barrelDistort(vec2 uv, float strength) {
   vec2 centered = uv - 0.5;
   float r2 = dot(centered, centered);
@@ -29,7 +30,6 @@ vec2 barrelDistort(vec2 uv, float strength) {
   return distorted + 0.5;
 }
 
-// ─── Fresnel approximation ──────────────────────────────────
 float fresnel(vec2 uv, float power) {
   vec2 centered = uv - 0.5;
   float edge = length(centered) * 2.0;
@@ -39,34 +39,53 @@ float fresnel(vec2 uv, float power) {
 void main() {
   vec2 uv = vUv;
 
-  // 1) Barrel distortion simulating IOR
+  // World-space UV for DOM texture sampling
+  vec2 refractedUv;
   float distortionStrength = (uIOR - 1.0) * 2.0;
-  vec2 refractedUv = barrelDistort(uv, distortionStrength);
+  vec2 localDistorted = barrelDistort(uv, distortionStrength);
+  refractedUv = vec2(
+    (uMeshRect.x + localDistorted.x * uMeshRect.z) / uTexSize.x,
+    1.0 - (uMeshRect.y + (1.0 - localDistorted.y) * uMeshRect.w) / uTexSize.y
+  );
 
-  // 2) Sample the warm background at the refracted UV
-  vec3 bg = warmGradient(refractedUv);
+  vec3 bg = texture2D(uDOMTexture, clamp(refractedUv, 0.0, 1.0)).rgb;
 
-  // 3) Frosted overlay — slight white tint
-  float frost = uBlurStrength * 0.15;
+  // Frosted overlay
+  float frost = uBlurStrength * 0.18;
   bg = mix(bg, vec3(1.0), frost);
 
-  // 4) Fresnel edge brightening — volumetric depth
-  float fresnelFactor = fresnel(uv, 3.0);
-  bg += vec3(fresnelFactor * 0.08);
+  // Fresnel edge brightening
+  float fresnelFactor = fresnel(uv, 2.5);
+  bg += vec3(fresnelFactor * 0.12);
 
-  // 5) Specular highlight from mouse position
-  vec2 mouseOffset = uMouse - uv;
+  // Volumetric specular — mouse-driven
+  vec2 meshMouseLocal = vec2(
+    (uMouse.x * uTexSize.x - uMeshRect.x) / uMeshRect.z,
+    (uMouse.y * uTexSize.y - uMeshRect.y) / uMeshRect.w
+  );
+
+  vec2 mouseOffset = meshMouseLocal - uv;
   float specDist = length(mouseOffset);
-  float specular = smoothstep(0.5, 0.0, specDist) * 0.25;
-  bg += vec3(specular);
+  float diffuseSpec = smoothstep(0.6, 0.0, specDist) * 0.20;
+  bg += vec3(diffuseSpec);
 
-  // 6) Subtle inner shadow at edges
-  float edgeShadow = smoothstep(0.0, 0.15, min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)));
-  bg *= mix(0.95, 1.0, edgeShadow);
+  // Rim specular on borders
+  float borderDist = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+  float rimMask = smoothstep(0.15, 0.0, borderDist);
+  float rimSpec = rimMask * smoothstep(0.7, 0.0, specDist) * 0.45;
+  bg += vec3(rimSpec);
 
-  // 7) Inset highlight on top edge
-  float topHighlight = smoothstep(0.02, 0.0, uv.y) * 0.3;
+  // Edge shadow
+  float edgeShadow = smoothstep(0.0, 0.12, borderDist);
+  bg *= mix(0.93, 1.0, edgeShadow);
+
+  // Top highlight
+  float topHighlight = smoothstep(0.03, 0.0, uv.y) * 0.25;
   bg += vec3(topHighlight);
+
+  // Bottom shadow
+  float bottomShadow = smoothstep(0.03, 0.0, 1.0 - uv.y) * 0.08;
+  bg -= vec3(bottomShadow);
 
   gl_FragColor = vec4(bg, uOpacity);
 }

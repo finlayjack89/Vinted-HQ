@@ -222,22 +222,19 @@ function FeedItemCard({
   onToggle,
   onBuy,
   isBuying,
-  isDegraded = false,
 }: {
   item: FeedItem;
   expanded: boolean;
   onToggle: () => void;
   onBuy: (item: FeedItem) => void;
   isBuying: boolean;
-  isDegraded?: boolean;
 }) {
   // Track this card's bounding box for the WebGL refraction layer
   const trackRef = useTrackCard(`feed-${item.id}`);
 
   return (
     <motion.div
-      ref={isDegraded ? undefined : (trackRef as any)}
-      className={isDegraded ? 'liquid-glass-card' : undefined}
+      ref={trackRef as any}
       onClick={onToggle}
       variants={{
         hidden: { y: 20, opacity: 0 },
@@ -251,15 +248,9 @@ function FeedItemCard({
         cursor: 'pointer',
         display: 'flex',
         flexDirection: 'column',
-        // When WebGL is active (not degraded), make background transparent
-        // so the refraction mesh shows through
-        background: isDegraded ? liquidGlassCard.background : 'transparent',
-        backdropFilter: isDegraded
-          ? 'blur(16px) saturate(130%)'
-          : 'none',
-        WebkitBackdropFilter: isDegraded
-          ? 'blur(16px) saturate(130%)'
-          : 'none',
+        background: 'transparent',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
       }}
     >
       {/* Image */}
