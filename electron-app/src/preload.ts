@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('vinted', {
   isEncryptionAvailable: () => ipcRenderer.invoke('session:isEncryptionAvailable'),
   getVintedUserId: () => ipcRenderer.invoke('session:getVintedUserId') as Promise<number | null>,
   startCookieRefresh: () => ipcRenderer.invoke('session:startCookieRefresh'),
+  syncFromExtension: () => ipcRenderer.invoke('session:syncFromExtension'),
   saveLoginCredentials: (username: string, password: string) =>
     ipcRenderer.invoke('session:saveLoginCredentials', username, password),
   hasLoginCredentials: () => ipcRenderer.invoke('session:hasLoginCredentials'),
@@ -127,8 +128,24 @@ contextBridge.exposeInMainWorld('vinted', {
   getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) =>
     ipcRenderer.invoke('logs:getAll', opts),
   getPurchases: (limit?: number) => ipcRenderer.invoke('purchases:getAll', limit),
-  getSales: (userId: number, page?: number, perPage?: number) =>
-    ipcRenderer.invoke('sales:getAll', userId, page ?? 1, perPage ?? 20),
+  getSales: (status?: string, page?: number, perPage?: number) =>
+    ipcRenderer.invoke('sales:getAll', status ?? 'all', page ?? 1, perPage ?? 20),
+  getSaleConversation: (conversationId: number) =>
+    ipcRenderer.invoke('sales:getConversation', conversationId),
+  upsertSoldOrder: (order: Record<string, unknown>) =>
+    ipcRenderer.invoke('sales:upsertSoldOrder', order),
+  getSavedOrders: (statusFilter?: string) =>
+    ipcRenderer.invoke('sales:getSavedOrders', statusFilter),
+  getInventoryByVintedId: (vintedItemId: number) =>
+    ipcRenderer.invoke('sales:getInventoryByVintedId', vintedItemId),
+
+  // Purchases (bought orders)
+  getPurchasesApi: (status?: string, page?: number, perPage?: number) =>
+    ipcRenderer.invoke('purchases:getApi', status ?? 'all', page ?? 1, perPage ?? 20),
+  upsertBoughtOrder: (order: Record<string, unknown>) =>
+    ipcRenderer.invoke('purchases:upsertBoughtOrder', order),
+  getSavedBoughtOrders: (statusFilter?: string) =>
+    ipcRenderer.invoke('purchases:getSavedOrders', statusFilter),
   onSessionReconnected: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on('session:reconnected', handler);
@@ -172,6 +189,18 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:pullLiveToLocal', localId),
   editLiveItem: (localId: number, updates: Record<string, unknown>, proxy?: string) =>
     ipcRenderer.invoke('wardrobe:editLiveItem', localId, updates, proxy),
+
+  // ─── Create Listing ─────────────────────────────────────────────────────
+
+  createListing: (formData: Record<string, unknown>, photoPaths: string[]) =>
+    ipcRenderer.invoke('wardrobe:createListing', formData, photoPaths) as Promise<{
+      ok: boolean; localId?: number; vintedItemId?: number; error?: string;
+    }>,
+  onCreateProgress: (callback: (data: { step: string; current: number; total: number; message?: string }) => void) => {
+    const handler = (_event: unknown, data: { step: string; current: number; total: number; message?: string }) => callback(data);
+    ipcRenderer.on('wardrobe:create-progress', handler);
+    return () => { ipcRenderer.removeListener('wardrobe:create-progress', handler); };
+  },
 
   // ─── Relist Queue (Waiting Room) ────────────────────────────────────────
 
@@ -230,4 +259,57 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.on('wardrobe:sync-progress', handler);
     return () => ipcRenderer.removeListener('wardrobe:sync-progress', handler);
   },
+
+  // ─── CRM: Auto-Message & Offer Suite ──────────────────────────────────────
+
+  getCrmConfigs: () =>
+    ipcRenderer.invoke('crm:getConfigs'),
+  getCrmConfig: (itemId: string) =>
+    ipcRenderer.invoke('crm:getConfig', itemId),
+  upsertCrmConfig: (config: {
+    item_id: string;
+    message_text: string | null;
+    offer_price: number | null;
+    delay_min_minutes: number;
+    delay_max_minutes: number;
+    send_offer_first: boolean;
+    is_active: boolean;
+  }) => ipcRenderer.invoke('crm:upsertConfig', config),
+  deleteCrmConfig: (itemId: string) =>
+    ipcRenderer.invoke('crm:deleteConfig', itemId),
+  getCrmLogs: (opts?: { item_id?: string; status?: string; limit?: number }) =>
+    ipcRenderer.invoke('crm:getLogs', opts),
+  clearCrmLogs: () =>
+    ipcRenderer.invoke('crm:clearLogs'),
+  startCrm: () =>
+    ipcRenderer.invoke('crm:start'),
+  stopCrm: () =>
+    ipcRenderer.invoke('crm:stop'),
+  isCrmRunning: () =>
+    ipcRenderer.invoke('crm:isRunning') as Promise<boolean>,
+  onCrmActionLog: (callback: (data: unknown) => void) => {
+    const handler = (_: unknown, data: unknown) => callback(data);
+    ipcRenderer.on('crm:action-log', handler);
+    return () => ipcRenderer.removeListener('crm:action-log', handler);
+  },
+
+  // Preset messages
+  getCrmPresets: () =>
+    ipcRenderer.invoke('crm:getPresets'),
+  upsertCrmPreset: (preset: { id?: number; name: string; body: string }) =>
+    ipcRenderer.invoke('crm:upsertPreset', preset),
+  deleteCrmPreset: (id: number) =>
+    ipcRenderer.invoke('crm:deletePreset', id),
+
+  // Ignored users
+  getCrmIgnoredUsers: () =>
+    ipcRenderer.invoke('crm:getIgnoredUsers'),
+  addCrmIgnoredUser: (username: string) =>
+    ipcRenderer.invoke('crm:addIgnoredUser', username),
+  removeCrmIgnoredUser: (username: string) =>
+    ipcRenderer.invoke('crm:removeIgnoredUser', username),
+
+  // Backfill past likes
+  backfillCrmItem: (itemId: string, backfillHours: number) =>
+    ipcRenderer.invoke('crm:backfill', itemId, backfillHours),
 });

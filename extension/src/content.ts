@@ -14,6 +14,69 @@
 console.log('[Vinted HQ] Content script injected on:', window.location.href);
 console.log('[Vinted HQ] pathname:', window.location.pathname, 'search:', window.location.search);
 
+// ─── Proactive CSRF Token Scraping ──────────────────────────────────────────
+// On every Vinted page load, scrape the CSRF token from the DOM and push
+// it to the background service worker. This feeds the Session Harvester
+// so it can include a fresh CSRF token in the /ingest/session payload.
+(function scrapeAndPushCsrfToken() {
+    // Wait for DOM to settle (React hydration may not be instant)
+    setTimeout(() => {
+        let token: string | null = null;
+
+        // Strategy 1: <meta name="csrf-token">
+        try {
+            const meta = document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement;
+            if (meta?.content) token = meta.content;
+        } catch { /* skip */ }
+
+        // Strategy 2: __NEXT_DATA__ JSON
+        if (!token) {
+            try {
+                const nextDataEl = document.getElementById('__NEXT_DATA__');
+                if (nextDataEl?.textContent) {
+                    const json = JSON.parse(nextDataEl.textContent);
+                    token = json?.runtimeConfig?.csrfToken
+                        || json?.props?.pageProps?.csrfToken
+                        || null;
+                }
+            } catch { /* skip */ }
+        }
+
+        // Strategy 3: window.vinted global
+        if (!token) {
+            try {
+                // This needs Main World access; use a script tag injection
+                const probe = document.createElement('script');
+                probe.textContent = `
+                    (function() {
+                        let t = null;
+                        if (window.vinted && window.vinted.csrfToken) t = window.vinted.csrfToken;
+                        if (!t && window.CSRFProtection && typeof window.CSRFProtection.token === 'function') t = window.CSRFProtection.token();
+                        if (t) window.postMessage({ type: 'VINTED_HQ_CSRF_SCRAPED', token: t }, '*');
+                    })();
+                `;
+                (document.head || document.documentElement).appendChild(probe);
+                probe.remove();
+            } catch { /* skip */ }
+        }
+
+        if (token) {
+            console.log(`[Vinted HQ] 🔑 CSRF token scraped from DOM: ${token.slice(0, 10)}...`);
+            chrome.runtime.sendMessage({ type: 'SESSION_CSRF_TOKEN', token });
+        }
+    }, 2000); // Wait 2s for React hydration
+})();
+
+// Listen for CSRF token scraped via Main World injection
+window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (event.data?.type === 'VINTED_HQ_CSRF_SCRAPED' && event.data.token) {
+        console.log(`[Vinted HQ] 🔑 CSRF token received from Main World probe: ${event.data.token.slice(0, 10)}...`);
+        chrome.runtime.sendMessage({ type: 'SESSION_CSRF_TOKEN', token: event.data.token });
+    }
+});
+
+
 // ── Listen for intercepted ontology data from the Main World fetch interceptor ──
 let capturedAttributes: any = null;
 let capturedSizes: any = null;

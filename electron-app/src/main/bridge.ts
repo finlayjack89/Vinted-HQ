@@ -297,7 +297,7 @@ export async function fetchWardrobe(
       method: 'GET',
       headers: authHeaders(),
     });
-    return (await res.json()) as BridgeResult;
+    return await parseBridgeResult(res);
   } catch (err) {
     return bridgeError(err);
   }
@@ -307,7 +307,7 @@ export async function fetchWardrobe(
  * Fetch user's sold items.
  */
 export async function fetchSales(
-  userId: number,
+  status = 'all',
   page = 1,
   perPage = 20,
   proxy?: string
@@ -317,7 +317,7 @@ export async function fetchSales(
     return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
   }
   const params: Record<string, string> = {
-    user_id: String(userId),
+    status,
     page: String(page),
     per_page: String(perPage),
     transport_mode: _transportMode(),
@@ -330,7 +330,68 @@ export async function fetchSales(
       method: 'GET',
       headers: authHeaders(),
     });
-    return (await res.json()) as BridgeResult;
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Fetch user's bought orders from Vinted API.
+ */
+export async function fetchPurchasesApi(
+  status = 'all',
+  page = 1,
+  perPage = 20,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {
+    status,
+    page: String(page),
+    per_page: String(perPage),
+    transport_mode: _transportMode(),
+  };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/purchases-api?${qs}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Fetch conversation detail (buyer info, transaction, item_id).
+ */
+export async function fetchConversation(
+  conversationId: number,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  }
+  const params: Record<string, string> = {
+    transport_mode: _transportMode(),
+  };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/conversation/${conversationId}?${qs}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return await parseBridgeResult(res);
   } catch (err) {
     return bridgeError(err);
   }
@@ -578,12 +639,14 @@ export async function uploadPhotoRaw(
   tempUuid?: string,
   proxy?: string,
   transportModeOverride?: 'DIRECT' | 'PROXY',
+  stripExif?: boolean,
 ): Promise<BridgeResult> {
   const cookie = secureStorage.retrieveCookie();
   if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
 
   const params: Record<string, string> = { transport_mode: transportModeOverride ?? _transportMode() };
   if (proxy) params.proxy = proxy;
+  if (stripExif) params.strip_exif = 'true';
   const qs = new URLSearchParams(params).toString();
 
   try {
@@ -778,6 +841,115 @@ export async function relistItemV2(
         photo_urls: photoUrls,
         relist_count: relistCount,
       }),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+// ─── CRM: Auto-Message & Offer Suite ──────────────────────────────────────
+
+/**
+ * Fetch notification feed. Like notifications have entry_type=20.
+ */
+export async function fetchNotifications(
+  page = 1,
+  perPage = 20,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  const params: Record<string, string> = {
+    page: String(page),
+    per_page: String(perPage),
+    transport_mode: _transportMode(),
+  };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/notifications?${qs}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Send a message in a conversation.
+ */
+export async function sendMessage(
+  conversationId: number,
+  text: string,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/conversations/${conversationId}/reply?${qs}`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: text }),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Create a price offer on a transaction.
+ */
+export async function sendOffer(
+  transactionId: number,
+  price: string,
+  currency = 'GBP',
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/transactions/${transactionId}/offer?${qs}`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ price, currency }),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
+ * Discover/create transaction + conversation context for an item + buyer.
+ */
+export async function initiateConversation(
+  itemId: number,
+  receiverId: number,
+  proxy?: string
+): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  const params: Record<string, string> = {
+    item_id: String(itemId),
+    receiver_id: String(receiverId),
+    transport_mode: _transportMode(),
+  };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/transactions/init?${qs}`, {
+      method: 'GET',
+      headers: authHeaders(),
     });
     return await parseBridgeResult(res);
   } catch (err) {

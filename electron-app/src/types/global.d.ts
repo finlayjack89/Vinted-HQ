@@ -39,6 +39,8 @@ export type AppSettings = {
   sessionAutoSubmitEnabled: boolean;
   transportMode: 'PROXY' | 'DIRECT';
   browser_proxy_mode: 'DIRECT' | 'ISP_DEDICATED';
+  crm_delay_min_minutes: number;
+  crm_delay_max_minutes: number;
 };
 
 export type BridgeResult<T = unknown> =
@@ -100,25 +102,61 @@ export type FeedItem = {
 // ─── Sales Suite Types ───
 
 export type VintedSoldItem = {
-  id: number;
+  conversation_id: number;
+  transaction_id: number;
   title: string;
-  brand_title: string | null;
-  collection_title: string | null;
-  model_title: string | null;
-  price: string;
-  service_fee: string | null;
-  total_item_price: string | null;
-  currency: string;
-  photo_url: string | null;
-  url: string;
+  price: {
+    amount: string;
+    currency_code: string;
+  };
   status: string;
-  buyer_login: string | null;
+  date: string;
+  photo: {
+    id: number;
+    url: string;
+    thumbnails: { type: string; url: string }[];
+  } | null;
+  transaction_user_status: string;
+};
+
+export type SoldOrderRow = {
+  transaction_id: number;
+  conversation_id: number;
+  item_id: number | null;
+  title: string;
+  price_amount: string | null;
+  price_currency: string;
+  status: string | null;
+  transaction_user_status: string | null;
+  date: string | null;
+  buyer_username: string | null;
   buyer_id: number | null;
-  conversation_id: number | null;
-  transaction_id: number | null;
-  sold_at: string | null;
-  order_confirmed_at: string | null;
-  created_at: string | null;
+  photo_url: string | null;
+  photo_thumbnails: string | null;
+  listing_price: number | null;
+  listed_at: number | null;
+  originally_listed_at: number | null;
+  enriched_at: number | null;
+  created_at: number;
+  updated_at: number;
+};
+
+export type BoughtOrderRow = {
+  transaction_id: number;
+  conversation_id: number;
+  item_id: number | null;
+  title: string;
+  price_amount: string | null;
+  price_currency: string | null;
+  status: string | null;
+  transaction_user_status: string | null;
+  date: string | null;
+  photo_url: string | null;
+  seller_username: string | null;
+  listing_price: number | null;
+  enriched_at: number | null;
+  created_at: number | null;
+  updated_at: number | null;
 };
 
 // ─── Inventory Vault Types ───
@@ -224,6 +262,42 @@ export type WardrobeSettings = {
   maxDelay: number;   // seconds, default 90
 };
 
+export type AutoMessageConfig = {
+  item_id: string;
+  message_text: string | null;
+  offer_price: number | null;
+  delay_min_minutes: number;
+  delay_max_minutes: number;
+  send_offer_first: boolean;
+  is_active: boolean;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type AutoMessageLog = {
+  notification_id: string;
+  item_id: string;
+  receiver_id: string;
+  receiver_username?: string | null;
+  action_type: string;
+  status: string;
+  error_message?: string | null;
+  like_date?: number | null;
+  timestamp: number;
+};
+
+export type AutoMessagePreset = {
+  id: number;
+  name: string;
+  body: string;
+  created_at: number;
+};
+
+export type CrmIgnoredUser = {
+  username: string;
+  created_at: number;
+};
+
 declare global {
   interface Window {
     vinted: {
@@ -233,6 +307,7 @@ declare global {
       isEncryptionAvailable: () => Promise<boolean>;
       getVintedUserId: () => Promise<number | null>;
       startCookieRefresh: () => Promise<{ ok: boolean; reason?: string }>;
+      syncFromExtension: () => Promise<{ ok: boolean; reason?: string; source?: string; waited?: number; message?: string }>;
       saveLoginCredentials: (username: string, password: string) => Promise<void>;
       hasLoginCredentials: () => Promise<boolean>;
       clearLoginCredentials: () => Promise<void>;
@@ -280,7 +355,16 @@ declare global {
       onSessionReconnected: (callback: () => void) => () => void;
       getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) => Promise<LogEntry[]>;
       getPurchases: (limit?: number) => Promise<Purchase[]>;
-      getSales: (userId: number, page?: number, perPage?: number) => Promise<BridgeResult>;
+      getSales: (status?: string, page?: number, perPage?: number) => Promise<BridgeResult>;
+      getSaleConversation: (conversationId: number) => Promise<BridgeResult>;
+      upsertSoldOrder: (order: Record<string, unknown>) => Promise<{ ok: boolean }>;
+      getSavedOrders: (statusFilter?: string) => Promise<SoldOrderRow[]>;
+      getInventoryByVintedId: (vintedItemId: number) => Promise<InventoryItem | null>;
+
+      // Purchases (bought orders)
+      getPurchasesApi: (status?: string, page?: number, perPage?: number) => Promise<BridgeResult>;
+      upsertBoughtOrder: (order: Record<string, unknown>) => Promise<{ ok: boolean }>;
+      getSavedBoughtOrders: (statusFilter?: string) => Promise<BoughtOrderRow[]>;
 
       // Transport Mode (Hybrid Transport)
       getTransportMode: () => Promise<'PROXY' | 'DIRECT'>;
@@ -311,6 +395,12 @@ declare global {
       pullLiveToLocal: (localId: number) => Promise<{ ok: boolean; error?: string }>;
       editLiveItem: (localId: number, updates: Record<string, unknown>, proxy?: string) => Promise<{ ok: boolean; error?: string }>;
 
+      // Create Listing
+      createListing: (formData: Record<string, unknown>, photoPaths: string[]) => Promise<{
+        ok: boolean; localId?: number; vintedItemId?: number; error?: string;
+      }>;
+      onCreateProgress: (callback: (data: { step: string; current: number; total: number; message?: string }) => void) => () => void;
+
       // Relist Queue (Waiting Room)
       getRelistQueue: () => Promise<{ queue: RelistQueueEntry[]; countdown: number }>;
       enqueueRelist: (localIds: number[]) => Promise<RelistQueueEntry[]>;
@@ -336,6 +426,25 @@ declare global {
 
       // Sync Progress
       onSyncProgress: (callback: (data: { direction: string; stage: string; current: number; total: number; message?: string }) => void) => () => void;
+
+      // CRM: Auto-Message & Offer Suite
+      getCrmConfigs: () => Promise<AutoMessageConfig[]>;
+      getCrmConfig: (itemId: string) => Promise<AutoMessageConfig | undefined>;
+      upsertCrmConfig: (config: Omit<AutoMessageConfig, 'created_at' | 'updated_at'>) => Promise<{ ok: boolean }>;
+      deleteCrmConfig: (itemId: string) => Promise<{ ok: boolean }>;
+      getCrmLogs: (opts?: { item_id?: string; status?: string; limit?: number }) => Promise<AutoMessageLog[]>;
+      clearCrmLogs: () => Promise<{ ok: boolean }>;
+      startCrm: () => Promise<{ ok: boolean }>;
+      stopCrm: () => Promise<{ ok: boolean }>;
+      isCrmRunning: () => Promise<boolean>;
+      onCrmActionLog: (callback: (data: unknown) => void) => () => void;
+      getCrmPresets: () => Promise<AutoMessagePreset[]>;
+      upsertCrmPreset: (preset: { id?: number; name: string; body: string }) => Promise<{ ok: boolean; id: number }>;
+      deleteCrmPreset: (id: number) => Promise<{ ok: boolean }>;
+      getCrmIgnoredUsers: () => Promise<CrmIgnoredUser[]>;
+      addCrmIgnoredUser: (username: string) => Promise<{ ok: boolean }>;
+      removeCrmIgnoredUser: (username: string) => Promise<{ ok: boolean }>;
+      backfillCrmItem: (itemId: string, backfillHours: number) => Promise<{ ok: boolean; count: number }>;
     };
   }
 }

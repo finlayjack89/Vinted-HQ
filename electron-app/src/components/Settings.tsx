@@ -8,7 +8,8 @@ import {
   colors,
   font,
   glassPanel,
-  glassInput,
+  recessedInput,
+  glassInput, // Restored for backward compatibility
   glassTextarea,
   glassSelect,
   btnPrimary,
@@ -55,7 +56,7 @@ function Section({ title, description, children }: { title: string; description?
       style={{
         ...glassPanel,
         padding: spacing['2xl'],
-        marginBottom: spacing.xl,
+        marginBottom: spacing['3xl'],
       }}
     >
       <h3 style={sectionTitle}>{title}</h3>
@@ -95,6 +96,8 @@ const defaultSettings: AppSettings = {
   sessionAutoSubmitEnabled: false,
   transportMode: 'PROXY',
   browser_proxy_mode: 'DIRECT',
+  crm_delay_min_minutes: 2,
+  crm_delay_max_minutes: 5,
 };
 
 /* ─── Relist Timing Section ─────────────────────────────────── */
@@ -135,7 +138,7 @@ function RelistTimingSection() {
             max={300}
             value={minDelay}
             onChange={(e) => setMinDelay(Math.max(5, parseInt(e.target.value, 10) || 30))}
-            style={{ ...glassInput, width: 90 }}
+            style={{ ...recessedInput, width: 90 }}
           />
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: font.size.base, color: colors.textSecondary }}>
@@ -146,7 +149,7 @@ function RelistTimingSection() {
             max={600}
             value={maxDelay}
             onChange={(e) => setMaxDelay(Math.max(10, parseInt(e.target.value, 10) || 90))}
-            style={{ ...glassInput, width: 90 }}
+            style={{ ...recessedInput, width: 90 }}
           />
         </label>
         <button
@@ -189,6 +192,8 @@ export default function Settings() {
   const [transportMode, setTransportMode] = useState<'PROXY' | 'DIRECT'>('PROXY');
   const [checkoutLocked, setCheckoutLocked] = useState(false);
   const [transportError, setTransportError] = useState<string | null>(null);
+  const [isSyncingExtension, setIsSyncingExtension] = useState(false);
+  const [extensionSyncStatus, setExtensionSyncStatus] = useState<'idle' | 'checking' | 'synced' | 'polling' | 'failed'>('idle');
 
   useEffect(() => {
     window.vinted.getSettings().then(setSettings);
@@ -271,6 +276,42 @@ export default function Settings() {
     timed_out: 'Timed out while waiting for login.',
     window_closed: 'Login window closed before capture.',
     failed: 'Unable to refresh session.',
+  };
+
+  const extensionSyncLabel: Record<string, string> = {
+    idle: '',
+    checking: '🔍 Checking for extension session data...',
+    synced: '✅ Session synced from Chrome Extension!',
+    polling: '🌐 Opened Vinted in Chrome — waiting for extension to harvest session...',
+    failed: '⚠️ Extension sync failed. Make sure the Vinted HQ extension is installed and you are logged into Vinted in Chrome.',
+  };
+
+  const handleSyncFromExtension = async () => {
+    if (isSyncingExtension) return;
+    setIsSyncingExtension(true);
+    setExtensionSyncStatus('checking');
+    try {
+      // Brief delay so user sees the checking state
+      setTimeout(() => {
+        if (isSyncingExtension) setExtensionSyncStatus('polling');
+      }, 1200);
+      const result = await window.vinted.syncFromExtension();
+      if (result.ok) {
+        setExtensionSyncStatus('synced');
+        setHasCookie(true);
+        showSaved();
+        // Reset status after a moment
+        setTimeout(() => setExtensionSyncStatus('idle'), 4000);
+      } else {
+        setExtensionSyncStatus('failed');
+        setTimeout(() => setExtensionSyncStatus('idle'), 8000);
+      }
+    } catch {
+      setExtensionSyncStatus('failed');
+      setTimeout(() => setExtensionSyncStatus('idle'), 8000);
+    } finally {
+      setIsSyncingExtension(false);
+    }
   };
 
   const handleSettingsChange = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -473,6 +514,59 @@ export default function Settings() {
         {refreshStatus !== 'idle' && (
           <p style={{ ...sectionDesc, marginBottom: spacing.md }}>{refreshLabel[refreshStatus]}</p>
         )}
+
+        {/* ── 1-Click Extension Sync ── */}
+        <div
+          style={{
+            padding: spacing.lg,
+            marginBottom: spacing.lg,
+            borderRadius: radius.md,
+            border: `1px solid ${colors.primaryMuted}`,
+            background: 'rgba(99, 102, 241, 0.04)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm }}>
+            <span style={{ fontSize: font.size.lg }}>🧩</span>
+            <div>
+              <strong style={{ color: colors.textPrimary, fontSize: font.size.base }}>Sync from Chrome Extension</strong>
+              <p style={{ margin: 0, color: colors.textMuted, fontSize: font.size.sm }}>
+                Instantly import your active Vinted session from Chrome. The extension harvests cookies automatically.
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={handleSyncFromExtension}
+              disabled={isSyncingExtension}
+              style={{
+                ...btnPrimary,
+                ...btnSmall,
+                background: isSyncingExtension
+                  ? colors.textMuted
+                  : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                border: 'none',
+                opacity: isSyncingExtension ? 0.7 : 1,
+                cursor: isSyncingExtension ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              {isSyncingExtension ? '⏳ Syncing...' : '⚡ 1-Click Sync'}
+            </button>
+            {extensionSyncStatus !== 'idle' && (
+              <span style={{
+                fontSize: font.size.sm,
+                color: extensionSyncStatus === 'synced' ? colors.success
+                     : extensionSyncStatus === 'failed' ? colors.warning
+                     : colors.textSecondary,
+              }}>
+                {extensionSyncLabel[extensionSyncStatus]}
+              </span>
+            )}
+          </div>
+        </div>
         <label
           style={{
             display: 'flex',
@@ -515,14 +609,14 @@ export default function Settings() {
             placeholder="Vinted email/username"
             value={loginUsername}
             onChange={(e) => setLoginUsername(e.target.value)}
-            style={{ ...glassInput, flex: 1 }}
+            style={{ ...recessedInput, flex: 1 }}
           />
           <input
             type="password"
             placeholder="Vinted password"
             value={loginPassword}
             onChange={(e) => setLoginPassword(e.target.value)}
-            style={{ ...glassInput, flex: 1 }}
+            style={{ ...recessedInput, flex: 1 }}
           />
         </InputRow>
         <div style={{ display: 'flex', gap: spacing.sm, alignItems: 'center', marginBottom: spacing.lg }}>
@@ -684,7 +778,7 @@ export default function Settings() {
             value={searchUrlInput}
             onChange={(e) => setSearchUrlInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddSearchUrl()}
-            style={{ ...glassInput, flex: 1 }}
+            style={{ ...recessedInput, flex: 1 }}
           />
           <button
             type="button"

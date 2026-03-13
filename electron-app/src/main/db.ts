@@ -133,6 +133,91 @@ function migrate(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_inventory_master_status ON inventory_master(status);
     CREATE INDEX IF NOT EXISTS idx_inventory_sync_vinted_id ON inventory_sync(vinted_item_id);
     CREATE INDEX IF NOT EXISTS idx_ontology_type ON vinted_ontology(entity_type);
+
+    -- Locally cached sold orders (enriched from conversation API)
+    CREATE TABLE IF NOT EXISTS sold_orders (
+      transaction_id INTEGER PRIMARY KEY,
+      conversation_id INTEGER NOT NULL,
+      item_id INTEGER,
+      title TEXT NOT NULL,
+      price_amount TEXT,
+      price_currency TEXT DEFAULT 'GBP',
+      status TEXT,
+      transaction_user_status TEXT,
+      date TEXT,
+      buyer_username TEXT,
+      buyer_id INTEGER,
+      photo_url TEXT,
+      photo_thumbnails TEXT,
+      listing_price REAL,
+      listed_at INTEGER,
+      originally_listed_at INTEGER,
+      enriched_at INTEGER,
+      created_at INTEGER DEFAULT (unixepoch()),
+      updated_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_sold_orders_status ON sold_orders(transaction_user_status);
+    CREATE INDEX IF NOT EXISTS idx_sold_orders_item ON sold_orders(item_id);
+
+    -- Bought orders (purchases) — local persistence + enrichment cache
+    CREATE TABLE IF NOT EXISTS bought_orders (
+      transaction_id INTEGER PRIMARY KEY,
+      conversation_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      item_id INTEGER,
+      price_amount TEXT,
+      price_currency TEXT DEFAULT 'GBP',
+      status TEXT,
+      transaction_user_status TEXT,
+      date TEXT,
+      photo_url TEXT,
+      seller_username TEXT,
+      listing_price REAL,
+      enriched_at INTEGER,
+      created_at INTEGER DEFAULT (unixepoch()),
+      updated_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_bought_orders_status ON bought_orders(transaction_user_status);
+    CREATE INDEX IF NOT EXISTS idx_bought_orders_item ON bought_orders(item_id);
+
+    -- Auto-Message CRM: per-item rules for auto-responding to "like" notifications
+    CREATE TABLE IF NOT EXISTS auto_message_configs (
+      item_id TEXT PRIMARY KEY,
+      message_text TEXT,
+      offer_price REAL,
+      delay_minutes INTEGER DEFAULT 5,
+      send_offer_first INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      created_at INTEGER DEFAULT (unixepoch()),
+      updated_at INTEGER DEFAULT (unixepoch())
+    );
+
+    -- Auto-Message CRM: dedup + audit log of dispatched messages/offers
+    CREATE TABLE IF NOT EXISTS auto_message_logs (
+      notification_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      receiver_id TEXT NOT NULL,
+      action_type TEXT DEFAULT 'message',
+      status TEXT DEFAULT 'pending',
+      error_message TEXT,
+      timestamp INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_aml_item ON auto_message_logs(item_id);
+    CREATE INDEX IF NOT EXISTS idx_aml_status ON auto_message_logs(status);
+
+    -- Auto-Message CRM: reusable preset messages
+    CREATE TABLE IF NOT EXISTS auto_message_presets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+
+    -- Auto-Message CRM: users to never auto-message
+    CREATE TABLE IF NOT EXISTS crm_ignored_users (
+      username TEXT PRIMARY KEY,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
   `);
   // Migration: add sniper_id to purchases if missing
   const cols = database.prepare("PRAGMA table_info(purchases)").all() as { name: string }[];
@@ -166,6 +251,36 @@ function migrate(database: Database.Database): void {
   addIfMissing('live_snapshot_fetched_at', 'INTEGER');
   // Wardrobe reconciliation: track when an item was last seen during a sync
   addIfMissing('last_seen_at', 'INTEGER');
+
+  // Migration: auto_message_configs delay range (single delay_minutes → delay_min + delay_max)
+  const amcCols = database.prepare("PRAGMA table_info(auto_message_configs)").all() as { name: string }[];
+  if (!amcCols.some((c) => c.name === 'delay_min_minutes')) {
+    database.prepare('ALTER TABLE auto_message_configs ADD COLUMN delay_min_minutes INTEGER DEFAULT 2').run();
+    database.prepare('ALTER TABLE auto_message_configs ADD COLUMN delay_max_minutes INTEGER DEFAULT 10').run();
+    // Seed from existing delay_minutes if present
+    database.prepare('UPDATE auto_message_configs SET delay_min_minutes = delay_minutes, delay_max_minutes = delay_minutes WHERE delay_min_minutes = 2 AND delay_minutes != 2').run();
+  }
+
+  // One-shot migration: reset sold_orders enrichment so dates re-populate from
+  // conversation API (previously used inventory_master.created_at which was
+  // the local DB import date, not the actual Vinted listing date).
+  // We use the presence of `date_fix_applied` column as the "already ran" marker.
+  const soldCols = database.prepare("PRAGMA table_info(sold_orders)").all() as { name: string }[];
+  if (soldCols.some((c) => c.name === 'enriched_at') && !soldCols.some((c) => c.name === 'date_fix_applied')) {
+    database.prepare("ALTER TABLE sold_orders ADD COLUMN date_fix_applied INTEGER DEFAULT 0").run();
+    database.prepare(
+      "UPDATE sold_orders SET enriched_at = NULL, listed_at = NULL, originally_listed_at = NULL"
+    ).run();
+  }
+
+  // Migration: add like_date and receiver_username to auto_message_logs
+  const logCols = database.prepare("PRAGMA table_info(auto_message_logs)").all() as { name: string }[];
+  if (!logCols.some((c) => c.name === 'like_date')) {
+    database.prepare('ALTER TABLE auto_message_logs ADD COLUMN like_date INTEGER').run();
+  }
+  if (!logCols.some((c) => c.name === 'receiver_username')) {
+    database.prepare('ALTER TABLE auto_message_logs ADD COLUMN receiver_username TEXT').run();
+  }
 }
 
 export function getDb(): Database.Database | null {

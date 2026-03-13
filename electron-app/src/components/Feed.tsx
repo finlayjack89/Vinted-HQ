@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import {
   colors,
   font,
-  glassPanel,
+  liquidGlassCard,
   btnPrimary,
   btnSmall,
   radius,
@@ -81,7 +81,7 @@ export default function Feed() {
   if (!hasCookie) {
     return (
       <div style={{ padding: spacing['3xl'], display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', maxWidth: 400 }}>
+        <div style={{ ...liquidGlassCard, padding: spacing['4xl'], textAlign: 'center', maxWidth: 400 }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>🔗</div>
           <p style={{ color: colors.textSecondary, fontSize: font.size.base, margin: 0, lineHeight: 1.6 }}>
             Connect your Vinted session in <strong style={{ color: colors.textPrimary }}>Settings</strong> to see the feed.
@@ -94,7 +94,7 @@ export default function Feed() {
   if (searchUrlCount === 0) {
     return (
       <div style={{ padding: spacing['3xl'], display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', maxWidth: 400 }}>
+        <div style={{ ...liquidGlassCard, padding: spacing['4xl'], textAlign: 'center', maxWidth: 400 }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>🔍</div>
           <p style={{ color: colors.textSecondary, fontSize: font.size.base, margin: 0, lineHeight: 1.6 }}>
             Add search URLs in <strong style={{ color: colors.textPrimary }}>Settings</strong> and enable them to start the feed.
@@ -111,7 +111,7 @@ export default function Feed() {
       {/* Status bar */}
       <div
         style={{
-          ...glassPanel,
+          ...liquidGlassCard,
           padding: `${spacing.md}px ${spacing.xl}px`,
           display: 'flex',
           alignItems: 'center',
@@ -172,7 +172,7 @@ export default function Feed() {
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: spacing.lg,
+          gap: spacing.xl,
           alignContent: 'start',
         }}
       >
@@ -220,15 +220,15 @@ function FeedItemCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        ...glassPanel,
+        ...liquidGlassCard,
         overflow: 'hidden',
         cursor: 'pointer',
         display: 'flex',
         flexDirection: 'column',
         transition: transition.base,
-        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+        background: hovered ? colors.glassBgHover : liquidGlassCard.background,
+        transform: hovered ? 'translateY(-4px)' : 'translateY(0)',
         boxShadow: hovered ? shadows.cardHover : shadows.card,
-        borderColor: hovered ? colors.glassBorderHover : colors.glassBorder,
       }}
     >
       {/* Image */}
@@ -238,6 +238,8 @@ function FeedItemCard({
           background: colors.bgElevated,
           position: 'relative',
           overflow: 'hidden',
+          borderRadius: '20px 20px 0 0',
+          boxShadow: 'inset 0 -20px 30px rgba(0,0,0,0.05)',
         }}
       >
         {item.photo_url ? (
@@ -273,7 +275,7 @@ function FeedItemCard({
       <div style={{ padding: spacing.md, flex: 1 }}>
         <div
           style={{
-            fontWeight: font.weight.semibold,
+            fontWeight: font.weight.medium,
             fontSize: font.size.base,
             color: colors.textPrimary,
             marginBottom: 4,
@@ -285,11 +287,11 @@ function FeedItemCard({
         >
           {item.title.length > 50 ? item.title.slice(0, 50) + '…' : item.title}
         </div>
-        <div style={{ fontSize: font.size.lg, fontWeight: font.weight.bold, color: colors.primary }}>
+        <div style={{ fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary, textShadow: '0 1px 0 rgba(255,255,255,0.9)' }}>
           £{item.price} {item.currency}
         </div>
         {item.condition && (
-          <span style={{ fontSize: font.size.sm, color: colors.textMuted, marginTop: 2, display: 'block' }}>
+          <span style={{ fontSize: font.size.sm, color: colors.textSecondary, marginTop: 2, display: 'block', fontWeight: font.weight.normal }}>
             {item.condition}
           </span>
         )}

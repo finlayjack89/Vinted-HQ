@@ -2,8 +2,9 @@
  * IPC handlers — bridge between renderer and main process
  */
 
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import { execFile } from 'child_process';
+import { getDb } from './db';
 import * as secureStorage from './secureStorage';
 import * as settings from './settings';
 import * as bridge from './bridge';
@@ -21,6 +22,7 @@ import * as purchases from './purchases';
 import * as inventoryDb from './inventoryDb';
 import * as inventoryService from './inventoryService';
 import * as ontologyService from './ontologyService';
+import * as crmService from './crmService';
 import type { AppSettings } from './settings';
 import { logger } from './logger';
 
@@ -37,12 +39,55 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('session:clearCookie', () => {
     secureStorage.clearCookie();
+    // Emit session expired so the login modal appears immediately
+    sessionService.emitSessionExpired();
     logger.info('session:cleared');
   });
 
   ipcMain.handle('session:isEncryptionAvailable', () => secureStorage.isEncryptionAvailable());
   ipcMain.handle('session:getVintedUserId', () => secureStorage.getVintedUserId());
   ipcMain.handle('session:startCookieRefresh', () => authCapture.startCookieRefresh());
+
+  // 1-Click Extension Sync: pull session data harvested by the Chrome Extension
+  ipcMain.handle('session:syncFromExtension', async () => {
+    try {
+      const db = getDb();
+      if (!db) return { ok: false, reason: 'NO_DB' };
+
+      // Check if extension has already synced session data
+      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('vinted_cookie_plain') as { value: string } | undefined;
+      if (row?.value) {
+        // Promote to encrypted storage immediately
+        secureStorage.storeCookie(row.value);
+        db.prepare('DELETE FROM settings WHERE key = ?').run('vinted_cookie_plain');
+        sessionService.emitSessionReconnected();
+        logger.info('session:synced-from-extension', { immediate: true });
+        return { ok: true, source: 'cached' };
+      }
+
+      // No cached session — open Vinted in default browser (Chrome) to trigger extension harvest
+      shell.openExternal('https://www.vinted.co.uk/');
+      logger.info('session:sync-opened-browser', { url: 'https://www.vinted.co.uk/' });
+
+      // Poll for the extension to harvest and the bridge to write cookie (up to 15s)
+      for (let i = 0; i < 15; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const freshRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('vinted_cookie_plain') as { value: string } | undefined;
+        if (freshRow?.value) {
+          secureStorage.storeCookie(freshRow.value);
+          db.prepare('DELETE FROM settings WHERE key = ?').run('vinted_cookie_plain');
+          sessionService.emitSessionReconnected();
+          logger.info('session:synced-from-extension', { waited_seconds: i + 1 });
+          return { ok: true, source: 'polled', waited: i + 1 };
+        }
+      }
+
+      return { ok: false, reason: 'EXTENSION_NOT_SYNCED', message: 'Chrome Extension did not sync within 15s. Make sure the extension is installed and you are logged into Vinted.' };
+    } catch (err) {
+      logger.error('session:syncFromExtension:error', { error: String(err), stack: err instanceof Error ? err.stack : undefined });
+      return { ok: false, reason: 'INTERNAL_ERROR', message: String(err) };
+    }
+  });
   ipcMain.handle('session:saveLoginCredentials', (_event, username: string, password: string) =>
     credentialStore.saveLoginCredentials({ username, password })
   );
@@ -137,8 +182,49 @@ export function registerIpcHandlers(): void {
   // Sales
   ipcMain.handle(
     'sales:getAll',
-    (_event, userId: number, page?: number, perPage?: number) =>
-      bridge.fetchSales(userId, page ?? 1, perPage ?? 20)
+    (_event, status?: string, page?: number, perPage?: number) =>
+      bridge.fetchSales(status ?? 'all', page ?? 1, perPage ?? 20)
+  );
+
+  ipcMain.handle(
+    'sales:getConversation',
+    (_event, conversationId: number) => bridge.fetchConversation(conversationId)
+  );
+
+  ipcMain.handle(
+    'sales:upsertSoldOrder',
+    (_event, order: Parameters<typeof inventoryDb.upsertSoldOrder>[0]) => {
+      inventoryDb.upsertSoldOrder(order);
+      return { ok: true };
+    }
+  );
+
+  ipcMain.handle(
+    'sales:getSavedOrders',
+    (_event, statusFilter?: string) => inventoryDb.getAllSoldOrders(statusFilter)
+  );
+
+  ipcMain.handle(
+    'sales:getInventoryByVintedId',
+    (_event, vintedItemId: number) => inventoryDb.getInventoryItemByVintedId(vintedItemId) ?? null
+  );
+
+  // Purchases (bought orders)
+  ipcMain.handle(
+    'purchases:getApi',
+    async (_event, status: string, page: number, perPage: number) =>
+      bridge.fetchPurchasesApi(status, page, perPage)
+  );
+  ipcMain.handle(
+    'purchases:upsertBoughtOrder',
+    (_event, order: Parameters<typeof inventoryDb.upsertBoughtOrder>[0]) => {
+      inventoryDb.upsertBoughtOrder(order);
+      return { ok: true };
+    }
+  );
+  ipcMain.handle(
+    'purchases:getSavedOrders',
+    (_event, statusFilter?: string) => inventoryDb.getAllBoughtOrders(statusFilter)
   );
 
   // Checkout (Phase 4)
@@ -220,6 +306,10 @@ export function registerIpcHandlers(): void {
     inventoryService.editLiveItem(localId, updates, proxy)
   );
 
+  ipcMain.handle('wardrobe:createListing', (_event, formData: Record<string, unknown>, localPhotoPaths: string[]) =>
+    inventoryService.createNewListing(formData, localPhotoPaths)
+  );
+
   // ─── Relist Queue (Waiting Room) ────────────────────────────────────────
 
   ipcMain.handle('wardrobe:getQueue', () => ({
@@ -290,4 +380,73 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('wardrobe:getItemDetail', (_event, itemId: number) =>
     bridge.fetchItemDetail(itemId)
   );
+
+  // ─── CRM: Auto-Message & Offer Suite ──────────────────────────────────────
+
+  ipcMain.handle('crm:getConfigs', () =>
+    inventoryDb.getAllAutoMessageConfigs()
+  );
+  ipcMain.handle('crm:getConfig', (_event, itemId: string) =>
+    inventoryDb.getAutoMessageConfig(itemId)
+  );
+  ipcMain.handle('crm:upsertConfig', (_event, config: Parameters<typeof inventoryDb.upsertAutoMessageConfig>[0]) => {
+    inventoryDb.upsertAutoMessageConfig(config);
+    return { ok: true };
+  });
+  ipcMain.handle('crm:deleteConfig', (_event, itemId: string) => {
+    const deleted = inventoryDb.deleteAutoMessageConfig(itemId);
+    return { ok: deleted };
+  });
+  ipcMain.handle('crm:getLogs', (_event, opts?: { item_id?: string; status?: string; limit?: number }) =>
+    inventoryDb.getAutoMessageLogs(opts)
+  );
+  ipcMain.handle('crm:clearLogs', () => {
+    inventoryDb.clearAutoMessageLogs();
+    return { ok: true };
+  });
+  ipcMain.handle('crm:start', () => {
+    crmService.startCrm();
+    return { ok: true };
+  });
+  ipcMain.handle('crm:stop', () => {
+    crmService.stopCrm();
+    return { ok: true };
+  });
+  ipcMain.handle('crm:isRunning', () =>
+    crmService.isCrmRunning()
+  );
+
+  // Preset messages
+  ipcMain.handle('crm:getPresets', () =>
+    inventoryDb.getAllAutoMessagePresets()
+  );
+  ipcMain.handle('crm:upsertPreset', (_event, preset: { id?: number; name: string; body: string }) => {
+    const id = inventoryDb.upsertAutoMessagePreset(preset);
+    return { ok: true, id };
+  });
+  ipcMain.handle('crm:deletePreset', (_event, id: number) => {
+    const deleted = inventoryDb.deleteAutoMessagePreset(id);
+    return { ok: deleted };
+  });
+
+  // Ignored users
+  ipcMain.handle('crm:getIgnoredUsers', () =>
+    inventoryDb.getAllCrmIgnoredUsers()
+  );
+  ipcMain.handle('crm:addIgnoredUser', (_event, username: string) => {
+    inventoryDb.addCrmIgnoredUser(username);
+    return { ok: true };
+  });
+  ipcMain.handle('crm:removeIgnoredUser', (_event, username: string) => {
+    const removed = inventoryDb.removeCrmIgnoredUser(username);
+    return { ok: removed };
+  });
+
+  // Backfill: scan past likes for a specific item
+  ipcMain.handle('crm:backfill', async (_event, itemId: string, backfillHours: number) => {
+    const config = inventoryDb.getAutoMessageConfig(itemId);
+    if (!config) return { ok: false, count: 0, error: 'No config found for item' };
+    const count = await crmService.backfillItem(itemId, backfillHours, config);
+    return { ok: true, count };
+  });
 }

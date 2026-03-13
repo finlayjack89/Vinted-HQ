@@ -725,3 +725,388 @@ export function getInventoryPhotos(itemId: string): InventoryPhotoRow[] {
     .prepare('SELECT * FROM inventory_photos WHERE item_id = ?')
     .all(itemId) as InventoryPhotoRow[];
 }
+
+// ─── Sold Orders (Sales Suite Persistence) ───
+
+export interface SoldOrderRow {
+  transaction_id: number;
+  conversation_id: number;
+  item_id: number | null;
+  title: string;
+  price_amount: string | null;
+  price_currency: string;
+  status: string | null;
+  transaction_user_status: string | null;
+  date: string | null;
+  buyer_username: string | null;
+  buyer_id: number | null;
+  photo_url: string | null;
+  photo_thumbnails: string | null; // JSON
+  listing_price: number | null;
+  listed_at: number | null;
+  originally_listed_at: number | null;
+  enriched_at: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * Upsert a sold order — inserts on first sight, updates on re-fetch.
+ */
+export function upsertSoldOrder(order: Partial<SoldOrderRow> & { transaction_id: number; conversation_id: number; title: string }): void {
+  db().prepare(`
+    INSERT INTO sold_orders (
+      transaction_id, conversation_id, item_id, title,
+      price_amount, price_currency, status, transaction_user_status,
+      date, buyer_username, buyer_id, photo_url, photo_thumbnails,
+      listing_price, listed_at, originally_listed_at, enriched_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(transaction_id) DO UPDATE SET
+      item_id = COALESCE(excluded.item_id, sold_orders.item_id),
+      title = excluded.title,
+      price_amount = COALESCE(excluded.price_amount, sold_orders.price_amount),
+      price_currency = COALESCE(excluded.price_currency, sold_orders.price_currency),
+      status = COALESCE(excluded.status, sold_orders.status),
+      transaction_user_status = COALESCE(excluded.transaction_user_status, sold_orders.transaction_user_status),
+      date = COALESCE(excluded.date, sold_orders.date),
+      buyer_username = COALESCE(excluded.buyer_username, sold_orders.buyer_username),
+      buyer_id = COALESCE(excluded.buyer_id, sold_orders.buyer_id),
+      photo_url = COALESCE(excluded.photo_url, sold_orders.photo_url),
+      photo_thumbnails = COALESCE(excluded.photo_thumbnails, sold_orders.photo_thumbnails),
+      listing_price = COALESCE(excluded.listing_price, sold_orders.listing_price),
+      listed_at = COALESCE(excluded.listed_at, sold_orders.listed_at),
+      originally_listed_at = COALESCE(excluded.originally_listed_at, sold_orders.originally_listed_at),
+      enriched_at = COALESCE(excluded.enriched_at, sold_orders.enriched_at),
+      updated_at = unixepoch()
+  `).run(
+    order.transaction_id,
+    order.conversation_id,
+    order.item_id ?? null,
+    order.title,
+    order.price_amount ?? null,
+    order.price_currency ?? 'GBP',
+    order.status ?? null,
+    order.transaction_user_status ?? null,
+    order.date ?? null,
+    order.buyer_username ?? null,
+    order.buyer_id ?? null,
+    order.photo_url ?? null,
+    order.photo_thumbnails ?? null,
+    order.listing_price ?? null,
+    order.listed_at ?? null,
+    order.originally_listed_at ?? null,
+    order.enriched_at ?? null,
+  );
+}
+
+/**
+ * Get all locally saved sold orders, optionally filtered by transaction_user_status.
+ */
+export function getAllSoldOrders(statusFilter?: string): SoldOrderRow[] {
+  if (statusFilter && statusFilter !== 'all') {
+    return db()
+      .prepare('SELECT * FROM sold_orders WHERE transaction_user_status = ? ORDER BY date DESC')
+      .all(statusFilter) as SoldOrderRow[];
+  }
+  return db()
+    .prepare('SELECT * FROM sold_orders ORDER BY date DESC')
+    .all() as SoldOrderRow[];
+}
+
+/**
+ * Get a single sold order by transaction ID.
+ */
+export function getSoldOrder(transactionId: number): SoldOrderRow | undefined {
+  return db()
+    .prepare('SELECT * FROM sold_orders WHERE transaction_id = ?')
+    .get(transactionId) as SoldOrderRow | undefined;
+}
+
+/**
+ * Get sold orders that haven't been enriched yet (no conversation detail fetched).
+ */
+export function getUnenrichedSoldOrders(): SoldOrderRow[] {
+  return db()
+    .prepare('SELECT * FROM sold_orders WHERE enriched_at IS NULL ORDER BY date DESC')
+    .all() as SoldOrderRow[];
+}
+
+// ─── Bought Orders (Purchases) ──────────────────────────────────────────────
+
+export interface BoughtOrderRow {
+  transaction_id: number;
+  conversation_id: number;
+  title: string;
+  item_id: number | null;
+  price_amount: string | null;
+  price_currency: string | null;
+  status: string | null;
+  transaction_user_status: string | null;
+  date: string | null;
+  photo_url: string | null;
+  seller_username: string | null;
+  listing_price: number | null;
+  enriched_at: number | null;
+  created_at: number | null;
+  updated_at: number | null;
+}
+
+export function upsertBoughtOrder(data: Partial<BoughtOrderRow> & { transaction_id: number; conversation_id: number; title: string }): void {
+  db().prepare(`
+    INSERT INTO bought_orders (transaction_id, conversation_id, title, item_id, price_amount, price_currency, status, transaction_user_status, date, photo_url, seller_username, listing_price, enriched_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(transaction_id) DO UPDATE SET
+      title = COALESCE(excluded.title, bought_orders.title),
+      item_id = COALESCE(excluded.item_id, bought_orders.item_id),
+      price_amount = COALESCE(excluded.price_amount, bought_orders.price_amount),
+      price_currency = COALESCE(excluded.price_currency, bought_orders.price_currency),
+      status = COALESCE(excluded.status, bought_orders.status),
+      transaction_user_status = COALESCE(excluded.transaction_user_status, bought_orders.transaction_user_status),
+      date = COALESCE(excluded.date, bought_orders.date),
+      photo_url = COALESCE(excluded.photo_url, bought_orders.photo_url),
+      seller_username = COALESCE(excluded.seller_username, bought_orders.seller_username),
+      listing_price = COALESCE(excluded.listing_price, bought_orders.listing_price),
+      enriched_at = COALESCE(excluded.enriched_at, bought_orders.enriched_at),
+      updated_at = unixepoch()
+  `).run(
+    data.transaction_id,
+    data.conversation_id,
+    data.title,
+    data.item_id ?? null,
+    data.price_amount ?? null,
+    data.price_currency ?? null,
+    data.status ?? null,
+    data.transaction_user_status ?? null,
+    data.date ?? null,
+    data.photo_url ?? null,
+    data.seller_username ?? null,
+    data.listing_price ?? null,
+    data.enriched_at ?? null,
+  );
+}
+
+export function getAllBoughtOrders(status?: string): BoughtOrderRow[] {
+  if (status) {
+    return db()
+      .prepare('SELECT * FROM bought_orders WHERE transaction_user_status = ? ORDER BY date DESC')
+      .all(status) as BoughtOrderRow[];
+  }
+  return db()
+    .prepare('SELECT * FROM bought_orders ORDER BY date DESC')
+    .all() as BoughtOrderRow[];
+}
+
+export function getUnenrichedBoughtOrders(): BoughtOrderRow[] {
+  return db()
+    .prepare('SELECT * FROM bought_orders WHERE enriched_at IS NULL ORDER BY date DESC')
+    .all() as BoughtOrderRow[];
+}
+
+// ─── Auto-Message CRM ───────────────────────────────────────────────────────
+
+export interface AutoMessageConfig {
+  item_id: string;
+  message_text: string | null;
+  offer_price: number | null;
+  delay_min_minutes: number;
+  delay_max_minutes: number;
+  send_offer_first: boolean;
+  is_active: boolean;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface AutoMessageLog {
+  notification_id: string;
+  item_id: string;
+  receiver_id: string;
+  receiver_username?: string | null;
+  action_type: string;
+  status: string;
+  error_message?: string | null;
+  like_date?: number | null;
+  timestamp: number;
+}
+
+export interface AutoMessagePreset {
+  id: number;
+  name: string;
+  body: string;
+  created_at: number;
+}
+
+// ─── Config CRUD ─────────────────────────────────────────────────────────
+
+function mapConfigRow(r: Record<string, unknown>): AutoMessageConfig {
+  return {
+    item_id: r.item_id as string,
+    message_text: r.message_text as string | null,
+    offer_price: r.offer_price as number | null,
+    delay_min_minutes: (r.delay_min_minutes as number) ?? 2,
+    delay_max_minutes: (r.delay_max_minutes as number) ?? 10,
+    send_offer_first: !!(r.send_offer_first as number),
+    is_active: !!(r.is_active as number),
+    created_at: r.created_at as number | undefined,
+    updated_at: r.updated_at as number | undefined,
+  };
+}
+
+export function getAllAutoMessageConfigs(): AutoMessageConfig[] {
+  const rows = db()
+    .prepare('SELECT * FROM auto_message_configs ORDER BY updated_at DESC')
+    .all() as Array<Record<string, unknown>>;
+  return rows.map(mapConfigRow);
+}
+
+export function getAutoMessageConfig(itemId: string): AutoMessageConfig | undefined {
+  const r = db()
+    .prepare('SELECT * FROM auto_message_configs WHERE item_id = ?')
+    .get(itemId) as Record<string, unknown> | undefined;
+  return r ? mapConfigRow(r) : undefined;
+}
+
+export function upsertAutoMessageConfig(config: Omit<AutoMessageConfig, 'created_at' | 'updated_at'>): void {
+  db().prepare(`
+    INSERT INTO auto_message_configs (item_id, message_text, offer_price, delay_min_minutes, delay_max_minutes, send_offer_first, is_active)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(item_id) DO UPDATE SET
+      message_text = excluded.message_text,
+      offer_price = excluded.offer_price,
+      delay_min_minutes = excluded.delay_min_minutes,
+      delay_max_minutes = excluded.delay_max_minutes,
+      send_offer_first = excluded.send_offer_first,
+      is_active = excluded.is_active,
+      updated_at = unixepoch()
+  `).run(
+    config.item_id,
+    config.message_text ?? null,
+    config.offer_price ?? null,
+    config.delay_min_minutes ?? 2,
+    config.delay_max_minutes ?? 10,
+    config.send_offer_first ? 1 : 0,
+    config.is_active ? 1 : 0,
+  );
+}
+
+export function deleteAutoMessageConfig(itemId: string): boolean {
+  const result = db().prepare('DELETE FROM auto_message_configs WHERE item_id = ?').run(itemId);
+  return result.changes > 0;
+}
+
+// ─── Log CRUD ────────────────────────────────────────────────────────────
+
+export function hasProcessedNotification(notificationId: string): boolean {
+  // Only consider 'sent' and 'skipped_existing_convo' as terminal states.
+  // Failed, cancelled, scheduled, or executing entries can be retried.
+  const row = db()
+    .prepare("SELECT 1 FROM auto_message_logs WHERE notification_id = ? AND status IN ('sent', 'skipped_existing_convo')")
+    .get(notificationId);
+  return !!row;
+}
+
+export function insertAutoMessageLog(log: Omit<AutoMessageLog, 'timestamp'>): void {
+  db().prepare(`
+    INSERT OR REPLACE INTO auto_message_logs (notification_id, item_id, receiver_id, receiver_username, action_type, status, error_message, like_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    log.notification_id,
+    log.item_id,
+    log.receiver_id,
+    log.receiver_username ?? null,
+    log.action_type ?? 'message',
+    log.status ?? 'pending',
+    log.error_message ?? null,
+    log.like_date ?? null,
+  );
+}
+
+export function updateAutoMessageLogStatus(notificationId: string, status: string, errorMessage?: string): void {
+  db().prepare(`
+    UPDATE auto_message_logs SET status = ?, error_message = ? WHERE notification_id = ?
+  `).run(status, errorMessage ?? null, notificationId);
+}
+
+export function getAutoMessageLogs(opts?: { item_id?: string; status?: string; limit?: number }): AutoMessageLog[] {
+  let sql = 'SELECT * FROM auto_message_logs';
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+
+  if (opts?.item_id) {
+    conditions.push('item_id = ?');
+    values.push(opts.item_id);
+  }
+  if (opts?.status) {
+    conditions.push('status = ?');
+    values.push(opts.status);
+  }
+
+  if (conditions.length > 0) {
+    sql += ' WHERE ' + conditions.join(' AND ');
+  }
+  sql += ' ORDER BY timestamp DESC';
+  if (opts?.limit) {
+    sql += ' LIMIT ?';
+    values.push(opts.limit);
+  }
+
+  return db().prepare(sql).all(...values) as AutoMessageLog[];
+}
+
+export function clearAutoMessageLogs(): void {
+  db().prepare('DELETE FROM auto_message_logs').run();
+}
+
+// ─── Preset Message CRUD ─────────────────────────────────────────────────
+
+export function getAllAutoMessagePresets(): AutoMessagePreset[] {
+  return db()
+    .prepare('SELECT * FROM auto_message_presets ORDER BY created_at DESC')
+    .all() as AutoMessagePreset[];
+}
+
+export function upsertAutoMessagePreset(preset: { id?: number; name: string; body: string }): number {
+  if (preset.id) {
+    db().prepare('UPDATE auto_message_presets SET name = ?, body = ? WHERE id = ?')
+      .run(preset.name, preset.body, preset.id);
+    return preset.id;
+  }
+  const result = db().prepare('INSERT INTO auto_message_presets (name, body) VALUES (?, ?)')
+    .run(preset.name, preset.body);
+  return Number(result.lastInsertRowid);
+}
+
+export function deleteAutoMessagePreset(id: number): boolean {
+  const result = db().prepare('DELETE FROM auto_message_presets WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+// ─── Ignored Users ───────────────────────────────────────────────────────
+
+export interface CrmIgnoredUser {
+  username: string;
+  created_at: number;
+}
+
+export function getAllCrmIgnoredUsers(): CrmIgnoredUser[] {
+  return db()
+    .prepare('SELECT * FROM crm_ignored_users ORDER BY created_at DESC')
+    .all() as CrmIgnoredUser[];
+}
+
+export function addCrmIgnoredUser(username: string): void {
+  db().prepare('INSERT OR IGNORE INTO crm_ignored_users (username) VALUES (?)')
+    .run(username.toLowerCase().trim());
+}
+
+export function removeCrmIgnoredUser(username: string): boolean {
+  const result = db().prepare('DELETE FROM crm_ignored_users WHERE username = ?')
+    .run(username.toLowerCase().trim());
+  return result.changes > 0;
+}
+
+export function isCrmIgnoredUser(username: string): boolean {
+  const row = db()
+    .prepare('SELECT 1 FROM crm_ignored_users WHERE username = ?')
+    .get(username.toLowerCase().trim());
+  return !!row;
+}

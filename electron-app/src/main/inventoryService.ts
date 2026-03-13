@@ -1109,6 +1109,168 @@ function upsertFromVintedItem(
   return localId;
 }
 
+// ─── Create New Listing ─────────────────────────────────────────────────────
+
+function emitCreateProgress(
+  step: string,
+  current: number,
+  total: number,
+  message?: string,
+): void {
+  const windows = BrowserWindow.getAllWindows();
+  for (const win of windows) {
+    win.webContents.send('wardrobe:create-progress', { step, current, total, message });
+  }
+}
+
+/**
+ * Create a brand-new listing: upload photos (with EXIF strip), publish to Vinted,
+ * and save locally. Emits progress events for multi-step UI overlay.
+ */
+export async function createNewListing(
+  formData: Record<string, unknown>,
+  localPhotoPaths: string[],
+): Promise<{ ok: boolean; localId?: number; vintedItemId?: number; error?: string }> {
+  const requestId = crypto.randomUUID();
+  const startedAtMs = Date.now();
+  logger.info('create-listing-start', { photoCount: localPhotoPaths.length }, requestId);
+
+  if (!localPhotoPaths.length) {
+    return { ok: false, error: 'At least one photo is required.' };
+  }
+  if (localPhotoPaths.length > 20) {
+    return { ok: false, error: 'Maximum 20 photos allowed.' };
+  }
+
+  const uploadSessionId = crypto.randomUUID();
+  const assignedPhotos: { id: number; orientation: number }[] = [];
+  const photoTotal = localPhotoPaths.length;
+
+  // ── Step 1: Upload each photo with EXIF stripping ──
+  for (let i = 0; i < localPhotoPaths.length; i++) {
+    emitCreateProgress('uploading', i + 1, photoTotal, `Uploading photo ${i + 1} of ${photoTotal}…`);
+
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(fs.readFileSync(localPhotoPaths[i]));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('create-listing-read-photo-failed', { path: localPhotoPaths[i], error: msg }, requestId);
+      return { ok: false, error: `Failed to read photo: ${msg}` };
+    }
+
+    const up = await bridge.uploadPhotoRaw(buf, uploadSessionId, undefined, 'DIRECT', true);
+    if (!up.ok) {
+      const code = (up as { code?: string }).code ?? '';
+      const msg = (up as { message?: string }).message ?? 'Upload failed';
+      logger.error('create-listing-upload-failed', { index: i, code, message: msg }, requestId);
+      return { ok: false, error: `Photo upload failed (${i + 1}/${photoTotal}): ${msg}` };
+    }
+
+    const data = (up as { data: unknown }).data as Record<string, unknown>;
+    const photoId = Number(data.id || 0);
+    if (photoId <= 0) {
+      logger.error('create-listing-no-photo-id', { index: i, data: JSON.stringify(data).slice(0, 300) }, requestId);
+      return { ok: false, error: `Photo upload returned no ID for photo ${i + 1}.` };
+    }
+
+    assignedPhotos.push({ id: photoId, orientation: 0 });
+    logger.debug('create-listing-photo-uploaded', { index: i, photoId }, requestId);
+
+    // Small delay between uploads to mimic human behavior
+    if (i < localPhotoPaths.length - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 300 + Math.random() * 500));
+    }
+  }
+
+  // ── Step 2: Build item_data payload ──
+  emitCreateProgress('publishing', 0, 1, 'Publishing listing…');
+
+  const itemData: Record<string, unknown> = {
+    currency: formData.currency || 'GBP',
+    temp_uuid: uploadSessionId,
+    title: formData.title || '',
+    description: formData.description || '',
+    brand_id: formData.brand_id || null,
+    brand: formData.brand || '',
+    size_id: formData.size_id || null,
+    catalog_id: formData.catalog_id || null,
+    isbn: formData.isbn || null,
+    is_unisex: Boolean(formData.is_unisex),
+    status_id: formData.status_id || 2,
+    video_game_rating_id: formData.video_game_rating_id || null,
+    price: formData.price || 0,
+    package_size_id: formData.package_size_id || 3,
+    shipment_prices: formData.shipment_prices || { domestic: null, international: null },
+    color_ids: Array.isArray(formData.color_ids) ? formData.color_ids : [],
+    assigned_photos: assignedPhotos,
+    measurement_length: formData.measurement_length || null,
+    measurement_width: formData.measurement_width || null,
+    item_attributes: Array.isArray(formData.item_attributes) ? formData.item_attributes : [],
+    manufacturer: formData.manufacturer || null,
+    manufacturer_labelling: formData.manufacturer_labelling || null,
+  };
+
+  // Include model metadata if present (luxury brands)
+  if (formData.model_metadata && typeof formData.model_metadata === 'object') {
+    itemData.model_metadata = formData.model_metadata;
+  }
+
+  // ── Step 3: Create listing via bridge ──
+  const result = await bridge.createListing(itemData, uploadSessionId);
+  if (!result.ok) {
+    const code = (result as { code?: string }).code ?? '';
+    const msg = (result as { message?: string }).message ?? 'Create failed';
+    logger.error('create-listing-api-failed', { code, message: msg }, requestId);
+    emitCreateProgress('error', 0, 0, msg);
+    return { ok: false, error: msg };
+  }
+
+  // ── Step 4: Extract new item ID & upsert locally ──
+  const respData = (result as { data: unknown }).data as Record<string, unknown>;
+  // Vinted wraps the created item — look for the ID in various places
+  const itemObj = (respData.item ?? respData) as Record<string, unknown>;
+  const newItemId = Number(itemObj.id || respData.item_id || 0);
+
+  // Upsert local inventory record
+  const localId = inventoryDb.upsertInventoryItem({
+    title: String(formData.title || ''),
+    price: Number(formData.price || 0),
+    currency: String(formData.currency || 'GBP'),
+    description: String(formData.description || ''),
+    category_id: formData.catalog_id ? Number(formData.catalog_id) : null,
+    brand_id: formData.brand_id ? Number(formData.brand_id) : null,
+    brand_name: formData.brand ? String(formData.brand) : null,
+    size_id: formData.size_id ? Number(formData.size_id) : null,
+    status_id: formData.status_id ? Number(formData.status_id) : null,
+    condition: formData.condition ? String(formData.condition) : null,
+    color_ids: JSON.stringify(Array.isArray(formData.color_ids) ? formData.color_ids : []),
+    package_size_id: formData.package_size_id ? Number(formData.package_size_id) : null,
+    item_attributes: JSON.stringify(Array.isArray(formData.item_attributes) ? formData.item_attributes : []),
+    is_unisex: formData.is_unisex ? 1 : 0,
+    isbn: formData.isbn ? String(formData.isbn) : null,
+    measurement_length: formData.measurement_length ? Number(formData.measurement_length) : null,
+    measurement_width: formData.measurement_width ? Number(formData.measurement_width) : null,
+    photo_urls: '[]',
+    local_image_paths: JSON.stringify(localPhotoPaths),
+    status: 'live',
+  } as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
+
+  // Link sync record
+  if (newItemId) {
+    inventoryDb.upsertSyncRecord(localId, newItemId, 'push');
+  }
+
+  emitCreateProgress('complete', 1, 1, 'Listing published successfully!');
+  logger.info(
+    'create-listing-complete',
+    { localId, vintedItemId: newItemId, photoCount: assignedPhotos.length, durationMs: Date.now() - startedAtMs },
+    requestId,
+  );
+
+  return { ok: true, localId, vintedItemId: newItemId };
+}
+
 // ─── Push to Vinted ─────────────────────────────────────────────────────────
 
 /**
@@ -1212,207 +1374,117 @@ export async function pullLiveToLocal(localId: number): Promise<{ ok: boolean; e
 
   logger.info('wardrobe-pull-live-to-local-start', { localId, vintedItemId }, requestId);
 
-  const snapshotFetchedAt = Math.floor(Date.now() / 1000);
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-  let raw: Record<string, unknown> | null = null;
-  let bridgeErr = '';
-  let detailSource: 'bridge' | 'browser' | null = null;
-  let attemptedBridge = false;
+  // ─── Extension-Mediated Pull ─────────────────────────────────────────────
+  // Open the Vinted edit page with ?hq_sync=true so the Chrome Extension's
+  // Deep Sync extracts the live itemEditModel and POSTs it to /ingest/item.
+  // We poll the local DB for a freshness update to detect completion.
 
-  // Fast path: Python bridge HTML scrape (can be blocked by bot detection).
-  if (USE_PYTHON_BRIDGE_ITEM_DETAIL) {
-    attemptedBridge = true;
-    try {
-      const r = await bridge.fetchItemDetail(vintedItemId);
-      if (r.ok) {
-        raw = (r as { ok: true; data: unknown }).data as Record<string, unknown>;
-        detailSource = 'bridge';
+  const beforeHydratedAt = existing.detail_hydrated_at ?? 0;
+  const syncUrl = `https://www.vinted.co.uk/items/${vintedItemId}/edit?hq_sync=true`;
+  logger.info('wardrobe-pull-extension-sync', { localId, vintedItemId, syncUrl, beforeHydratedAt }, requestId);
 
-        // Guard: bridge can return SEO-only fields; never overwrite local with incomplete data.
-        const live = (raw.item ?? raw) as Record<string, unknown>;
-        const catObj = (live.category ?? live.catalog) as Record<string, unknown> | undefined;
-        const statusObj = live.status && typeof live.status === 'object' ? (live.status as Record<string, unknown>) : null;
-        const catalogId = live.catalog_id
-          ? Number(live.catalog_id)
-          : (catObj && typeof catObj === 'object' && catObj.id ? Number(catObj.id) : 0);
-        const statusId = live.status_id ? Number(live.status_id) : (statusObj?.id ? Number(statusObj.id) : 0);
-        const incomplete = !(catalogId > 0 && statusId > 0);
-        if (incomplete) {
-          bridgeErr = 'INCOMPLETE_DETAIL';
-          raw = null;
-          detailSource = null;
-        }
-      } else {
-        bridgeErr = (r as { ok: false; message: string }).message || (r as { ok: false; code: string }).code;
-      }
-    } catch (err) {
-      bridgeErr = err instanceof Error ? err.message : String(err);
-    }
-  }
-  if (!raw && attemptedBridge) {
-    logger.warn('wardrobe-pull-live-to-local-bridge-failed', { localId, vintedItemId, error: bridgeErr || 'unknown' }, requestId);
-  }
-
-  // Browser extraction fallback removed: logic moved to Chrome Extension.
-  if (!raw) {
-    return { ok: false, error: bridgeErr ? `Bridge failed: ${bridgeErr}` : 'Details could not be fetched.' };
-  }
-
-  const live = (raw.item ?? raw) as Record<string, unknown>;
-  if (!live.id) live.id = vintedItemId;
-
-  // Overwrite local fields from live (explicit assignment; allow clearing).
-  // User explicitly chose "Pull" so local becomes a mirror of live.
-  const priceObj = live.price as Record<string, unknown> | undefined;
-  const livePrice = parseFloat(String(priceObj?.amount ?? live.price ?? existing.price ?? 0));
-  const liveCurrency = String(priceObj?.currency_code ?? existing.currency ?? 'GBP');
-
-  const photos = (live.photos as Record<string, unknown>[] | undefined) ?? [];
-  const photoUrls = photos
-    .map((p) => String((p as Record<string, unknown>).url || (p as Record<string, unknown>).full_size_url || ''))
-    .filter(Boolean);
-
-  const brandObj = (live.brand_dto ?? live.brand) as Record<string, unknown> | string | null;
-  const brandDict = brandObj && typeof brandObj === 'object' ? (brandObj as Record<string, unknown>) : null;
-  const catObj = (live.category ?? live.catalog) as Record<string, unknown> | undefined;
-  const sizeObj = live.size && typeof live.size === 'object' ? (live.size as Record<string, unknown>) : null;
-  const statusObj = live.status && typeof live.status === 'object' ? (live.status as Record<string, unknown>) : null;
-
-  const resolvedBrandId = live.brand_id ? Number(live.brand_id) : (brandDict?.id ? Number(brandDict.id) : null);
-  const resolvedBrandName =
-    typeof live.brand_title === 'string'
-      ? live.brand_title
-      : (brandDict?.title ? String(brandDict.title) : (brandDict?.name ? String(brandDict.name) : (typeof brandObj === 'string' ? brandObj : null)));
-  const resolvedCatId = live.catalog_id ? Number(live.catalog_id)
-    : (catObj && typeof catObj === 'object' && catObj.id ? Number(catObj.id) : null);
-  const resolvedSizeId = live.size_id ? Number(live.size_id) : (sizeObj?.id ? Number(sizeObj.id) : null);
-  const resolvedSizeLabel =
-    typeof live.size_title === 'string'
-      ? live.size_title
-      : (sizeObj?.title ? String(sizeObj.title) : (sizeObj?.name ? String(sizeObj.name) : null));
-  const resolvedStatusId = live.status_id ? Number(live.status_id) : (statusObj?.id ? Number(statusObj.id) : null);
-  const statusIdToCondition: Record<number, string> = {
-    6: 'New with tags',
-    1: 'New without tags',
-    2: 'Very good',
-    3: 'Good',
-    4: 'Satisfactory',
-    5: 'Not fully functional',
-  };
-  const resolvedCondition =
-    typeof resolvedStatusId === 'number' && Number.isFinite(resolvedStatusId)
-      ? (statusIdToCondition[resolvedStatusId] ?? null)
-      : null;
-
-  let resolvedPkgId: number | null = live.package_size_id ? Number(live.package_size_id) : null;
-  if (!resolvedPkgId && live.package_size && typeof live.package_size === 'object') {
-    const pkg = live.package_size as Record<string, unknown>;
-    if (pkg.id) resolvedPkgId = Number(pkg.id);
-  }
-
-  const isDraft = live.is_draft === true;
-  const isHidden = live.is_hidden === true;
-  const isClosed = live.is_closed === true;
-  const isReserved = live.is_reserved === true;
-  const isSold = isClosed && !isDraft;
-  let status = 'live';
-  if (isDraft) status = 'local_only';
-  else if (isSold) status = 'sold';
-  else if (isReserved) status = 'reserved';
-  else if (isHidden) status = 'hidden';
-
-  const colorIds = coerceNumberArray(live.color_ids);
-  const attrs = Array.isArray(live.item_attributes) ? (live.item_attributes as unknown[]) : null;
-
-  const modelMetaRaw = (live as Record<string, unknown>).model_metadata ?? null;
-  const modelMetadata =
-    modelMetaRaw === null || modelMetaRaw === undefined
-      ? null
-      : (typeof modelMetaRaw === 'string' ? modelMetaRaw : JSON.stringify(modelMetaRaw));
-
-  const shipmentPricesRaw = (live as Record<string, unknown>).shipment_prices ?? null;
-  const shipmentPrices =
-    shipmentPricesRaw === null || shipmentPricesRaw === undefined
-      ? null
-      : (typeof shipmentPricesRaw === 'string' ? shipmentPricesRaw : JSON.stringify(shipmentPricesRaw));
-
-  const updatedLocalId = existing.id;
-  inventoryDb.upsertInventoryItemExplicit({
-    id: updatedLocalId,
-    title: typeof live.title === 'string' ? live.title : existing.title,
-    price: Number.isFinite(livePrice) ? livePrice : existing.price,
-    currency: liveCurrency,
-    description: typeof live.description === 'string' ? live.description : null,
-    category_id: resolvedCatId,
-    brand_id: typeof resolvedBrandId === 'number' && resolvedBrandId > 0 ? resolvedBrandId : null,
-    brand_name: resolvedBrandName ? String(resolvedBrandName) : null,
-    size_id: typeof resolvedSizeId === 'number' && resolvedSizeId > 0 ? resolvedSizeId : null,
-    size_label: resolvedSizeLabel ? String(resolvedSizeLabel) : null,
-    condition: resolvedCondition,
-    status_id: typeof resolvedStatusId === 'number' && resolvedStatusId > 0 ? resolvedStatusId : null,
-    package_size_id: typeof resolvedPkgId === 'number' && resolvedPkgId > 0 ? resolvedPkgId : null,
-    color_ids: JSON.stringify(colorIds),
-    item_attributes: attrs ? JSON.stringify(attrs) : null,
-    photo_urls: JSON.stringify(photoUrls),
-    local_image_paths: JSON.stringify([]), // recached below
-    is_unisex: live.is_unisex === true ? 1 : (live.is_unisex === false ? 0 : (existing.is_unisex ? 1 : 0)),
-    status,
-    extra_metadata: JSON.stringify({
-      is_hidden: isHidden,
-      is_draft: isDraft,
-      is_closed: isClosed,
-      favourite_count: (live as Record<string, unknown>).favourite_count ?? null,
-      view_count: (live as Record<string, unknown>).view_count ?? null,
-    }),
-    isbn: typeof live.isbn === 'string' ? live.isbn : null,
-    measurement_length: typeof live.measurement_length === 'number' ? live.measurement_length : null,
-    measurement_width: typeof live.measurement_width === 'number' ? live.measurement_width : null,
-    model_metadata: modelMetadata,
-    manufacturer: typeof live.manufacturer === 'string' ? live.manufacturer : null,
-    manufacturer_labelling: typeof live.manufacturer_labelling === 'string' ? live.manufacturer_labelling : null,
-    video_game_rating_id: typeof live.video_game_rating_id === 'number' ? live.video_game_rating_id : null,
-    shipment_prices: shipmentPrices,
-    detail_hydrated_at: snapshotFetchedAt,
-    detail_source: detailSource,
-  });
-
-  inventoryDb.upsertSyncRecord(updatedLocalId, vintedItemId, 'pull');
-
-  // Record newest snapshot metadata so future syncs don't immediately re-flag discrepancy.
   try {
-    const liveHash = hashLiveSnapshot(buildLiveSnapshotFromVintedDetail(live));
-    inventoryDb.updateLiveSnapshot(updatedLocalId, liveHash, snapshotFetchedAt);
-  } catch {
-    /* ignore snapshot issues */
+    const { execFile } = await import('child_process');
+    execFile('open', ['-a', 'Google Chrome', syncUrl]);
+  } catch (err) {
+    logger.error('wardrobe-pull-open-browser-failed', { localId, error: String(err) }, requestId);
+    return { ok: false, error: 'Failed to open browser for extension sync.' };
   }
 
-  // Refresh cached photos and clear stale local_image_paths so UI reflects live photos.
-  const localPaths: string[] = [];
-  for (let i = 0; i < photoUrls.length; i++) {
-    const cached = await downloadAndCacheImage(photoUrls[i], updatedLocalId, i);
-    if (cached) localPaths.push(cached);
-  }
-  inventoryDb.updateLocalImagePaths(updatedLocalId, JSON.stringify(localPaths));
-  // User explicitly accepted live version; clear discrepancy reason.
-  {
-    const cur = inventoryDb.getInventoryItem(updatedLocalId);
-    if (cur) {
-      inventoryDb.upsertInventoryItemExplicit({
-        id: cur.id,
-        title: cur.title,
-        price: cur.price,
-        discrepancy_reason: null,
-      } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
+  // Poll for the extension's /ingest/item to update the DB row.
+  // The extension typically completes within 3-8 seconds.
+  const POLL_INTERVAL_MS = 1000;
+  const POLL_TIMEOUT_MS = 20000;
+  const pollStartMs = Date.now();
+  let synced = false;
+
+  while (Date.now() - pollStartMs < POLL_TIMEOUT_MS) {
+    await sleep(POLL_INTERVAL_MS);
+    const fresh = inventoryDb.getInventoryItem(localId);
+    if (fresh && (fresh.detail_hydrated_at ?? 0) > beforeHydratedAt) {
+      synced = true;
+      logger.info(
+        'wardrobe-pull-extension-sync-detected',
+        { localId, vintedItemId, newHydratedAt: fresh.detail_hydrated_at, waitMs: Date.now() - pollStartMs },
+        requestId,
+      );
+      break;
     }
+  }
+
+  if (!synced) {
+    logger.warn('wardrobe-pull-extension-sync-timeout', { localId, vintedItemId, waitMs: POLL_TIMEOUT_MS }, requestId);
+    return {
+      ok: false,
+      error: 'Extension sync timed out. Make sure the Chrome Extension is installed and active, then try again.',
+    };
+  }
+
+  // ─── Post-Sync Reconciliation ────────────────────────────────────────────
+  // The extension's /ingest/item has already updated most fields in the DB.
+  // We just need to: set status to 'live', clear discrepancy, refresh photos.
+
+  const updated = inventoryDb.getInventoryItem(localId);
+  if (!updated) {
+    return { ok: false, error: 'Item disappeared after sync.' };
+  }
+
+  // Set status back to 'live' and clear discrepancy reason.
+  inventoryDb.upsertInventoryItemExplicit({
+    id: updated.id,
+    title: updated.title,
+    price: updated.price,
+    status: 'live',
+    discrepancy_reason: null,
+  } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
+
+  inventoryDb.upsertSyncRecord(localId, vintedItemId, 'pull');
+
+  // Update live snapshot hash so future wardrobe syncs don't re-flag as discrepancy.
+  try {
+    const snapshotFetchedAt = Math.floor(Date.now() / 1000);
+    // Build a snapshot from the refreshed local record (which now mirrors live).
+    const snapshotData: Record<string, unknown> = {
+      title: updated.title,
+      description: updated.description,
+      price: { amount: String(updated.price), currency_code: updated.currency ?? 'GBP' },
+      photos: [],
+      catalog_id: updated.category_id,
+      brand_id: updated.brand_id,
+      size_id: updated.size_id,
+      status_id: updated.status_id,
+      package_size_id: updated.package_size_id,
+      color_ids: Array.isArray(updated.color_ids) ? updated.color_ids : [],
+      item_attributes: Array.isArray(updated.item_attributes) ? updated.item_attributes : [],
+    };
+    const liveHash = hashLiveSnapshot(buildLiveSnapshotFromVintedDetail(snapshotData));
+    inventoryDb.updateLiveSnapshot(localId, liveHash, snapshotFetchedAt);
+  } catch {
+    /* ignore snapshot hash issues */
+  }
+
+  // Re-cache photos from the updated photo_urls.
+  const photoUrls = Array.isArray(updated.photo_urls)
+    ? (updated.photo_urls as string[]).filter(Boolean)
+    : [];
+  if (photoUrls.length > 0) {
+    const localPaths: string[] = [];
+    for (let i = 0; i < photoUrls.length; i++) {
+      const cached = await downloadAndCacheImage(photoUrls[i], localId, i);
+      if (cached) localPaths.push(cached);
+    }
+    inventoryDb.updateLocalImagePaths(localId, JSON.stringify(localPaths));
   }
 
   logger.info(
     'wardrobe-pull-live-to-local-complete',
     {
-      localId: updatedLocalId,
+      localId,
       vintedItemId,
-      cached: localPaths.length,
-      detailSource,
+      detailSource: 'extension',
+      cachedPhotos: photoUrls.length,
       durationMs: Date.now() - startedAtMs,
     },
     requestId,
@@ -1671,7 +1743,58 @@ export async function editLiveItem(
     delete itemData.assigned_photos;
   }
 
-  // Push to Vinted removed: Editing logic is now handled by the Chrome Extension.
+  // 7. Push edit to Vinted via the Python bridge.
+  const editResult = await bridge.editListing(
+    item.vinted_item_id,
+    itemData,
+    uploadSessionId,
+    proxy,
+  );
+
+  if (!editResult.ok) {
+    const code = (editResult as { code?: string }).code ?? '';
+    const msg = (editResult as { message?: string }).message ?? 'Edit failed';
+    logger.error(
+      'wardrobe-edit-vinted-failed',
+      { localId, vintedItemId: item.vinted_item_id, code, message: msg },
+      requestId,
+    );
+    // Mark as discrepancy with failed_push reason so UI can show retry hint.
+    inventoryDb.upsertInventoryItemExplicit({
+      id: item.id,
+      title: item.title,
+      price: item.price,
+      status: 'discrepancy',
+      discrepancy_reason: 'failed_push',
+    } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
+    return { ok: false, error: `Vinted API error: ${msg}` };
+  }
+
+  // Update local photo state after a successful push (if photos changed).
+  if (postPushPhotoUpdate) {
+    inventoryDb.upsertInventoryItem({
+      id: item.id,
+      title: item.title,
+      price: item.price,
+      photo_urls: JSON.stringify(postPushPhotoUpdate.photo_urls),
+      local_image_paths: JSON.stringify(postPushPhotoUpdate.local_image_paths),
+    } as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
+  }
+
+  // Clear discrepancy on successful push.
+  inventoryDb.upsertInventoryItemExplicit({
+    id: item.id,
+    title: item.title,
+    price: item.price,
+    status: 'live',
+    discrepancy_reason: null,
+  } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
+
+  logger.info(
+    'wardrobe-edit-complete',
+    { localId, vintedItemId: item.vinted_item_id, durationMs: Date.now() - startedAtMs },
+    requestId,
+  );
   return { ok: true };
 }
 
@@ -2098,13 +2221,61 @@ async function processQueue(): Promise<void> {
       }
 
       // Extract new item ID from bridge response
+      // Vinted API wraps items: {item: {id, photos, ...}} — handle both shapes.
       const relistData = (relistResult as { data: { new_item?: Record<string, unknown>; photo_ids?: number[] } }).data;
       const newItemObj = relistData?.new_item;
-      const newItemId = newItemObj?.id ? Number(newItemObj.id) : null;
+      const innerItem = (newItemObj?.item as Record<string, unknown> | undefined) ?? newItemObj;
+      const newItemId = innerItem?.id ? Number(innerItem.id) : null;
+      logger.info(
+        'relist-item-new-id-extracted',
+        { localId: entry.localId, newItemId, hasItemWrapper: !!newItemObj?.item },
+        itemRequestId,
+      );
 
       // Update sync record with new Vinted item ID
       if (newItemId && newItemId > 0) {
         inventoryDb.upsertSyncRecord(entry.localId, newItemId, 'push');
+
+        // ── Relist Identity Transfer ──
+        // 1. Delete any duplicate inventory_master row that wardrobe sync may have
+        //    already created for the new Vinted item ID (race condition cleanup).
+        const duplicate = inventoryDb.getInventoryItemByVintedId(newItemId);
+        if (duplicate && duplicate.id !== entry.localId) {
+          inventoryDb.deleteInventoryItem(duplicate.id);
+          logger.info(
+            'relist-identity-transfer-dedup',
+            { originalLocalId: entry.localId, duplicateLocalId: duplicate.id, newVintedId: newItemId },
+            itemRequestId,
+          );
+        }
+
+        // 2. Update the original item's status to 'live' so it isn't flagged stale.
+        //    Also refresh last_seen_at to prevent the reconciliation sweep from
+        //    marking it as 'local_only' / 'removed'.
+        const nowUnix = Math.floor(Date.now() / 1000);
+        inventoryDb.upsertInventoryItemExplicit({
+          id: entry.localId,
+          title: item.title,
+          price: item.price,
+          status: 'live',
+          discrepancy_reason: null,
+        } as Parameters<typeof inventoryDb.upsertInventoryItemExplicit>[0]);
+        inventoryDb.touchLastSeenAt(entry.localId, nowUnix);
+
+        // 3. Extract new photo URLs from the created listing and update local record.
+        const newPhotos = (innerItem?.photos as Array<Record<string, unknown>> | undefined) ?? [];
+        const newPhotoUrls = newPhotos
+          .map((p) => String(p.url || p.full_size_url || ''))
+          .filter(Boolean);
+        if (newPhotoUrls.length > 0) {
+          inventoryDb.updateLocalImagePaths(entry.localId, JSON.stringify([])); // clear stale cached paths
+          inventoryDb.upsertInventoryItem({
+            id: entry.localId,
+            title: item.title,
+            price: item.price,
+            photo_urls: JSON.stringify(newPhotoUrls),
+          } as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
+        }
       }
       inventoryDb.incrementRelistCount(entry.localId);
 

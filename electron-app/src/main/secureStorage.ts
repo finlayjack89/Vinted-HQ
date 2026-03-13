@@ -26,14 +26,46 @@ export function storeCookie(cookie: string): void {
 export function retrieveCookie(): string | null {
   const database = getDb();
   if (!database) return null;
+
+  // Primary: encrypted cookie from Electron's own login flow
   const row = database.prepare('SELECT value FROM settings WHERE key = ?').get(COOKIE_SETTING_KEY) as { value: string } | undefined;
-  if (!row) return null;
-  try {
-    const buffer = Buffer.from(row.value, 'base64');
-    return safeStorage.decryptString(buffer);
-  } catch {
-    return null;
+  if (row) {
+    try {
+      const buffer = Buffer.from(row.value, 'base64');
+      return safeStorage.decryptString(buffer);
+    } catch {
+      // Decrypt failed — fall through to plaintext fallback
+    }
   }
+
+  // Fallback: plaintext cookie written by Python bridge (from Chrome Extension session harvest)
+  return retrievePlaintextCookie();
+}
+
+/**
+ * Read the plaintext cookie written by the Python bridge (from extension session harvest).
+ * If found and safeStorage is available, promotes it to encrypted storage and cleans up plaintext.
+ */
+function retrievePlaintextCookie(): string | null {
+  const database = getDb();
+  if (!database) return null;
+
+  const row = database.prepare('SELECT value FROM settings WHERE key = ?').get('vinted_cookie_plain') as { value: string } | undefined;
+  if (!row || !row.value) return null;
+
+  const cookie = row.value;
+
+  // Promote to encrypted storage if possible, then clean up plaintext
+  if (safeStorage.isEncryptionAvailable()) {
+    try {
+      storeCookie(cookie);
+      database.prepare('DELETE FROM settings WHERE key = ?').run('vinted_cookie_plain');
+    } catch {
+      // Non-fatal — the plaintext cookie still works
+    }
+  }
+
+  return cookie;
 }
 
 export function clearCookie(): void {

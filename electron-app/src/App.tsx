@@ -8,8 +8,9 @@ import Feed from './components/Feed';
 import Wardrobe from './components/Wardrobe';
 import Settings from './components/Settings';
 import Logs from './components/Logs';
-import Purchases from './components/Purchases';
+import PurchasesSuite from './components/PurchasesSuite';
 import SalesSuite from './components/SalesSuite';
+import AutoMessage from './components/AutoMessage';
 import ProxyStatus from './components/ProxyStatus';
 import {
   colors,
@@ -25,10 +26,11 @@ import {
   radius,
   spacing,
   transition,
+  liquidGlassPanel,
 } from './theme';
 import type { SniperCountdownParams } from './types/global';
 
-type Tab = 'feed' | 'wardrobe' | 'sales' | 'proxies' | 'settings' | 'logs' | 'purchases';
+type Tab = 'feed' | 'wardrobe' | 'sales' | 'automessage' | 'proxies' | 'settings' | 'logs' | 'purchases';
 
 /* ─── SVG Icons (inline for zero-dep) ───────────────────────── */
 
@@ -89,12 +91,19 @@ const icons: Record<Tab, JSX.Element> = {
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   ),
+  automessage: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <line x1="9" y1="10" x2="15" y2="10" />
+    </svg>
+  ),
 };
 
 const tabLabels: Record<Tab, string> = {
   feed: 'Feed',
   wardrobe: 'Wardrobe',
   sales: 'Sales',
+  automessage: 'Auto-Message',
   proxies: 'Proxies',
   settings: 'Settings',
   logs: 'Logs',
@@ -188,9 +197,43 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: font.family }}>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}
+        aria-hidden="true"
+      >
+        <defs>
+          <filter id="liquid-glass-refraction" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.015"
+              numOctaves="3"
+              seed="42"
+              stitchTiles="stitch"
+              result="noise"
+            />
+            <feDisplacementMap
+              in="SourceGraphic"
+              in2="noise"
+              scale="6"
+              xChannelSelector="R"
+              yChannelSelector="G"
+              result="displaced"
+            />
+            <feGaussianBlur
+              in="displaced"
+              stdDeviation="0.5"
+              result="blurred"
+            />
+            <feBlend in="blurred" in2="SourceGraphic" mode="normal" />
+          </filter>
+        </defs>
+      </svg>
       {/* ─── Sidebar ──────────────────────────────────────── */}
       <aside
+        className="liquid-glass-panel"
         style={{
+          ...liquidGlassPanel,
           width: SIDEBAR_WIDTH,
           minWidth: SIDEBAR_WIDTH,
           height: '100vh',
@@ -199,10 +242,12 @@ export default function App() {
           top: 0,
           display: 'flex',
           flexDirection: 'column',
-          background: 'rgba(255, 255, 255, 0.02)',
-          backdropFilter: 'blur(40px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-          borderRight: `1px solid ${colors.glassBorder}`,
+          background: 'rgba(255, 255, 255, 0.60)',
+          backdropFilter: 'url(#liquid-glass-refraction) blur(40px) saturate(150%)',
+          WebkitBackdropFilter: 'url(#liquid-glass-refraction) blur(40px) saturate(150%)',
+          borderRight: `1px solid rgba(255, 255, 255, 0.9)`,
+          boxShadow: '1px 0 12px rgba(0, 0, 0, 0.03)',
+          borderRadius: 0, // Left sidebar is flush
           zIndex: 100,
           padding: `${spacing['2xl']}px 0`,
         }}
@@ -237,7 +282,7 @@ export default function App() {
 
         {/* Nav Items */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: `0 ${spacing.sm}px` }}>
-          {(['feed', 'wardrobe', 'sales', 'proxies', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
+          {(['feed', 'wardrobe', 'sales', 'automessage', 'proxies', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
             const active = tab === t;
             return (
               <button
@@ -262,7 +307,7 @@ export default function App() {
                 }}
                 onMouseEnter={(e) => {
                   if (!active) {
-                    e.currentTarget.style.background = colors.glassHighlight;
+                    e.currentTarget.style.background = 'rgba(0, 0, 0, 0.04)';
                     e.currentTarget.style.color = colors.textPrimary;
                   }
                 }}
@@ -318,10 +363,11 @@ export default function App() {
         {tab === 'feed' && <Feed />}
         {tab === 'wardrobe' && <Wardrobe />}
         {tab === 'sales' && <SalesSuite />}
+        {tab === 'automessage' && <AutoMessage />}
         {tab === 'proxies' && <ProxyStatus />}
         {tab === 'settings' && <Settings />}
         {tab === 'logs' && <Logs />}
-        {tab === 'purchases' && <Purchases />}
+        {tab === 'purchases' && <PurchasesSuite />}
       </main>
 
       {/* ─── Sniper Countdown Modal ───────────────────────── */}

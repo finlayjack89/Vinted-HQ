@@ -3,29 +3,152 @@
  * Proxies fetch requests from the content script to the local Python bridge.
  * In Manifest V3, the service worker has full cross-origin access via host_permissions,
  * while content scripts may be blocked by CORS or CSP on the host page.
+ *
+ * Session Harvesting: Passively extracts Vinted cookies and CSRF tokens,
+ * then POSTs them to the local Python bridge for Electron DB sync.
  */
 
 const BRIDGE_BASE = 'http://localhost:37421';
 
 let cachedCsrfToken: string | null = null;
 let cachedAnonId: string | null = null;
+let cachedUserAgent: string | null = null;
 
-// Sniff all Vinted API requests to dynamically capture the CSRF token from headers
-// This mimics how dotb.io and other extensions bypass DOM protection.
+// ─── Session Harvesting ─────────────────────────────────────────────────────
+// Silently captures the active Vinted session from Chrome and transmits it
+// to the local Python bridge. Leverages the high trust-score of the user's
+// primary Chrome browser (already logged into Vinted).
+
+const SESSION_ALARM_NAME = 'vinted-hq-session-harvest';
+const SESSION_HARVEST_INTERVAL_MINUTES = 5;
+
+/** Target cookies we need for a complete session. */
+const REQUIRED_COOKIES = ['access_token_web'];
+
+/**
+ * Harvest the active Vinted session from Chrome cookies.
+ * Validates that access_token_web exists (user is logged in),
+ * compiles a JSON payload, and POSTs to the Python bridge.
+ */
+async function harvestSession(): Promise<void> {
+    console.log('[Vinted HQ BG] 🔑 Starting session harvest...');
+
+    try {
+        // 1. Extract all Vinted cookies
+        const allCookies = await chrome.cookies.getAll({ domain: '.vinted.co.uk' });
+        if (!allCookies || allCookies.length === 0) {
+            console.log('[Vinted HQ BG] 🔑 No Vinted cookies found — user may not have visited Vinted.');
+            return;
+        }
+
+        // 2. Build cookie map for validation and payload
+        const cookieMap: Record<string, string> = {};
+        for (const c of allCookies) {
+            cookieMap[c.name] = c.value;
+        }
+
+        // 3. Abort if access_token_web is missing (user is logged out)
+        const missingRequired = REQUIRED_COOKIES.filter(name => !cookieMap[name]);
+        if (missingRequired.length > 0) {
+            console.log(`[Vinted HQ BG] 🔑 Session harvest aborted — user not logged in. Missing: ${missingRequired.join(', ')}`);
+            return;
+        }
+
+        // 4. Build the cookie header string (same format as Electron's secureStorage)
+        const cookieHeader = allCookies
+            .slice()
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(c => `${c.name}=${c.value}`)
+            .join('; ');
+
+        // 5. Compile session payload
+        const payload = {
+            cookies: cookieMap,
+            cookie_header: cookieHeader,
+            csrf_token: cachedCsrfToken || null,
+            user_agent: cachedUserAgent || navigator.userAgent,
+            anon_id: cachedAnonId || cookieMap['anon_id'] || null,
+            timestamp: Date.now(),
+            source: 'chrome_extension',
+        };
+
+        console.log(`[Vinted HQ BG] 🔑 Session compiled: ${allCookies.length} cookies, CSRF=${!!cachedCsrfToken}, UA=${!!cachedUserAgent}`);
+
+        // 6. POST to Python bridge
+        const res = await fetch(`${BRIDGE_BASE}/ingest/session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (data.ok) {
+            console.log('[Vinted HQ BG] 🔑 ✅ Session harvested and synced to bridge successfully.');
+        } else {
+            console.warn('[Vinted HQ BG] 🔑 ⚠️ Bridge rejected session:', data.message || data.error);
+        }
+    } catch (err) {
+        // Bridge may not be running — this is expected during development
+        console.warn('[Vinted HQ BG] 🔑 Session harvest failed (bridge may be offline):', String(err));
+    }
+}
+
+// Trigger session harvest on extension startup and install
+chrome.runtime.onStartup.addListener(() => {
+    console.log('[Vinted HQ BG] 🔑 Browser startup — scheduling session harvest.');
+    // Small delay to allow cookies to settle after browser launch
+    setTimeout(harvestSession, 3000);
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+    console.log('[Vinted HQ BG] 🔑 Extension installed/updated — scheduling session harvest.');
+    setTimeout(harvestSession, 2000);
+
+    // Set up periodic harvest alarm
+    chrome.alarms.create(SESSION_ALARM_NAME, {
+        delayInMinutes: SESSION_HARVEST_INTERVAL_MINUTES,
+        periodInMinutes: SESSION_HARVEST_INTERVAL_MINUTES,
+    });
+});
+
+// Periodic harvest via alarms API
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === SESSION_ALARM_NAME) {
+        harvestSession();
+    }
+});
+
+// Harvest when user navigates to Vinted (tab update with Vinted URL)
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' && tab.url && tab.url.includes('vinted.co.uk')) {
+        // Debounce: don't re-harvest on every sub-navigation
+        harvestSession();
+    }
+});
+
+// ─── Network Sniffing (CSRF, Anon ID, User-Agent) ──────────────────────────
+// Sniff all Vinted API requests to dynamically capture tokens from headers.
+
 chrome.webRequest.onBeforeSendHeaders.addListener(
     (details) => {
         if (details.requestHeaders) {
             for (const header of details.requestHeaders) {
-                if (header.name.toLowerCase() === 'x-csrf-token') {
+                const lowerName = header.name.toLowerCase();
+                if (lowerName === 'x-csrf-token') {
                     if (header.value && header.value !== cachedCsrfToken) {
                         cachedCsrfToken = header.value;
                         console.log(`[Vinted HQ BG] 🛡️ Sniffed new CSRF token from network: ${cachedCsrfToken}`);
                     }
                 }
-                if (header.name.toLowerCase() === 'x-anon-id') {
+                if (lowerName === 'x-anon-id') {
                     if (header.value && header.value !== cachedAnonId) {
                         cachedAnonId = header.value;
                         console.log(`[Vinted HQ BG] 🛡️ Sniffed new Anon ID from network: ${cachedAnonId}`);
+                    }
+                }
+                if (lowerName === 'user-agent') {
+                    if (header.value && header.value !== cachedUserAgent) {
+                        cachedUserAgent = header.value;
                     }
                 }
             }
@@ -54,6 +177,27 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
 
     if (message.type === 'GET_SNIFFED_TOKENS') {
         sendResponse({ ok: true, csrfToken: cachedCsrfToken, anonId: cachedAnonId });
+        return true;
+    }
+
+    // ── Proactive CSRF Token Push from Content Script ──
+    // Content script scrapes CSRF from DOM and pushes it here.
+    // This is more reliable than sniffing network headers alone.
+    if (message.type === 'SESSION_CSRF_TOKEN') {
+        const token = message.token;
+        if (token && typeof token === 'string' && token !== cachedCsrfToken) {
+            cachedCsrfToken = token;
+            console.log(`[Vinted HQ BG] 🔑 CSRF token received from content script: ${token.slice(0, 10)}...`);
+            // Re-harvest session with the fresh CSRF token
+            harvestSession();
+        }
+        sendResponse({ ok: true });
+        return true;
+    }
+
+    // ── Manual harvest trigger (from popup or external) ──
+    if (message.type === 'HARVEST_SESSION') {
+        harvestSession().then(() => sendResponse({ ok: true }));
         return true;
     }
 

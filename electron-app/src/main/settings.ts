@@ -28,6 +28,8 @@ export interface AppSettings {
   anon_id: string;
   relist_min_delay: number;
   relist_max_delay: number;
+  crm_delay_min_minutes: number;
+  crm_delay_max_minutes: number;
 }
 
 const DEFAULTS: AppSettings = {
@@ -53,6 +55,8 @@ const DEFAULTS: AppSettings = {
   anon_id: '',
   relist_min_delay: 30,
   relist_max_delay: 90,
+  crm_delay_min_minutes: 2,
+  crm_delay_max_minutes: 5,
 };
 
 const SETTINGS_KEYS: (keyof AppSettings)[] = [
@@ -78,6 +82,8 @@ const SETTINGS_KEYS: (keyof AppSettings)[] = [
   'anon_id',
   'relist_min_delay',
   'relist_max_delay',
+  'crm_delay_min_minutes',
+  'crm_delay_max_minutes',
 ];
 
 function serialize(value: unknown): string {
@@ -87,7 +93,7 @@ function serialize(value: unknown): string {
 }
 
 function deserialize(key: keyof AppSettings, value: string): unknown {
-  if (key === 'pollingIntervalSeconds' || key === 'latitude' || key === 'longitude' || key === 'verificationThresholdPounds' || key === 'relist_min_delay' || key === 'relist_max_delay') {
+  if (key === 'pollingIntervalSeconds' || key === 'latitude' || key === 'longitude' || key === 'verificationThresholdPounds' || key === 'relist_min_delay' || key === 'relist_max_delay' || key === 'crm_delay_min_minutes' || key === 'crm_delay_max_minutes') {
     return parseFloat(value) || DEFAULTS[key];
   }
   if (

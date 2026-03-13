@@ -13,6 +13,7 @@ import * as ontologyService from './main/ontologyService';
 import * as inventoryService from './main/inventoryService';
 import * as proxyService from './main/proxyService';
 import { setupNetworkInterception } from './main/authCapture';
+import * as sessionService from './main/sessionService';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -157,6 +158,9 @@ app.on('ready', () => {
   proxyService.initTransportMode();
   startPythonBridge();
 
+  // Start polling for extension-synced session data
+  sessionService.startSessionPolling();
+
   // Ensure image cache directory exists for Inventory Vault
   const imageCacheDir = path.join(app.getPath('userData'), 'image_cache');
   if (!fs.existsSync(imageCacheDir)) {
@@ -181,6 +185,7 @@ app.on('ready', () => {
 app.on('before-quit', () => {
   inventoryService.abortQueue();
   feedService.stopPolling();
+  sessionService.stopSessionPolling();
   stopPythonBridge();
   closeDb();
 });

@@ -511,7 +511,7 @@ def fetch_wardrobe(
 
 def fetch_sold_items(
     cookie: str,
-    user_id: int,
+    status: str = "all",
     csrf_token: str | None = None,
     anon_id: str | None = None,
     proxy: str | None = None,
@@ -520,12 +520,91 @@ def fetch_sold_items(
     transport_mode: str | None = None,
     user_agent: str | None = None,
 ) -> dict:
-    """GET /api/v2/users/{user_id}/items/sold — fetch user's sold items."""
-    qs = urlencode({"page": page, "per_page": per_page, "order": "newest_first"})
-    api_url = f"{BASE_URL}/api/v2/users/{user_id}/items/sold?{qs}"
+    """GET /api/v2/my_orders?order_type=sold — fetch user's sold orders."""
+    qs = urlencode({
+        "order_type": "sold",
+        "status": status,
+        "page": page,
+        "per_page": per_page,
+    })
+    api_url = f"{BASE_URL}/api/v2/my_orders?{qs}"
 
     session = _get_session(proxy, transport_mode)
-    headers = _build_headers(cookie, f"{BASE_URL}/member/{user_id}", transport_mode, user_agent=user_agent)
+    headers = _build_headers(cookie, f"{BASE_URL}/my_orders", transport_mode, user_agent=user_agent)
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+
+
+def fetch_bought_items(
+    cookie: str,
+    status: str = "all",
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    page: int = 1,
+    per_page: int = 20,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """GET /api/v2/my_orders?order_type=bought — fetch user's bought orders."""
+    qs = urlencode({
+        "order_type": "bought",
+        "status": status,
+        "page": page,
+        "per_page": per_page,
+    })
+    api_url = f"{BASE_URL}/api/v2/my_orders?{qs}"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/my_orders", transport_mode, user_agent=user_agent)
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+
+
+def fetch_conversation_detail(
+    cookie: str,
+    conversation_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """GET /api/v2/conversations/{id} — fetch conversation with buyer/transaction detail."""
+    api_url = f"{BASE_URL}/api/v2/conversations/{conversation_id}"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/inbox/{conversation_id}", transport_mode, user_agent=user_agent)
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     if anon_id:
@@ -1883,28 +1962,21 @@ def orchestrate_relist(
     user_agent: str | None = None,
 ) -> dict:
     """
-    V2 stealth relist sequence with CDN image download and generation-based mutation.
+    V2 stealth relist sequence with CDN image download, generation-based mutation,
+    dHash verification, and Datadome circuit breaker.
 
     Stealth flow:
       1. Download high-res images from Vinted CDN via curl_cffi (chrome110)
-      2. Mutate each image with deterministic generation-based mutations
+      2. Mutate each image with deterministic generation-based mutations (+ dHash loop)
       3. Upload mutated images with 1.5-3.5s jitter between uploads
+      ── CIRCUIT BREAKER: verify session health before destructive DELETE ──
       4. Delete old listing
       5. Wait 8.0-15.0s mandatory jitter (velocity flag avoidance)
       6. Append 1-4 zero-width spaces to title/description
       7. Create new listing via POST /api/v2/items
 
-    Args:
-        cookie: Full Vinted session cookie string.
-        old_item_id: The current live Vinted item ID to delete.
-        item_data: Listing fields (title, description, price, etc.) from local master.
-        photo_urls: List of Vinted CDN URLs to download and mutate.
-        relist_count: Current relist generation (controls mutation determinism).
-        csrf_token: CSRF token for write operations.
-        anon_id: Anonymous ID header value.
-        proxy: Proxy URL for the entire sequence.
-        transport_mode: 'PROXY' or 'DIRECT'.
-        user_agent: Override user-agent string.
+    Safety: If any upload returns a Datadome challenge, the entire relist is
+    aborted BEFORE the DELETE call to prevent permanent item loss.
 
     Returns:
         dict with {ok, new_item, photo_ids, upload_session_id}
@@ -1920,22 +1992,35 @@ def orchestrate_relist(
         # Step 1: Download from CDN
         raw_bytes = _download_image_stealth(url, proxy=proxy)
 
-        # Step 2: Mutate with generation-based mutations
+        # Step 2: Mutate with generation-based mutations (includes dHash verification)
         mutated_bytes = mutate_image_for_relist(raw_bytes, relist_count)
 
         # Step 3: Upload mutated image
         photo_uuid = str(uuid.uuid4())
-        result = upload_photo(
-            cookie=cookie,
-            image_bytes=mutated_bytes,
-            temp_uuid=photo_uuid,
-            csrf_token=csrf_token,
-            anon_id=anon_id,
-            proxy=proxy,
-            session=sticky_session,
-            transport_mode=transport_mode,
-            user_agent=user_agent,
-        )
+        try:
+            result = upload_photo(
+                cookie=cookie,
+                image_bytes=mutated_bytes,
+                temp_uuid=photo_uuid,
+                csrf_token=csrf_token,
+                anon_id=anon_id,
+                proxy=proxy,
+                session=sticky_session,
+                transport_mode=transport_mode,
+                user_agent=user_agent,
+            )
+        except VintedError as e:
+            # ── CIRCUIT BREAKER: abort if Datadome blocks an upload ──
+            if e.code in ("DATADOME_CHALLENGE", "FORBIDDEN"):
+                raise VintedError(
+                    "DATADOME_CHALLENGE",
+                    f"Datadome blocked photo upload ({i+1}/{len(photo_urls)}). "
+                    f"Relist aborted to prevent item loss. "
+                    f"Solve the captcha in Chrome and retry.",
+                    403,
+                )
+            raise  # Re-raise non-Datadome errors
+
         photo_id = result.get("id")
         if photo_id:
             photo_ids.append({"id": photo_id, "orientation": 0})
@@ -1946,6 +2031,12 @@ def orchestrate_relist(
 
     if not photo_ids:
         raise VintedError("UPLOAD_FAILED", "No photos were uploaded successfully")
+
+    # ── CIRCUIT BREAKER: Pre-delete session health check ──
+    # Probe a lightweight endpoint to verify the session is still alive
+    # before executing the irreversible DELETE. If Datadome has flagged us
+    # since the last upload, this catches it.
+    _verify_session_health(cookie, sticky_session, proxy, transport_mode, user_agent)
 
     # ── Step 4: Delete old listing ──
     delete_listing(
@@ -1962,10 +2053,9 @@ def orchestrate_relist(
     # ── Step 5: Mandatory 8.0-15.0s jitter (velocity flag avoidance) ──
     time.sleep(random.uniform(8.0, 15.0))
 
-    # ── Step 6: Jitter title and description with zero-width spaces ──
+    # ── Step 6: Jitter description with zero-width spaces ──
+    # NOTE: Title is NOT jittered — Vinted's API rejects special characters in titles.
     mutated_data = dict(item_data)
-    if "title" in mutated_data:
-        mutated_data["title"] = jitter_text_zwsp(mutated_data["title"], relist_count)
     if "description" in mutated_data:
         mutated_data["description"] = jitter_text_zwsp(
             mutated_data["description"] or "", relist_count
@@ -1994,3 +2084,272 @@ def orchestrate_relist(
         "photo_ids": [p["id"] for p in photo_ids],
         "upload_session_id": upload_session_id,
     }
+
+
+def _verify_session_health(
+    cookie: str,
+    session: requests.Session,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """
+    Lightweight session health probe before destructive operations.
+    Fetches /api/v2/users/current and checks for Datadome challenge HTML.
+    Raises VintedError("DATADOME_CHALLENGE") if the session is blocked.
+    """
+    api_url = f"{BASE_URL}/api/v2/users/current"
+    headers = _build_headers(cookie, BASE_URL, transport_mode, user_agent=user_agent)
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 15}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except Exception:
+        # Network error — proceed cautiously (could be transient)
+        return
+
+    # Check for explicit 403 (Datadome block)
+    if resp.status_code == 403:
+        raise VintedError(
+            "DATADOME_CHALLENGE",
+            "Session blocked by Datadome (403 on health check). "
+            "Relist aborted to prevent item loss. Solve the captcha in Chrome.",
+            403,
+        )
+
+    # Check for 200 with HTML challenge body (Datadome returns 200 + HTML sometimes)
+    content_type = resp.headers.get("content-type", "")
+    if "text/html" in content_type:
+        body_start = resp.text[:500].lower()
+        datadome_signatures = [
+            "datadome",
+            "captcha-delivery.com",
+            "geo.captcha-delivery",
+            "just a moment",
+            "<!doctype",
+        ]
+        if any(sig in body_start for sig in datadome_signatures):
+            reset_session(proxy, transport_mode)
+            raise VintedError(
+                "DATADOME_CHALLENGE",
+                "Datadome HTML challenge detected on health check. "
+                "Relist aborted to prevent item loss. Solve the captcha in Chrome.",
+                403,
+            )
+
+
+# ─── CRM: Auto-Message & Offer Suite ────────────────────────────────────────
+
+# Notifications use a different API host than the rest of the Vinted API.
+API_BASE_URL = "https://api.vinted.co.uk"
+
+
+def fetch_notifications(
+    cookie: str,
+    page: int = 1,
+    per_page: int = 20,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """GET /inbox-notifications/v1/notifications — fetch notification feed.
+
+    Uses api.vinted.co.uk host (not www.vinted.co.uk).
+    Like notifications have entry_type=20 with notification_link containing
+    item_id and receiver_id (offering_id).
+    """
+    qs = urlencode({"page": page, "per_page": per_page})
+    api_url = f"{API_BASE_URL}/inbox-notifications/v1/notifications?{qs}"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(cookie, f"{BASE_URL}/member/notifications", transport_mode, user_agent=user_agent)
+    # Notifications API requires locale + platform headers
+    headers["locale"] = "en-GB"
+    headers["platform"] = "web"
+    # Override Origin to match the API subdomain behaviour
+    headers["Origin"] = BASE_URL
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    req_kwargs: dict = {"url": api_url, "headers": headers, "timeout": 30}
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.get(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 304), proxy=proxy)
+
+
+def send_message(
+    cookie: str,
+    conversation_id: int,
+    text: str,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """POST /api/v2/conversations/{id}/replies — send a message in a conversation.
+
+    Uses _build_write_headers() to inject x-csrf-token and x-anon-id
+    as required by the stealth spec for write operations.
+    """
+    api_url = f"{BASE_URL}/api/v2/conversations/{conversation_id}/replies"
+    payload = {
+        "reply": {
+            "body": text,
+            "photo_temp_uuids": None,
+            "is_personal_data_sharing_check_skipped": False,
+        }
+    }
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_write_headers(
+        cookie,
+        csrf_token=csrf_token,
+        anon_id=anon_id,
+        referer=f"{BASE_URL}/inbox/{conversation_id}",
+        transport_mode=transport_mode,
+        user_agent=user_agent,
+    )
+
+    req_kwargs: dict = {
+        "url": api_url,
+        "headers": headers,
+        "json": payload,
+        "timeout": 30,
+    }
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.post(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 201), proxy=proxy)
+
+
+def send_offer(
+    cookie: str,
+    transaction_id: int,
+    price: str,
+    currency: str = "GBP",
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """POST /api/v2/transactions/{id}/offers — create a price offer.
+
+    Uses _build_write_headers() for CSRF token injection.
+    Returns offer object including user_msg_thread_id (conversation_id).
+    """
+    api_url = f"{BASE_URL}/api/v2/transactions/{transaction_id}/offers"
+    payload = {
+        "offer": {
+            "price": str(price),
+            "currency": currency,
+        }
+    }
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_write_headers(
+        cookie,
+        csrf_token=csrf_token,
+        anon_id=anon_id,
+        referer=f"{BASE_URL}/inbox/want_it",
+        transport_mode=transport_mode,
+        user_agent=user_agent,
+    )
+
+    req_kwargs: dict = {
+        "url": api_url,
+        "headers": headers,
+        "json": payload,
+        "timeout": 30,
+    }
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.post(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 201), proxy=proxy)
+
+
+def initiate_conversation(
+    cookie: str,
+    item_id: int,
+    receiver_id: int,
+    csrf_token: str | None = None,
+    anon_id: str | None = None,
+    proxy: str | None = None,
+    transport_mode: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """POST /api/v2/conversations — create/discover conversation for item + buyer.
+
+    Creates (or retrieves) the conversation context between the seller and
+    a user who liked their item. Returns conversation_id, transaction_id,
+    and the messages array for existing-conversation checks.
+    """
+    api_url = f"{BASE_URL}/api/v2/conversations"
+
+    session = _get_session(proxy, transport_mode)
+    headers = _build_headers(
+        cookie,
+        f"{BASE_URL}/inbox/want_it?receiver_id={receiver_id}&item_id={item_id}",
+        transport_mode,
+        user_agent=user_agent,
+    )
+    headers["Content-Type"] = "application/json"
+    if csrf_token:
+        headers["x-csrf-token"] = csrf_token
+    if anon_id:
+        headers["x-anon-id"] = anon_id
+
+    payload = {
+        "initiator": "seller_enters_notification",
+        "item_id": str(item_id),
+        "opposite_user_id": str(receiver_id),
+    }
+
+    req_kwargs: dict = {
+        "url": api_url,
+        "headers": headers,
+        "json": payload,
+        "timeout": 30,
+    }
+    if proxy and transport_mode != "DIRECT":
+        req_kwargs["proxy"] = proxy
+
+    try:
+        resp = session.post(**req_kwargs)
+    except requests.errors.RequestsError as e:
+        raise VintedError("REQUEST_FAILED", str(e))
+    except Exception as e:
+        raise VintedError("UNKNOWN", str(e))
+
+    return _handle_response(resp, allow_statuses=(200, 201, 304), proxy=proxy)
+

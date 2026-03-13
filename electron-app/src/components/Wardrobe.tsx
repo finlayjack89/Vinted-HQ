@@ -44,9 +44,13 @@ export default function Wardrobe() {
   const [bulkSyncing, setBulkSyncing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; title: string; failed: number } | null>(null);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const [ontologyAlert, setOntologyAlert] = useState<{ deletedCategories: unknown[]; affectedItems: unknown[] } | null>(null);
   const [actionBusy, setActionBusy] = useState<null | { kind: 'push' | 'pull'; localId: number }>(null);
   const [backgroundSyncing, setBackgroundSyncing] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionProgress, setBulkActionProgress] = useState<{ kind: 'push' | 'pull'; current: number; total: number; failed: number } | null>(null);
 
   // ── Data loading ──
   const loadItems = useCallback(async () => {
@@ -272,7 +276,38 @@ export default function Wardrobe() {
     } finally {
       await loadItems();
       setActionBusy(null);
+    };
+  };
+
+  const toggleSelectId = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkAction = async (kind: 'push' | 'pull') => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkActionProgress({ kind, current: 0, total: ids.length, failed: 0 });
+    let failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      setBulkActionProgress({ kind, current: i + 1, total: ids.length, failed });
+      try {
+        const result = kind === 'pull'
+          ? await window.vinted.pullLiveToLocal(ids[i])
+          : await window.vinted.pushToVinted(ids[i]);
+        if (!result?.ok) failed++;
+      } catch {
+        failed++;
+      }
     }
+    setBulkActionProgress(null);
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    await loadItems();
+    if (failed > 0) window.alert(`${failed} of ${ids.length} items failed.`);
   };
 
   const handleDelete = async (localId: number) => {
@@ -346,6 +381,49 @@ export default function Wardrobe() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ ...sectionTitle, marginBottom: 0, fontSize: font.size['2xl'] }}>Wardrobe</h2>
           <div style={{ display: 'flex', gap: spacing.sm }}>
+            <button
+              type="button"
+              onClick={() => setIsCreating(true)}
+              style={{
+                ...btnPrimary,
+                ...btnSmall,
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                border: 'none',
+              }}
+            >
+              ✚ Create Listing
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectMode((v) => !v);
+                setSelectedIds(new Set());
+              }}
+              style={{
+                ...btnSecondary,
+                ...btnSmall,
+                ...(selectMode ? { color: colors.primary, borderColor: colors.primary, background: colors.primaryMuted } : {}),
+              }}
+            >
+              {selectMode ? '✓ Select Mode' : '☐ Select'}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setLoading(true);
+                await loadItems();
+              }}
+              disabled={loading}
+              style={{
+                ...btnSecondary,
+                ...btnSmall,
+                opacity: loading ? 0.6 : 1,
+                cursor: loading ? 'default' : 'pointer',
+              }}
+              title="Reload items from local database"
+            >
+              {loading ? '↻ Refreshing…' : '↻ Refresh'}
+            </button>
             <button
               type="button"
               onClick={handleRefreshOntology}
@@ -479,6 +557,50 @@ export default function Wardrobe() {
         })}
       </div>
 
+      {/* ── Bulk Action Bar ── */}
+      {selectMode && selectedIds.size > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: spacing.sm,
+          marginBottom: spacing.md,
+          padding: `${spacing.sm} ${spacing.md}`,
+          background: colors.primaryMuted,
+          border: `1px solid ${colors.primary}`,
+          borderRadius: radius.md,
+          fontSize: font.size.sm,
+        }}>
+          <span style={{ color: colors.primary, fontWeight: font.weight.semibold }}>
+            {selectedIds.size} selected
+          </span>
+          <button
+            type="button"
+            onClick={() => handleBulkAction('pull')}
+            disabled={!!bulkActionProgress}
+            style={{ ...btnSecondary, ...btnSmall, color: colors.info, borderColor: 'rgba(96,165,250,0.3)' }}
+          >
+            {bulkActionProgress?.kind === 'pull'
+              ? `Pulling ${bulkActionProgress.current}/${bulkActionProgress.total}…`
+              : '⬇ Bulk Pull'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkAction('push')}
+            disabled={!!bulkActionProgress}
+            style={{ ...btnSecondary, ...btnSmall, color: colors.success, borderColor: 'rgba(16,185,129,0.3)' }}
+          >
+            {bulkActionProgress?.kind === 'push'
+              ? `Pushing ${bulkActionProgress.current}/${bulkActionProgress.total}…`
+              : '⬆ Bulk Push'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSelectedIds(new Set()); setSelectMode(false); }}
+            style={{ ...btnSecondary, ...btnSmall }}
+          >Cancel</button>
+        </div>
+      )}
+
       {/* ── Content ── */}
       {
         loading ? (
@@ -495,6 +617,9 @@ export default function Wardrobe() {
                 onDelete={handleDelete}
                 showDiscrepancyBadge
                 emptyMessage="No items in your wardrobe. Sync from Vinted or create new listings."
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelectId}
               />
             )}
             {subTab === 'live' && (
@@ -504,6 +629,9 @@ export default function Wardrobe() {
                 onEdit={(item) => setEditingItem(item)}
                 showDiscrepancyBadge
                 emptyMessage="No live listings. Sync from Vinted to import your wardrobe."
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelectId}
               />
             )}
             {subTab === 'local' && (
@@ -513,6 +641,9 @@ export default function Wardrobe() {
                 onEdit={(item) => setEditingItem(item)}
                 onDelete={handleDelete}
                 emptyMessage="No local-only items. Create new listings or sync from Vinted."
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelectId}
               />
             )}
             {subTab === 'discrepancy' && (
@@ -521,6 +652,9 @@ export default function Wardrobe() {
                 onEdit={(item) => setEditingItem(item)}
                 onPush={handlePush}
                 onPull={handlePull}
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelectId}
               />
             )}
             {subTab === 'queue' && (
@@ -543,6 +677,17 @@ export default function Wardrobe() {
             item={editingItem}
             onSave={handleSaveEdit}
             onClose={() => setEditingItem(null)}
+          />
+        )
+      }
+
+      {/* ── Create Listing Modal ── */}
+      {
+        isCreating && (
+          <EditItemModal
+            item={null}
+            onSave={async () => ({ ok: true })} // not used in create mode
+            onClose={() => { setIsCreating(false); loadItems(); }}
           />
         )
       }
@@ -606,6 +751,9 @@ function ItemTable({
   onDelete,
   showDiscrepancyBadge,
   emptyMessage,
+  selectMode,
+  selectedIds,
+  onToggleSelect,
 }: {
   items: InventoryItem[];
   onRelist?: (localId: number) => void;
@@ -615,6 +763,9 @@ function ItemTable({
   onDelete?: (localId: number) => void;
   showDiscrepancyBadge?: boolean;
   emptyMessage: string;
+  selectMode?: boolean;
+  selectedIds?: Set<number>;
+  onToggleSelect?: (id: number) => void;
 }) {
   if (items.length === 0) {
     return (
@@ -629,6 +780,23 @@ function ItemTable({
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+            {selectMode && (
+              <th style={{ ...tableHeaderCell, width: 40, textAlign: 'center' as const }}>
+                <input
+                  type="checkbox"
+                  checked={items.length > 0 && items.every((i) => selectedIds?.has(i.id))}
+                  onChange={() => {
+                    if (!onToggleSelect) return;
+                    const allSelected = items.every((i) => selectedIds?.has(i.id));
+                    items.forEach((i) => {
+                      if (allSelected && selectedIds?.has(i.id)) onToggleSelect(i.id);
+                      if (!allSelected && !selectedIds?.has(i.id)) onToggleSelect(i.id);
+                    });
+                  }}
+                  style={{ cursor: 'pointer', accentColor: colors.primary }}
+                />
+              </th>
+            )}
             <th style={tableHeaderCell}>Image</th>
             <th style={tableHeaderCell}>Title</th>
             <th style={tableHeaderCell}>Price</th>
@@ -649,6 +817,9 @@ function ItemTable({
               onEdit={onEdit}
               onDelete={onDelete}
               showDiscrepancyBadge={showDiscrepancyBadge}
+              selectMode={selectMode}
+              selected={selectedIds?.has(item.id)}
+              onToggleSelect={onToggleSelect}
             />
           ))}
         </tbody>
@@ -665,6 +836,9 @@ function ItemRow({
   onEdit,
   onDelete,
   showDiscrepancyBadge,
+  selectMode,
+  selected,
+  onToggleSelect,
 }: {
   item: InventoryItem;
   onRelist?: (localId: number) => void;
@@ -673,6 +847,9 @@ function ItemRow({
   onEdit?: (item: InventoryItem) => void;
   onDelete?: (localId: number) => void;
   showDiscrepancyBadge?: boolean;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: number) => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -686,8 +863,18 @@ function ItemRow({
     <tr
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ background: hovered ? tableRowHoverBg : 'transparent', transition: transition.fast }}
+      style={{ background: hovered ? tableRowHoverBg : (selected ? 'rgba(99,102,241,0.08)' : 'transparent'), transition: transition.fast }}
     >
+      {selectMode && (
+        <td style={{ ...tableCell, width: 40, textAlign: 'center' as const }}>
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onChange={() => onToggleSelect?.(item.id)}
+            style={{ cursor: 'pointer', accentColor: colors.primary }}
+          />
+        </td>
+      )}
       <td style={tableCell}>
         <div style={{
           width: 56, height: 56, borderRadius: radius.md, overflow: 'hidden',
@@ -846,11 +1033,17 @@ function DiscrepancyView({
   onEdit,
   onPush,
   onPull,
+  selectMode,
+  selectedIds,
+  onToggleSelect,
 }: {
   items: InventoryItem[];
   onEdit: (item: InventoryItem) => void;
   onPush: (localId: number) => void;
   onPull: (localId: number) => void;
+  selectMode?: boolean;
+  selectedIds?: Set<number>;
+  onToggleSelect?: (id: number) => void;
 }) {
   if (items.length === 0) {
     return (
@@ -884,6 +1077,9 @@ function DiscrepancyView({
         onPull={onPull}
         showDiscrepancyBadge
         emptyMessage="No discrepancies."
+        selectMode={selectMode}
+        selectedIds={selectedIds}
+        onToggleSelect={onToggleSelect}
       />
     </div>
   );
@@ -1437,30 +1633,34 @@ function EditItemModal({
   onSave,
   onClose,
 }: {
-  item: InventoryItem;
+  item: InventoryItem | null;
   onSave: (data: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
   onClose: () => void;
 }) {
+  const isCreateMode = item === null;
   type PhotoPlanItem =
     | { type: 'existing'; id: number; url: string }
     | { type: 'new'; path: string };
 
   // ── State: basic fields ──
-  const [title, setTitle] = useState(item.title);
-  const [description, setDescription] = useState(item.description ?? '');
-  const [price, setPrice] = useState(String(item.price));
+  const [title, setTitle] = useState(item?.title ?? '');
+  const [description, setDescription] = useState(item?.description ?? '');
+  const [price, setPrice] = useState(item ? String(item.price) : '');
   // Store condition as status_id (numeric) for Vinted API compatibility
-  const [selectedStatusId, setSelectedStatusId] = useState(item.status_id ?? 0);
-  const [isUnisex, setIsUnisex] = useState(Boolean(item.is_unisex));
+  const [selectedStatusId, setSelectedStatusId] = useState(item?.status_id ?? 0);
+  const [isUnisex, setIsUnisex] = useState(Boolean(item?.is_unisex));
+
+  // ── State: create mode progress ──
+  const [createProgress, setCreateProgress] = useState<{ step: string; current: number; total: number; message?: string } | null>(null);
 
   // ── State: ontology-backed fields ──
   const [allCategories, setAllCategories] = useState<OntologyEntity[]>([]);
   const [allColors, setAllColors] = useState<OntologyEntity[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState(item.category_id ?? 0);
-  const [selectedBrandId, setSelectedBrandId] = useState(item.brand_id ?? 0);
-  const [selectedBrandName, setSelectedBrandName] = useState(item.brand_name ?? '');
+  const [selectedCategoryId, setSelectedCategoryId] = useState(item?.category_id ?? 0);
+  const [selectedBrandId, setSelectedBrandId] = useState(item?.brand_id ?? 0);
+  const [selectedBrandName, setSelectedBrandName] = useState(item?.brand_name ?? '');
   const [selectedColorIds, setSelectedColorIds] = useState<number[]>(
-    Array.isArray(item.color_ids) ? item.color_ids : []
+    Array.isArray(item?.color_ids) ? item.color_ids : []
   );
 
   // ── State: dynamic brand search ──
@@ -1473,14 +1673,14 @@ function EditItemModal({
   const [packageSizeOptions, setPackageSizeOptions] = useState<{ id: number; title: string }[]>([]);
   const [conditionOptions, setConditionOptions] = useState<{ id: number; title: string }[]>(FALLBACK_CONDITIONS);
 
-  const [selectedSizeId, setSelectedSizeId] = useState(item.size_id ?? 0);
-  const [packageSizeId, setPackageSizeId] = useState(item.package_size_id ?? 3);
+  const [selectedSizeId, setSelectedSizeId] = useState(item?.size_id ?? 0);
+  const [packageSizeId, setPackageSizeId] = useState(item?.package_size_id ?? 3);
 
   // Track which fields are available for the selected category
   const [availableFields, setAvailableFields] = useState<string[]>([]);
 
   // Parse material from item_attributes
-  const parsedAttrs = Array.isArray(item.item_attributes) ? item.item_attributes : [];
+  const parsedAttrs = Array.isArray(item?.item_attributes) ? item.item_attributes : [];
   const materialAttr = parsedAttrs.find((a: { code: string }) => a.code === 'material');
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<number[]>(() => {
     if (materialAttr && Array.isArray(materialAttr.ids)) return materialAttr.ids;
@@ -1496,6 +1696,7 @@ function EditItemModal({
   const [nicheValues, setNicheValues] = useState<Record<string, number | number[] | string>>({});
   const [modelOptions, setModelOptions] = useState<{ id: number; name: string; children?: { id: number; name: string }[] }[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState(() => {
+    if (!item) return 0;
     // Read from separate DB columns (exist at runtime via SELECT m.*, not in TS type)
     const itemAny = item as Record<string, unknown>;
     if (typeof itemAny.collection_id === 'number' && itemAny.collection_id) return itemAny.collection_id;
@@ -1505,6 +1706,7 @@ function EditItemModal({
     return 0;
   });
   const [selectedModelId, setSelectedModelId] = useState(() => {
+    if (!item) return 0;
     const itemAny = item as Record<string, unknown>;
     if (typeof itemAny.model_id === 'number' && itemAny.model_id) return itemAny.model_id;
     const meta = item.model_metadata as Record<string, unknown> | null;
@@ -1524,6 +1726,7 @@ function EditItemModal({
 
   // ── Photos (editable) ──
   const [photoPlanItems, setPhotoPlanItems] = useState<PhotoPlanItem[]>(() => {
+    if (!item) return [];
     const localPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
     const remoteUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
 
@@ -1536,6 +1739,7 @@ function EditItemModal({
   });
 
   const reloadItem = async (): Promise<Record<string, unknown> | null> => {
+    if (!item) return null;
     try {
       const freshItem = await window.vinted.getWardrobeItem(item.id);
       if (freshItem) {
@@ -1606,10 +1810,10 @@ function EditItemModal({
     window.vinted.getOntology('category').then(setAllCategories).catch(() => undefined);
     window.vinted.getOntology('color').then(setAllColors).catch(() => undefined);
     // Seed brand with current item's brand so it shows in the dropdown
-    if (item.brand_id && item.brand_name) {
+    if (item?.brand_id && item?.brand_name) {
       setBrandResults([{ id: item.brand_id, name: item.brand_name }]);
     }
-  }, [item.id, item.vinted_item_id]);
+  }, [item?.id, item?.vinted_item_id]);
 
   // ── Cleanup sync interval on unmount (prevents leaks if modal closes mid-sync) ──
   useEffect(() => {
@@ -1662,7 +1866,7 @@ function EditItemModal({
 
     // Fetch materials & attribute config via POST /attributes
     const catId = selectedCategoryId;
-    window.vinted.getMaterials(catId, item.vinted_item_id, selectedBrandId || undefined, selectedStatusId || undefined).then((r: { ok: boolean; data?: unknown }) => {
+    window.vinted.getMaterials(catId, item?.vinted_item_id, selectedBrandId || undefined, selectedStatusId || undefined).then((r: { ok: boolean; data?: unknown }) => {
       console.log('[EditModal] getMaterials RAW:', JSON.stringify(r));
       const { materials, availableFields: fields, nicheAttributes: niche } = extractFromAttributes(r);
       console.log('[EditModal] getMaterials result:', { ok: r?.ok, count: materials.length, fields, niche: niche.length });
@@ -1686,7 +1890,7 @@ function EditItemModal({
       console.error('[EditModal] getMaterials failed:', err);
       setMaterialOptions([]);
     });
-  }, [selectedCategoryId, selectedBrandId, selectedStatusId, item.vinted_item_id, detailLoading, syncGeneration]);
+  }, [selectedCategoryId, selectedBrandId, selectedStatusId, item?.vinted_item_id, detailLoading, syncGeneration]);
 
   // ── Fetch category-specific options when category changes ──
   useEffect(() => {
@@ -1725,7 +1929,7 @@ function EditItemModal({
 
 
     // Fetch package sizes — response: { package_sizes: [{ id, title, ... }] }
-    const vintedItemId = item.vinted_item_id ?? undefined;
+    const vintedItemId = item?.vinted_item_id ?? undefined;
     window.vinted.getPackageSizes(catId, vintedItemId).then((r: { ok: boolean; data?: unknown }) => {
       const pkgs = extractArray(r, 'package_sizes');
       if (pkgs.length > 0) {
@@ -1764,7 +1968,7 @@ function EditItemModal({
         setBrandResults(opts);
       }
     }).catch(() => undefined);
-  }, [selectedCategoryId, item.vinted_item_id, detailLoading, syncGeneration]);
+  }, [selectedCategoryId, item?.vinted_item_id, detailLoading, syncGeneration]);
 
   // ── Auto-fetch models when brand + category are set (initial load or post-sync) ──
   useEffect(() => {
@@ -1853,6 +2057,20 @@ function EditItemModal({
     setSelectedColorIds(Array.isArray(ids) ? ids : [ids]);
   };
 
+  // Subscribe to create progress events
+  useEffect(() => {
+    if (!isCreateMode) return;
+    const unsub = window.vinted.onCreateProgress((data) => {
+      setCreateProgress(data);
+      if (data.step === 'complete' || data.step === 'error') {
+        // Auto-clear after a delay
+        setTimeout(() => setCreateProgress(null), data.step === 'error' ? 5000 : 2000);
+      }
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreateMode]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (detailLoading) {
@@ -1861,6 +2079,24 @@ function EditItemModal({
       return;
     }
     if (saving) return;
+
+    // ── Create mode validation ──
+    if (isCreateMode) {
+      const errors: string[] = [];
+      if (!title.trim() || title.trim().length < 5) errors.push('Title must be at least 5 characters');
+      if (!description.trim()) errors.push('Description is required');
+      if (!price || parseFloat(price) <= 0) errors.push('Price must be greater than 0');
+      if (!selectedCategoryId) errors.push('Category is required');
+      if (!selectedStatusId) errors.push('Condition is required');
+      if (!packageSizeId) errors.push('Parcel size is required');
+      const newPhotos = photoPlanItems.filter((p) => p.type === 'new');
+      if (newPhotos.length === 0) errors.push('At least 1 photo is required');
+      if (photoPlanItems.length > 12) errors.push('Maximum 12 photos allowed');
+      if (errors.length > 0) {
+        setSaveError(errors.join('. '));
+        return;
+      }
+    }
 
     const existingUrls = photoPlanItems
       .filter((p) => p.type === 'existing')
@@ -1879,7 +2115,7 @@ function EditItemModal({
 
     // Derive condition string from status_id
     const condOpt = conditionOptions.find((c) => c.id === selectedStatusId);
-    const conditionStr = condOpt?.title ?? item.condition ?? '';
+    const conditionStr = condOpt?.title ?? item?.condition ?? '';
 
     // Add niche attributes to item_attributes
     for (const attr of nicheAttributes) {
@@ -1901,7 +2137,7 @@ function EditItemModal({
 
     // Guard against accidental clears: if the UI didn't manage to prefill/resolve IDs,
     // preserve existing persisted values rather than sending an empty required field.
-    const fallbackColorIds = Array.isArray(item.color_ids) ? item.color_ids : [];
+    const fallbackColorIds = Array.isArray(item?.color_ids) ? item.color_ids : [];
     const finalColorIds = selectedColorIds.length > 0 ? selectedColorIds : fallbackColorIds;
 
     setSaving(true);
@@ -1910,6 +2146,53 @@ function EditItemModal({
     const showSizeField =
       sizeOptions.length > 0 &&
       (availableFields.includes('size') || (availableFields.length === 0 && !!domSize));
+
+    // ── Create mode: upload photos + publish via dedicated IPC ──
+    if (isCreateMode) {
+      const photoPaths = photoPlanItems
+        .filter((p) => p.type === 'new')
+        .map((p) => (p as { type: 'new'; path: string }).path)
+        .filter(Boolean);
+
+      const formData: Record<string, unknown> = {
+        title: title.trim(),
+        description: description.trim(),
+        price: parseFloat(price) || 0,
+        currency: 'GBP',
+        catalog_id: selectedCategoryId || null,
+        brand_id: selectedBrandId || null,
+        brand: selectedBrandName.trim(),
+        size_id: selectedSizeId || null,
+        status_id: selectedStatusId || 2,
+        is_unisex: isUnisex,
+        color_ids: finalColorIds,
+        package_size_id: packageSizeId || 3,
+        item_attributes: attrs.length > 0 ? attrs : [],
+        isbn: isbn || null,
+        measurement_length: measurementLength ? parseFloat(measurementLength) : null,
+        measurement_width: measurementWidth ? parseFloat(measurementWidth) : null,
+        condition: conditionStr,
+        ...(Object.keys(modelMetadata).length > 0 ? { model_metadata: modelMetadata } : {}),
+      };
+
+      setSaving(true);
+      setSaveError('');
+
+      window.vinted.createListing(formData, photoPaths).then((result) => {
+        if (!result.ok) {
+          setSaveError(result.error || 'Failed to create listing');
+          setSaving(false);
+          return;
+        }
+        // Success — close creates modal
+        setSaving(false);
+        onClose();
+      }).catch((err) => {
+        setSaveError(err instanceof Error ? err.message : String(err));
+        setSaving(false);
+      });
+      return;
+    }
 
     const updates: Record<string, unknown> = {
       title,
@@ -1940,7 +2223,7 @@ function EditItemModal({
     // `updates` contains most of the fields we want to send to the backend.
     // `payload` will combine `updates` with other derived fields and photo data.
     const payload: Record<string, unknown> = {
-      id: item.id,
+      id: item!.id,
       ...updates,
       // `updates.color_ids` is `selectedColorIds`, but we need `finalColorIds` which includes fallback.
       color_ids: JSON.stringify(finalColorIds),
@@ -1967,7 +2250,7 @@ function EditItemModal({
         .filter((p) => p.type === 'existing' && p.id > 0)
         .map((p) => p.id as number),
       local_image_paths: JSON.stringify(newPaths), // Still needed for local-only items
-      status: item.vinted_item_id ? 'discrepancy' : item.status,
+      status: item!.vinted_item_id ? 'discrepancy' : item!.status,
       __photo_plan: {
         original_existing_ids: photoPlanOriginalExistingIds,
         items: photoPlanItems,
@@ -1979,7 +2262,7 @@ function EditItemModal({
     // Omitting the field avoids accidentally clearing a previously-synced size_id.
     if (showSizeField) {
       payload.size_id = selectedSizeId || null;
-      payload.size_label = sizeOptions.find((s) => s.id === selectedSizeId)?.title ?? item.size_label ?? '';
+      payload.size_label = sizeOptions.find((s) => s.id === selectedSizeId)?.title ?? item?.size_label ?? '';
     }
 
     onSave(payload).then((r) => {
@@ -2003,8 +2286,8 @@ function EditItemModal({
     extra: c.extra as Record<string, unknown> | null,
   }));
 
-  const editLocalPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
-  const editPhotoUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
+  const editLocalPaths = Array.isArray(item?.local_image_paths) ? item.local_image_paths : [];
+  const editPhotoUrls = Array.isArray(item?.photo_urls) ? item.photo_urls : [];
   const editPhotos = editLocalPaths.length > 0 ? editLocalPaths : editPhotoUrls;
 
   return (
@@ -2016,14 +2299,14 @@ function EditItemModal({
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 24px' }}>
           <h3 style={{ margin: 0, fontSize: font.size.xl, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
-            Edit Listing
+            {isCreateMode ? 'Create Listing' : 'Edit Listing'}
           </h3>
-          {item.vinted_item_id && item.status !== 'removed' && (
+          {!isCreateMode && item?.vinted_item_id && item.status !== 'removed' && (
             <button
               type="button"
               disabled={isSyncing}
               onClick={async () => {
-                if (isSyncing) return;
+                if (isSyncing || !item) return;
 
                 // 1. Capture the item's current updated_at as our baseline
                 const initialUpdatedAt = item.updated_at ?? 0;
@@ -2090,7 +2373,7 @@ function EditItemModal({
           )}
         </div>
 
-        {isSyncing && (
+        {isSyncing && !isCreateMode && (
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
             background: 'rgba(17, 17, 17, 0.85)',
@@ -2109,6 +2392,38 @@ function EditItemModal({
             <div style={{ marginTop: 6, fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
               This usually takes 5–10 seconds
             </div>
+            <style>{`@keyframes hq-spin { to { transform: rotate(360deg) } }`}</style>
+          </div>
+        )}
+        {isCreateMode && createProgress && createProgress.step !== 'complete' && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(17, 17, 17, 0.85)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            zIndex: 100, borderRadius: 12,
+          }}>
+            <div style={{
+              width: 40, height: 40, border: '3px solid rgba(16, 185, 129, 0.2)',
+              borderTopColor: createProgress.step === 'error' ? '#ff6b6b' : '#10b981', borderRadius: '50%',
+              animation: createProgress.step === 'error' ? 'none' : 'hq-spin 0.8s linear infinite',
+            }} />
+            <div style={{ marginTop: 16, fontSize: 16, fontWeight: 600, color: createProgress.step === 'error' ? '#ff6b6b' : '#10b981' }}>
+              {createProgress.message || 'Publishing…'}
+            </div>
+            {createProgress.step === 'uploading' && createProgress.total > 0 && (
+              <div style={{
+                marginTop: 12, width: 200, height: 4, borderRadius: 2,
+                background: 'rgba(255,255,255,0.1)',
+              }}>
+                <div style={{
+                  height: '100%', borderRadius: 2,
+                  background: '#10b981',
+                  width: `${(createProgress.current / createProgress.total) * 100}%`,
+                  transition: 'width 0.3s ease',
+                }} />
+              </div>
+            )}
             <style>{`@keyframes hq-spin { to { transform: rotate(360deg) } }`}</style>
           </div>
         )}
@@ -2477,7 +2792,7 @@ function EditItemModal({
 
           {/* ── Price ── */}
           <div>
-            <label style={labelStyle}>Price ({item.currency || 'GBP'})</label>
+            <label style={labelStyle}>Price ({item?.currency || 'GBP'})</label>
             <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)}
               style={{ ...glassInput, width: '100%' }} required />
           </div>
@@ -2533,7 +2848,11 @@ function EditItemModal({
           {/* ── Actions ── */}
           <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.sm, paddingTop: spacing.lg, borderTop: `1px solid ${colors.separator}` }}>
             <button type="submit" style={{ ...btnPrimary, flex: 1, opacity: saving || detailLoading || isSyncing ? 0.7 : 1 }} disabled={saving || detailLoading || isSyncing}>
-              {saving ? 'Saving…' : isSyncing ? 'Syncing…' : detailLoading ? 'Loading details…' : 'Save Changes'}
+              {saving
+                ? (isCreateMode ? 'Publishing…' : 'Saving…')
+                : isSyncing ? 'Syncing…'
+                : detailLoading ? 'Loading details…'
+                : isCreateMode ? 'Publish Listing' : 'Save Changes'}
             </button>
             <button type="button" onClick={onClose} style={btnSecondary} disabled={saving}>Cancel</button>
           </div>

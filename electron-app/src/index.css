@@ -1,4 +1,4 @@
-/* ─── Revolut-inspired dark fintech global styles ─────────── */
+/* ─── Elevated Neutral / Liquid Glass Theme ─────────── */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -6,68 +6,55 @@
 
 *, *::before, *::after {
   box-sizing: border-box;
+}
+
+html, body, #root {
   margin: 0;
   padding: 0;
-}
-
-html {
   height: 100%;
+  background-color: #FAF9F6;
+  color: #111111;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
 }
 
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    Helvetica, Arial, sans-serif;
-  background: #080b12;
-  color: #e8ecf4;
-  height: 100vh;
-  line-height: 1.5;
-  overflow: hidden;
-}
+/* ─── Scrollbar (Webkit / Chromium / Electron) ──────────────── */
 
-#root {
-  height: 100vh;
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.20); }
+
+/* ─── Liquid Glass Helper Classes ───────────────────────────── */
+
+.liquid-glass-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 2px 2px 4px rgba(255, 255, 255, 0.95),
+    inset -1px -1px 2px rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* ─── Selection ─────────────────────────────────────────────── */
 
 ::selection {
-  background: rgba(129, 140, 248, 0.3);
-  color: #e8ecf4;
+  background: rgba(99, 102, 241, 0.2);
+  color: #111111;
 }
 
 ::-moz-selection {
-  background: rgba(129, 140, 248, 0.3);
-  color: #e8ecf4;
+  background: rgba(99, 102, 241, 0.2);
+  color: #111111;
 }
 
-/* ─── Scrollbar (Webkit / Chromium / Electron) ──────────────── */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-/* ─── Form Element Resets (dark theme) ──────────────────────── */
+/* ─── Form Element Resets ───────────────────────────────────── */
 
 input,
 textarea,
@@ -79,40 +66,38 @@ button {
   outline: none;
 }
 
-/* Dark dropdown options */
 select option {
-  background: #0f1420;
-  color: #e8ecf4;
+  background: #FFFFFF;
+  color: #111111;
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #525c6f;
+  color: #A3A3A3;
 }
 
-/* Focus ring — indigo glow */
 input:focus,
 textarea:focus,
 select:focus {
-  border-color: rgba(129, 140, 248, 0.5) !important;
-  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15) !important;
+  border-color: rgba(99, 102, 241, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
 }
 
 button:focus-visible {
-  outline: 2px solid rgba(129, 140, 248, 0.5);
+  outline: 2px solid rgba(99, 102, 241, 0.5);
   outline-offset: 2px;
 }
 
 /* ─── Links ─────────────────────────────────────────────────── */
 
 a {
-  color: #818cf8;
+  color: #6366F1;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 a:hover {
-  color: #a5b4fc;
+  color: #4F46E5;
 }
 
 /* ─── Custom Checkbox & Radio ───────────────────────────────── */
@@ -123,8 +108,8 @@ input[type="radio"] {
   -webkit-appearance: none;
   width: 18px;
   height: 18px;
-  border: 1.5px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.04);
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
@@ -141,8 +126,8 @@ input[type="radio"] {
 
 input[type="checkbox"]:checked,
 input[type="radio"]:checked {
-  background: #818cf8;
-  border-color: #818cf8;
+  background: #6366F1;
+  border-color: #6366F1;
 }
 
 input[type="checkbox"]:checked::after {
@@ -170,8 +155,8 @@ input[type="radio"]:checked::after {
 
 input[type="checkbox"]:focus,
 input[type="radio"]:focus {
-  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2) !important;
-  border-color: rgba(129, 140, 248, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
+  border-color: rgba(99, 102, 241, 0.5) !important;
 }
 
 /* ─── Animations ────────────────────────────────────────────── */
@@ -223,8 +208,8 @@ input[type="radio"]:focus {
 code {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
   font-size: 0.85em;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.04);
   padding: 2px 6px;
   border-radius: 4px;
-  color: #a5b4fc;
+  color: #6366F1;
 }

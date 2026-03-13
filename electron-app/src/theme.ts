@@ -1,6 +1,5 @@
 /**
- * Centralized design tokens — Revolut-inspired dark fintech theme
- * with liquid glass aesthetic.
+ * Centralized design tokens — Elevated Neutral / Liquid Glass Theme
  */
 
 import type { CSSProperties } from 'react';
@@ -8,107 +7,117 @@ import type { CSSProperties } from 'react';
 /* ─── Color Palette ─────────────────────────────────────────── */
 
 export const colors = {
-  // Backgrounds
-  bgBase: '#080b12',
-  bgElevated: '#0f1420',
-  surface: '#161b2e',
+  // ── Backgrounds ───────────────────────────────────────────
+  bgBase:        '#FAF9F6',   // Warm off-white. The absolute bottom layer of <body>.
+  bgElevated:    '#FFFFFF',   // Pure white. Reserved for cards, panels, modals.
+  surface:       '#F0EFEB',   // Subtle warm grey. For nested containers, resting inputs.
 
-  // Glass
-  glassBg: 'rgba(255, 255, 255, 0.03)',
-  glassBgHover: 'rgba(255, 255, 255, 0.06)',
-  glassBorder: 'rgba(255, 255, 255, 0.07)',
-  glassBorderHover: 'rgba(255, 255, 255, 0.12)',
-  glassHighlight: 'rgba(255, 255, 255, 0.05)',
-  glassInset: 'rgba(255, 255, 255, 0.04)',
+  // ── Glass ─────────────────────────────────────────────────
+  glassBg:       'rgba(255, 255, 255, 0.65)',    // Translucent base for glass panels.
+  glassBgHover:  'rgba(255, 255, 255, 0.80)',    // Increased opacity on hover.
+  glassBorder:   'rgba(255, 255, 255, 0.85)',    // High-opacity white edge.
+  glassBorderHover: 'rgba(255, 255, 255, 0.95)', // Near-opaque on hover.
+  glassHighlight: 'rgba(255, 255, 255, 0.40)',   // For card default state.
+  glassInset:    'rgba(255, 255, 255, 0.70)',    // Inset volumetric illumination.
 
-  // Primary accent (indigo)
-  primary: '#818cf8',
-  primaryHover: '#6366f1',
-  primaryMuted: 'rgba(129, 140, 248, 0.15)',
-  primaryGlow: 'rgba(129, 140, 248, 0.25)',
+  // ── Primary Accent (Indigo) ───────────────────────────────
+  primary:       '#6366F1',   // Primary interactive accent.
+  primaryHover:  '#4F46E5',   // Darkened on hover for depth.
+  primaryMuted:  'rgba(99, 102, 241, 0.10)',  // Tinted backgrounds (active nav).
+  primaryGlow:   'rgba(99, 102, 241, 0.15)',  // Subtle elevation shadow.
 
-  // Text
-  textPrimary: '#e8ecf4',
-  textSecondary: '#8b95a8',
-  textMuted: '#525c6f',
+  // ── Text ──────────────────────────────────────────────────
+  textPrimary:   '#111111',   // Near-black. Max contrast without optical vibration.
+  textSecondary: '#666666',   // Dark grey. Metadata, timestamps, descriptions.
+  textMuted:     '#A3A3A3',   // Light grey. Placeholders, disabled states.
 
-  // Semantic
-  success: '#34d399',
-  successBg: 'rgba(52, 211, 153, 0.12)',
-  error: '#f87171',
-  errorBg: 'rgba(248, 113, 113, 0.12)',
-  warning: '#fbbf24',
-  warningBg: 'rgba(251, 191, 36, 0.12)',
-  info: '#60a5fa',
-  infoBg: 'rgba(96, 165, 250, 0.12)',
+  // ── Semantic Status ───────────────────────────────────────
+  success:     '#059669',     // Deep emerald text.
+  successBg:   '#ECFDF5',     // Pale mint background.
+  error:       '#DC2626',     // Red text.
+  errorBg:     '#FEF2F2',     // Pale rose background.
+  warning:     '#D97706',     // Amber text.
+  warningBg:   '#FFFBEB',     // Pale gold background.
+  info:        '#2563EB',     // Blue text.
+  infoBg:      '#EFF6FF',     // Pale blue background.
 
-  // Misc
-  separator: 'rgba(255, 255, 255, 0.06)',
-  overlay: 'rgba(4, 6, 10, 0.75)',
-  white: '#ffffff',
-  black: '#000000',
+  // ── Miscellaneous ─────────────────────────────────────────
+  separator:   'rgba(0, 0, 0, 0.06)',  // Extremely subtle dividers.
+  overlay:     'rgba(0, 0, 0, 0.40)',  // Modal backdrop.
+  white:       '#FFFFFF',
+  black:       '#000000',
 } as const;
 
 /* ─── Typography ────────────────────────────────────────────── */
 
 export const font = {
-  family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  mono: "'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace",
+  family:
+    "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  mono:
+    "'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace",
   size: {
-    xs: 11,
-    sm: 12,
-    md: 13,
+    xs:   11,
+    sm:   12,
+    md:   13,
     base: 14,
-    lg: 16,
-    xl: 18,
+    lg:   16,
+    xl:   18,
     '2xl': 22,
     '3xl': 28,
   },
   weight: {
-    normal: 400 as const,
-    medium: 500 as const,
-    semibold: 600 as const,
-    bold: 700 as const,
+    normal:   400 as const,  // Body copy, table cells.
+    medium:   500 as const,  // Metadata, labels.
+    semibold: 600 as const,  // Primary data points, headers.
+    bold:     700 as const,  // App title, hero numbers.
   },
 } as const;
 
 /* ─── Shadows & Effects ─────────────────────────────────────── */
 
 export const shadows = {
-  glass: '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04)',
-  glassSubtle: '0 4px 16px rgba(0, 0, 0, 0.3)',
-  glow: `0 0 20px ${colors.primaryGlow}`,
-  card: '0 4px 24px rgba(0, 0, 0, 0.35)',
-  cardHover: '0 8px 40px rgba(0, 0, 0, 0.5)',
-  toast: '0 8px 32px rgba(0, 0, 0, 0.5)',
+  glass:
+    '0 12px 32px rgba(0, 0, 0, 0.04), ' +
+    'inset 0 4px 20px rgba(255, 255, 255, 0.7), ' +
+    'inset 0 -1px 2px rgba(0, 0, 0, 0.02)',
+  glassSubtle:
+    '0 4px 24px rgba(0, 0, 0, 0.03)',
+  glow:
+    `0 2px 12px ${colors.primaryGlow}`,
+  card:
+    '0 4px 24px rgba(0, 0, 0, 0.03)',
+  cardHover:
+    '0 12px 40px rgba(0, 0, 0, 0.06)',
+  toast:
+    '0 8px 32px rgba(0, 0, 0, 0.08)',
 } as const;
 
 export const blur = {
-  glass: 'blur(24px) saturate(180%)',
-  glassLight: 'blur(16px) saturate(150%)',
-  glassHeavy: 'blur(40px) saturate(200%)',
+  glass:      'blur(20px) saturate(150%)',
+  glassLight: 'blur(16px) saturate(130%)',
+  glassHeavy: 'blur(40px) saturate(150%)',
 } as const;
 
 /* ─── Spacing & Radii ───────────────────────────────────────── */
 
 export const radius = {
-  sm: 6,
-  md: 10,
-  lg: 14,
-  xl: 16,
-  '2xl': 20,
-  full: 9999,
+  sm:   8,       // Badges, small pills.
+  md:   12,      // Inputs, buttons.
+  lg:   16,      // Inner nested panels.
+  xl:   20,      // Standard glass panels, cards.
+  '2xl': 24,     // Sidebar, modal, primary containers.
+  full: 9999,    // Fully pill-shaped toggles.
 } as const;
 
 export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  '2xl': 24,
-  '3xl': 32,
-  '4xl': 40,
+  xs:   4,
+  sm:   8,
+  md:   12,
+  lg:   16,
+  xl:   24,      // Standard component padding.
+  '2xl': 32,     // Macro-spacing between settings sections.
+  '3xl': 40,     // Major layout gaps.
+  '4xl': 48,     // Extreme separation (page-level).
 } as const;
 
 /* ─── Transition ────────────────────────────────────────────── */
@@ -122,78 +131,90 @@ export const transition = {
 
 /* ─── Reusable Style Objects (CSSProperties) ────────────────── */
 
-/** Standard glass panel — for cards, sections, modals */
-export const glassPanel: CSSProperties = {
+export const liquidGlassPanel: CSSProperties = {
+  position: 'relative',
   background: colors.glassBg,
-  backdropFilter: blur.glass,
-  WebkitBackdropFilter: blur.glass,
+  backdropFilter: `url(#liquid-glass-refraction) ${blur.glass}`,
+  WebkitBackdropFilter: `url(#liquid-glass-refraction) ${blur.glass}`,
   border: `1px solid ${colors.glassBorder}`,
-  borderRadius: radius.xl,
+  borderRadius: radius['2xl'],   // 24px
   boxShadow: shadows.glass,
+  overflow: 'hidden',
 };
 
-/** Lighter glass — for nested elements inside glass panels */
+export const liquidGlassCard: CSSProperties = {
+  position: 'relative',
+  background: colors.glassHighlight,
+  backdropFilter: blur.glassLight,
+  WebkitBackdropFilter: blur.glassLight,
+  border: `1px solid rgba(0, 0, 0, 0.05)`,
+  borderRadius: radius.xl,        // 20px
+  boxShadow: shadows.card,
+  overflow: 'hidden',
+  transition: transition.base,
+};
+
+export const recessedInput: CSSProperties = {
+  background: 'rgba(0, 0, 0, 0.03)',
+  border: '1px solid transparent',
+  borderRadius: radius.md,          // 12px
+  color: colors.textPrimary,
+  fontFamily: font.family,
+  fontSize: font.size.base,
+  padding: '12px 16px',
+  outline: 'none',
+  transition: transition.base,
+  boxSizing: 'border-box' as const,
+  boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.04)',
+};
+
+// Aliases for backward compatibility
+export const glassPanel: CSSProperties = liquidGlassPanel;
+export const glassInput: CSSProperties = recessedInput;
+
 export const glassInner: CSSProperties = {
   background: colors.glassHighlight,
   border: `1px solid ${colors.glassBorder}`,
   borderRadius: radius.lg,
 };
 
-/** Glass input field */
-export const glassInput: CSSProperties = {
-  background: 'rgba(255, 255, 255, 0.04)',
-  border: `1px solid ${colors.glassBorder}`,
-  borderRadius: radius.md,
-  color: colors.textPrimary,
-  fontFamily: font.family,
-  fontSize: font.size.base,
-  padding: '10px 14px',
-  outline: 'none',
-  transition: transition.base,
-  boxSizing: 'border-box' as const,
-};
-
-/** Glass textarea */
 export const glassTextarea: CSSProperties = {
-  ...glassInput,
+  ...recessedInput,
   fontFamily: font.mono,
   fontSize: font.size.sm,
   resize: 'vertical' as const,
 };
 
-/** Glass select */
 export const glassSelect: CSSProperties = {
-  ...glassInput,
+  ...recessedInput,
   cursor: 'pointer',
   appearance: 'none' as const,
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b95a8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
   backgroundRepeat: 'no-repeat',
   backgroundPosition: 'right 12px center',
   paddingRight: 36,
 };
 
-/** Primary button (indigo) */
 export const btnPrimary: CSSProperties = {
-  background: `linear-gradient(135deg, ${colors.primary}, ${colors.primaryHover})`,
+  background: colors.primary,
   color: colors.white,
   border: 'none',
   borderRadius: radius.md,
-  padding: '10px 20px',
+  padding: '12px 24px',
   fontSize: font.size.base,
   fontWeight: font.weight.semibold,
   fontFamily: font.family,
   cursor: 'pointer',
   transition: transition.base,
-  boxShadow: `0 2px 12px ${colors.primaryGlow}`,
+  boxShadow: `0 2px 8px ${colors.primaryGlow}`,
 };
 
-/** Secondary / ghost button */
 export const btnSecondary: CSSProperties = {
-  background: colors.glassHighlight,
+  background: colors.bgElevated,
   color: colors.textPrimary,
-  border: `1px solid ${colors.glassBorder}`,
+  border: `1px solid rgba(0, 0, 0, 0.10)`,
   borderRadius: radius.md,
-  padding: '10px 20px',
+  padding: '12px 24px',
   fontSize: font.size.base,
   fontWeight: font.weight.medium,
   fontFamily: font.family,
@@ -201,28 +222,19 @@ export const btnSecondary: CSSProperties = {
   transition: transition.base,
 };
 
-/** Danger button */
 export const btnDanger: CSSProperties = {
-  background: colors.errorBg,
+  ...btnSecondary,
   color: colors.error,
-  border: `1px solid rgba(248, 113, 113, 0.2)`,
-  borderRadius: radius.md,
-  padding: '10px 20px',
-  fontSize: font.size.base,
-  fontWeight: font.weight.semibold,
-  fontFamily: font.family,
-  cursor: 'pointer',
-  transition: transition.base,
+  border: `1px solid rgba(220, 38, 38, 0.2)`,
+  background: colors.errorBg,
 };
 
-/** Small action button */
 export const btnSmall: CSSProperties = {
   padding: '6px 14px',
   fontSize: font.size.sm,
   borderRadius: radius.sm,
 };
 
-/** Inline danger text (remove links) */
 export const dangerText: CSSProperties = {
   color: colors.error,
   fontSize: font.size.sm,
@@ -236,22 +248,19 @@ export const dangerText: CSSProperties = {
   borderRadius: radius.sm,
 };
 
-/** Glass table wrapper */
 export const glassTable: CSSProperties = {
-  ...glassPanel,
+  ...liquidGlassPanel,
   overflow: 'hidden',
   padding: 0,
 };
 
-/** Table header row */
 export const tableHeader: CSSProperties = {
-  background: 'rgba(255, 255, 255, 0.04)',
+  background: '#F5F5F5',
   position: 'sticky' as const,
   top: 0,
   zIndex: 1,
 };
 
-/** Table header cell */
 export const tableHeaderCell: CSSProperties = {
   padding: '12px 16px',
   textAlign: 'left' as const,
@@ -263,18 +272,16 @@ export const tableHeaderCell: CSSProperties = {
   borderBottom: `1px solid ${colors.separator}`,
 };
 
-/** Table body cell */
 export const tableCell: CSSProperties = {
-  padding: '12px 16px',
+  padding: '14px 16px',
   fontSize: font.size.base,
   color: colors.textPrimary,
   borderBottom: `1px solid ${colors.separator}`,
+  minHeight: 48,
 };
 
-/** Table row hover effect — apply with onMouseEnter/Leave */
-export const tableRowHoverBg = 'rgba(255, 255, 255, 0.02)';
+export const tableRowHoverBg = 'rgba(0, 0, 0, 0.02)';
 
-/** Status badge base */
 export const badge = (bg: string, fg: string): CSSProperties => ({
   display: 'inline-flex',
   alignItems: 'center',
@@ -287,7 +294,6 @@ export const badge = (bg: string, fg: string): CSSProperties => ({
   color: fg,
 });
 
-/** Section heading inside settings/pages */
 export const sectionTitle: CSSProperties = {
   fontSize: font.size.lg,
   fontWeight: font.weight.semibold,
@@ -296,7 +302,6 @@ export const sectionTitle: CSSProperties = {
   marginBottom: spacing.sm,
 };
 
-/** Section description text */
 export const sectionDesc: CSSProperties = {
   fontSize: font.size.base,
   color: colors.textSecondary,
@@ -304,35 +309,33 @@ export const sectionDesc: CSSProperties = {
   lineHeight: 1.6,
 };
 
-/** Modal overlay */
 export const modalOverlay: CSSProperties = {
   position: 'fixed',
   inset: 0,
   background: colors.overlay,
-  backdropFilter: 'blur(8px)',
-  WebkitBackdropFilter: 'blur(8px)',
+  backdropFilter: 'blur(12px)',
+  WebkitBackdropFilter: 'blur(12px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   zIndex: 1000,
 };
 
-/** Modal content */
 export const modalContent: CSSProperties = {
-  ...glassPanel,
-  padding: spacing['3xl'],
-  maxWidth: 440,
+  ...liquidGlassPanel,
+  background: colors.bgElevated,
+  padding: spacing['2xl'],
+  maxWidth: 480,
   width: '90%',
-  boxShadow: '0 24px 64px rgba(0, 0, 0, 0.6)',
+  boxShadow: '0 24px 64px rgba(0, 0, 0, 0.12)',
 };
 
-/** Toast notification */
 export const toast: CSSProperties = {
   position: 'fixed',
   bottom: 24,
   left: '50%',
   transform: 'translateX(-50%)',
-  ...glassPanel,
+  ...liquidGlassPanel,
   padding: '14px 28px',
   fontSize: font.size.base,
   color: colors.textPrimary,
@@ -340,5 +343,4 @@ export const toast: CSSProperties = {
   boxShadow: shadows.toast,
 };
 
-/** Sidebar width constant */
-export const SIDEBAR_WIDTH = 220;
+export const SIDEBAR_WIDTH = 240;

@@ -14,7 +14,8 @@
         "scripting",
         "storage",
         "cookies",
-        "webRequest"
+        "webRequest",
+        "alarms"
     ],
     "host_permissions": [
         "http://localhost:37421/*",

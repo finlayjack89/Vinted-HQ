@@ -8,7 +8,7 @@ import {
   colors,
   font,
   glassPanel,
-  glassInput,
+  recessedInput,
   glassSelect,
   btnSecondary,
   btnSmall,
@@ -30,7 +30,7 @@ const levelColors: Record<string, { bg: string; fg: string }> = {
   ERROR: { bg: colors.errorBg, fg: colors.error },
   WARN: { bg: colors.warningBg, fg: colors.warning },
   INFO: { bg: colors.infoBg, fg: colors.info },
-  DEBUG: { bg: 'rgba(255, 255, 255, 0.06)', fg: colors.textMuted },
+  DEBUG: { bg: '#F5F5F5', fg: colors.textSecondary },
 };
 
 export default function Logs() {
@@ -100,7 +100,7 @@ export default function Logs() {
           placeholder="Filter by event"
           value={eventFilter}
           onChange={(e) => setEventFilter(e.target.value)}
-          style={{ ...glassInput, width: 200 }}
+          style={{ ...recessedInput, width: 200 }}
         />
         <button
           type="button"
@@ -148,7 +148,7 @@ export default function Logs() {
                       e.currentTarget.style.background = 'transparent';
                     }}
                   >
-                    <td style={{ ...tableCell, whiteSpace: 'nowrap', color: colors.textMuted, fontVariantNumeric: 'tabular-nums' }}>
+                    <td style={{ ...tableCell, whiteSpace: 'nowrap', color: colors.textSecondary, fontVariantNumeric: 'tabular-nums' }}>
                       {formatTime(log.created_at)}
                     </td>
                     <td style={tableCell}>

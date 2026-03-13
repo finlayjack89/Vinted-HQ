@@ -36,7 +36,13 @@ from vinted_client import (
     hide_listing as vinted_hide_listing,
     relist_item as vinted_relist_item,
     fetch_sold_items as vinted_fetch_sold_items,
+    fetch_bought_items as vinted_fetch_bought_items,
+    fetch_conversation_detail as vinted_fetch_conversation_detail,
     orchestrate_relist as vinted_orchestrate_relist,
+    fetch_notifications as vinted_fetch_notifications,
+    send_message as vinted_send_message,
+    send_offer as vinted_send_offer,
+    initiate_conversation as vinted_initiate_conversation,
 )
 from image_mutator import mutate_image
 
@@ -277,7 +283,7 @@ def wardrobe(
 
 @app.get("/sales")
 def sales(
-    user_id: int = Query(..., description="Vinted user ID"),
+    status: str = Query("all", description="Order status filter: all, completed, in_progress, cancelled"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     proxy: Optional[str] = Query(None),
@@ -287,18 +293,78 @@ def sales(
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
     x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
-    """Fetch user's sold items."""
+    """Fetch user's sold orders."""
     if not x_vinted_cookie:
         return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
     try:
         data = vinted_fetch_sold_items(
             cookie=x_vinted_cookie,
-            user_id=user_id,
+            status=status,
             csrf_token=x_csrf_token,
             anon_id=x_anon_id,
             proxy=proxy,
             page=page,
             per_page=per_page,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/purchases-api")
+def get_purchases_api(
+    status: str = Query("all"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Fetch user's bought orders."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_bought_items(
+            cookie=x_vinted_cookie,
+            status=status,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            page=page,
+            per_page=per_page,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/conversation/{conversation_id}")
+def conversation_detail(
+    conversation_id: int,
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Fetch conversation detail (buyer info, transaction, item_id)."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_conversation_detail(
+            cookie=x_vinted_cookie,
+            conversation_id=conversation_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
             transport_mode=transport_mode,
             user_agent=x_vinted_user_agent,
         )
@@ -642,6 +708,7 @@ async def upload_photo(
 async def upload_photo_raw(
     file: UploadFile = File(..., description="Image file to upload (no mutation)"),
     temp_uuid: Optional[str] = Form(None, description="Photo temp UUID"),
+    strip_exif: Optional[str] = Query(None, description="Strip EXIF/metadata before upload"),
     proxy: Optional[str] = Query(None),
     transport_mode: Optional[str] = Query(None),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
@@ -649,12 +716,26 @@ async def upload_photo_raw(
     x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
     x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
-    """Upload image to Vinted without any mutation. Returns photo metadata."""
+    """Upload image to Vinted without any mutation. Returns photo metadata.
+    If strip_exif=true, strips all EXIF/ICC/JFIF metadata via Pillow before uploading.
+    """
     if not x_vinted_cookie:
         return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
 
     try:
         raw_bytes = await file.read()
+
+        # Optionally strip all metadata (EXIF, ICC profile, JFIF comments)
+        if strip_exif and strip_exif.lower() in ("true", "1", "yes"):
+            from PIL import Image as PILImage
+            img = PILImage.open(io.BytesIO(raw_bytes))
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            img.info.clear()
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=95)
+            raw_bytes = buf.getvalue()
+
         data = vinted_upload_photo(
             cookie=x_vinted_cookie,
             image_bytes=raw_bytes,
@@ -941,11 +1022,116 @@ async def relist_v2(
         return _error_response("RELIST_ERROR", f"Relist V2 failed: {e}", 500)
 
 
-# ─── Dual Brain / Ingest Endpoints ──────────────────────────────────────────
+# ─── Session Ingest (Extension → Bridge → Electron DB) ──────────────────────
 
 import sqlite3
 import os
 import json
+import time
+
+
+@app.post("/ingest/session")
+def ingest_session(body: dict = Body(...)):
+    """
+    Receive the active Vinted session harvested by the Chrome Extension.
+    Validates cookies, formats the cookie header, and persists to SQLite
+    so the Electron app can pick it up and re-encrypt via safeStorage.
+
+    Expected payload:
+    {
+        "cookies": { "_vinted_fr_session": "...", "access_token_web": "...", ... },
+        "cookie_header": "name=val; name=val; ...",
+        "csrf_token": "...",
+        "user_agent": "...",
+        "anon_id": "...",
+        "timestamp": 1234567890,
+        "source": "chrome_extension"
+    }
+    """
+    cookies = body.get("cookies", {})
+    cookie_header = body.get("cookie_header", "")
+    csrf_token = body.get("csrf_token")
+    user_agent = body.get("user_agent")
+    anon_id = body.get("anon_id")
+
+    # ── Validation ──
+    if not cookies.get("access_token_web"):
+        return _error_response(
+            "MISSING_ACCESS_TOKEN",
+            "access_token_web cookie is required — user may not be logged in.",
+            400,
+        )
+
+    # datadome is important but not strictly required (it rotates frequently)
+    if not cookies.get("datadome"):
+        print("[ingest/session] ⚠️ datadome cookie missing — session may have reduced trust score.")
+
+    # Build cookie header from individual cookies if the pre-built header is empty
+    if not cookie_header:
+        cookie_header = "; ".join(
+            f"{k}={v}" for k, v in sorted(cookies.items())
+        )
+
+    if not cookie_header:
+        return _error_response("EMPTY_SESSION", "No cookies provided.", 400)
+
+    # ── Persist to SQLite ──
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if not db_path:
+        return _error_response("NO_DB", "VINTED_DB_PATH env var not set", 500)
+
+    try:
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            cursor = conn.cursor()
+            now = int(time.time())
+
+            # Store plaintext cookie header (Electron will re-encrypt with safeStorage)
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                ("vinted_cookie_plain", cookie_header, now),
+            )
+
+            # Store CSRF token
+            if csrf_token:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    ("csrf_token", csrf_token, now),
+                )
+
+            # Store User-Agent
+            if user_agent:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    ("user_agent", user_agent, now),
+                )
+
+            # Store anon_id
+            if anon_id:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    ("anon_id", anon_id, now),
+                )
+
+            # Metadata: source and sync timestamp (Electron polls session_synced_at)
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                ("session_source", body.get("source", "extension"), now),
+            )
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                ("session_synced_at", str(now), now),
+            )
+
+            conn.commit()
+
+        cookie_count = len(cookies)
+        print(f"[ingest/session] ✅ Session ingested: {cookie_count} cookies, CSRF={'yes' if csrf_token else 'no'}, UA={'yes' if user_agent else 'no'}")
+        return {"ok": True, "message": f"Session ingested successfully ({cookie_count} cookies)."}
+    except Exception as e:
+        return _error_response("INGEST_ERROR", str(e), 500)
+
+
+# ─── Dual Brain / Ingest Endpoints ──────────────────────────────────────────
 
 @app.post("/ingest/wardrobe")
 def ingest_wardrobe(body: dict = Body(...)):
@@ -1292,6 +1478,7 @@ async def ingest_single_item(request: Request):
                     size_id = COALESCE(?, size_id),
                     size_label = COALESCE(?, size_label),
                     category_id = COALESCE(?, category_id),
+                    status_id = COALESCE(?, status_id),
                     condition = COALESCE(?, condition),
                     color_ids = COALESCE(?, color_ids),
                     package_size_id = COALESCE(?, package_size_id),
@@ -1301,6 +1488,8 @@ async def ingest_single_item(request: Request):
                     item_attributes = COALESCE(?, item_attributes),
                     collection_id = COALESCE(?, collection_id),
                     model_id = COALESCE(?, model_id),
+                    detail_hydrated_at = unixepoch(),
+                    detail_source = 'extension',
                     updated_at = unixepoch()
                 WHERE id = ?
             ''', (
@@ -1308,6 +1497,7 @@ async def ingest_single_item(request: Request):
                 brand_id, brand_name,
                 size_id, size_label,
                 category_id,
+                status_id,
                 condition,
                 color_ids_json,
                 package_size_id,
@@ -1359,6 +1549,138 @@ def get_local_item(item_id: int):
             return {"ok": True, "data": dict(row)}
     except Exception as e:
         return _error_response("DB_ERROR", str(e), 500)
+
+
+# ─── CRM: Auto-Message & Offer Suite ────────────────────────────────────────
+
+
+@app.get("/notifications")
+def get_notifications(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Fetch notification feed. Like notifications have entry_type=20."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_notifications(
+            cookie=x_vinted_cookie,
+            page=page,
+            per_page=per_page,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.post("/conversations/{conversation_id}/reply")
+def reply_to_conversation(
+    conversation_id: int,
+    body: dict = Body(...),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Send a message in a conversation."""
+    text = body.get("body", "")
+    if not text:
+        return _error_response("INVALID_BODY", "body is required", 400)
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_send_message(
+            cookie=x_vinted_cookie,
+            conversation_id=conversation_id,
+            text=text,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.post("/transactions/{transaction_id}/offer")
+def create_offer(
+    transaction_id: int,
+    body: dict = Body(...),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Create a price offer on a transaction."""
+    price = body.get("price")
+    currency = body.get("currency", "GBP")
+    if not price:
+        return _error_response("INVALID_BODY", "price is required", 400)
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_send_offer(
+            cookie=x_vinted_cookie,
+            transaction_id=transaction_id,
+            price=str(price),
+            currency=currency,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/transactions/init")
+def init_transaction(
+    item_id: int = Query(..., description="Vinted item ID"),
+    receiver_id: int = Query(..., description="Buyer/receiver user ID"),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Discover/create transaction + conversation context for item + buyer."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_initiate_conversation(
+            cookie=x_vinted_cookie,
+            item_id=item_id,
+            receiver_id=receiver_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=37421, log_level="info")
