@@ -364,7 +364,7 @@ export default function Wardrobe() {
           <div
             style={{ ...modalContent, maxWidth: 420, textAlign: 'center', background: colors.bgElevated, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
             onClick={(e) => e.stopPropagation()}
-            className="animate-fadeInScale"
+
           >
             <div style={{ fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }} className="animate-pulse">
               {actionBusy.kind === 'push' ? 'Pushing to Vinted…' : 'Pulling from Vinted…'}
@@ -696,7 +696,7 @@ export default function Wardrobe() {
       {
         ontologyAlert && (
           <div style={modalOverlay} onClick={() => setOntologyAlert(null)}>
-            <div style={{ ...modalContent, maxWidth: 520 }} onClick={(e) => e.stopPropagation()} className="animate-fadeInScale">
+            <div style={{ ...modalContent, maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: spacing.lg }}>
                 <div style={{
                   width: 40, height: 40, borderRadius: radius.md,
@@ -2295,7 +2295,7 @@ function EditItemModal({
       <div
         style={{ ...modalContent, maxWidth: 640, maxHeight: '90vh', overflow: 'auto', padding: spacing['2xl'], position: 'relative' }}
         onClick={(e) => e.stopPropagation()}
-        className="animate-fadeInScale"
+
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 24px' }}>
           <h3 style={{ margin: 0, fontSize: font.size.xl, fontWeight: font.weight.semibold, color: colors.textPrimary }}>

@@ -176,8 +176,8 @@ export const liquidGlassPanel: CSSProperties = {
 export const liquidGlassCard: CSSProperties = {
   position: 'relative',
   background: colors.glassHighlight,
-  backdropFilter: blur.glassLight,
-  WebkitBackdropFilter: blur.glassLight,
+  backdropFilter: `url(#liquid-glass-refraction) ${blur.glassLight}`,
+  WebkitBackdropFilter: `url(#liquid-glass-refraction) ${blur.glassLight}`,
   border: `1px solid rgba(0, 0, 0, 0.05)`,
   borderRadius: radius.xl,        // 20px
   boxShadow: shadows.card,
@@ -350,6 +350,8 @@ export const modalOverlay: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   zIndex: 1000,
+  transform: 'translate3d(0, 0, 0)',
+  willChange: 'transform',
 };
 
 export const modalContent: CSSProperties = {

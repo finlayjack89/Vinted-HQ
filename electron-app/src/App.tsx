@@ -201,38 +201,6 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: font.family }}>
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}
-        aria-hidden="true"
-      >
-        <defs>
-          <filter id="liquid-glass-refraction" x="-20%" y="-20%" width="140%" height="140%">
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.015"
-              numOctaves="3"
-              seed="42"
-              stitchTiles="stitch"
-              result="noise"
-            />
-            <feDisplacementMap
-              in="SourceGraphic"
-              in2="noise"
-              scale="6"
-              xChannelSelector="R"
-              yChannelSelector="G"
-              result="displaced"
-            />
-            <feGaussianBlur
-              in="displaced"
-              stdDeviation="0.5"
-              result="blurred"
-            />
-            <feBlend in="blurred" in2="SourceGraphic" mode="normal" />
-          </filter>
-        </defs>
-      </svg>
       {/* ─── Sidebar ──────────────────────────────────────── */}
       <motion.aside
         className="liquid-glass-panel"

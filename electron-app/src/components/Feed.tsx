@@ -3,7 +3,7 @@
  * Revolut-inspired glass card design
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   colors,
@@ -222,18 +222,21 @@ function FeedItemCard({
   onToggle,
   onBuy,
   isBuying,
+  isDegraded = false,
 }: {
   item: FeedItem;
   expanded: boolean;
   onToggle: () => void;
   onBuy: (item: FeedItem) => void;
   isBuying: boolean;
+  isDegraded?: boolean;
 }) {
   const { ref, onMouseMove, onMouseLeave } = useMousePosition<HTMLDivElement>();
 
   return (
     <motion.div
       ref={ref}
+      className="liquid-glass-card"
       onClick={onToggle}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
@@ -250,6 +253,12 @@ function FeedItemCard({
         display: 'flex',
         flexDirection: 'column',
         background: liquidGlassCard.background,
+        backdropFilter: isDegraded
+          ? 'blur(16px) saturate(130%)'
+          : liquidGlassCard.backdropFilter,
+        WebkitBackdropFilter: isDegraded
+          ? 'blur(16px) saturate(130%)'
+          : liquidGlassCard.WebkitBackdropFilter,
       }}
     >
       {/* Image */}

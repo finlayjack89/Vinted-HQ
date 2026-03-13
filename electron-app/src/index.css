@@ -74,6 +74,61 @@ html, body, #root {
   pointer-events: none;
 }
 
+/* ─── Liquid Glass Card — Volumetric Lighting ──────────────── */
+
+.liquid-glass-card {
+  position: relative;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, backdrop-filter;
+}
+
+/* Diffuse surface shine — soft radial glow following cursor */
+.liquid-glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(255, 255, 255, 0.25) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Show the diffuse shine only when mouse variables are injected */
+.liquid-glass-card[style*="--mouse-x"]::before {
+  opacity: 1;
+}
+
+/* Sharp edge highlight — masked to padding-box for glass bevel */
+.liquid-glass-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(255, 255, 255, 0.5) 0%,
+    transparent 40%
+  );
+  -webkit-mask-image: linear-gradient(transparent 60%, black 100%);
+  mask-image: linear-gradient(transparent 60%, black 100%);
+  -webkit-mask-clip: padding-box;
+  mask-clip: padding-box;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.liquid-glass-card[style*="--mouse-x"]::after {
+  opacity: 1;
+}
+
 /* ─── Selection ─────────────────────────────────────────────── */
 
 ::selection {
@@ -191,26 +246,11 @@ input[type="radio"]:focus {
   border-color: rgba(99, 102, 241, 0.5) !important;
 }
 
-/* ─── Animations ────────────────────────────────────────────── */
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeInScale {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
-}
+/* ─── Animations (retained) ─────────────────────────────────── */
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateX(-50%) translateY(16px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 @keyframes shimmer {
@@ -218,21 +258,8 @@ input[type="radio"]:focus {
   100% { background-position: 200% 0; }
 }
 
-/* Utility animation classes */
-.animate-fadeIn {
-  animation: fadeIn 0.3s ease forwards;
-}
-
-.animate-fadeInScale {
-  animation: fadeInScale 0.25s ease forwards;
-}
-
 .animate-pulse {
   animation: pulse 2s ease-in-out infinite;
-}
-
-.animate-slideUp {
-  animation: slideUp 0.3s ease forwards;
 }
 
 /* ─── Code/mono styling ─────────────────────────────────────── */
