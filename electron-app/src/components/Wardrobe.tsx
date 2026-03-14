@@ -769,14 +769,14 @@ function ItemTable({
 }) {
   if (items.length === 0) {
     return (
-      <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
+      <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
         {emptyMessage}
       </div>
     );
   }
 
   return (
-    <div className="liquid-glass-panel" style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
+    <div style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -1047,7 +1047,7 @@ function DiscrepancyView({
 }) {
   if (items.length === 0) {
     return (
-      <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
+      <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
         No discrepancies. Local vault is in sync with Vinted.
       </div>
     );
@@ -1161,11 +1161,11 @@ function WaitingRoom({
 
       {/* Queue Table */}
       {queue.length === 0 ? (
-        <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
+        <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
           No items queued for relisting. Select items from the Live tab and click "Relist".
         </div>
       ) : (
-        <div className="liquid-glass-panel" style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
+        <div style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
@@ -2377,7 +2377,7 @@ function EditItemModal({
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
             background: 'rgba(17, 17, 17, 0.85)',
-            backdropFilter: 'blur(4px)',
+
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             zIndex: 100, borderRadius: 12,
           }}>
@@ -2399,7 +2399,7 @@ function EditItemModal({
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
             background: 'rgba(17, 17, 17, 0.85)',
-            backdropFilter: 'blur(4px)',
+
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             zIndex: 100, borderRadius: 12,
           }}>

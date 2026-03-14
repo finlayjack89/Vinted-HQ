@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import {
   colors,
   font,
-  liquidGlassCard,
+  frostedCard,
   btnPrimary,
   btnSmall,
   radius,
@@ -20,7 +20,6 @@ import {
   staggerFast,
 } from '../theme';
 import GlassSkeleton from './GlassSkeleton';
-import { useTrackCard } from '../hooks/useCardTracker';
 import type { FeedItem } from '../types/global';
 
 export default function Feed() {
@@ -86,7 +85,7 @@ export default function Feed() {
   if (!hasCookie) {
     return (
       <div style={{ padding: spacing['3xl'], display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div style={{ ...liquidGlassCard, padding: spacing['4xl'], textAlign: 'center', maxWidth: 400 }}>
+        <div style={{ ...frostedCard, padding: spacing['4xl'], textAlign: 'center', maxWidth: 400 }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>🔗</div>
           <p style={{ color: colors.textSecondary, fontSize: font.size.base, margin: 0, lineHeight: 1.6 }}>
             Connect your Vinted session in <strong style={{ color: colors.textPrimary }}>Settings</strong> to see the feed.
@@ -99,7 +98,7 @@ export default function Feed() {
   if (searchUrlCount === 0) {
     return (
       <div style={{ padding: spacing['3xl'], display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div style={{ ...liquidGlassCard, padding: spacing['4xl'], textAlign: 'center', maxWidth: 400 }}>
+        <div style={{ ...frostedCard, padding: spacing['4xl'], textAlign: 'center', maxWidth: 400 }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>🔍</div>
           <p style={{ color: colors.textSecondary, fontSize: font.size.base, margin: 0, lineHeight: 1.6 }}>
             Add search URLs in <strong style={{ color: colors.textPrimary }}>Settings</strong> and enable them to start the feed.
@@ -116,7 +115,7 @@ export default function Feed() {
       {/* Status bar */}
       <div
         style={{
-          ...liquidGlassCard,
+          ...frostedCard,
           padding: `${spacing.md}px ${spacing.xl}px`,
           display: 'flex',
           alignItems: 'center',
@@ -229,28 +228,17 @@ function FeedItemCard({
   onBuy: (item: FeedItem) => void;
   isBuying: boolean;
 }) {
-  // Track this card's bounding box for the WebGL refraction layer
-  const trackRef = useTrackCard(`feed-${item.id}`);
-
   return (
     <motion.div
-      ref={trackRef as any}
       onClick={onToggle}
       variants={{
-        hidden: { y: 20, opacity: 0 },
+        hidden: { y: 12, opacity: 0 },
         visible: { y: 0, opacity: 1 },
       }}
       transition={springResponsive}
-      whileHover={{ y: -4, boxShadow: shadows.cardHover }}
       style={{
-        ...liquidGlassCard,
-        overflow: 'hidden',
+        ...frostedCard,
         cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'transparent',
-        backdropFilter: 'none',
-        WebkitBackdropFilter: 'none',
       }}
     >
       {/* Image */}
@@ -268,7 +256,6 @@ function FeedItemCard({
           <img
             src={item.photo_url}
             alt={item.title}
-            crossOrigin="anonymous"
             style={{
               width: '100%',
               height: '100%',

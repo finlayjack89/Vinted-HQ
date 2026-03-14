@@ -13,7 +13,6 @@ import PurchasesSuite from './components/PurchasesSuite';
 import SalesSuite from './components/SalesSuite';
 import AutoMessage from './components/AutoMessage';
 import ProxyStatus from './components/ProxyStatus';
-import GlassCanvas from './components/GlassCanvas';
 import {
   colors,
   font,
@@ -32,8 +31,6 @@ import {
   springGentle,
   springResponsive,
 } from './theme';
-import { useMousePosition } from './hooks/useMousePosition';
-import { CardTrackerProvider, useTrackCard } from './hooks/useCardTracker';
 import type { SniperCountdownParams } from './types/global';
 
 type Tab = 'feed' | 'wardrobe' | 'sales' | 'automessage' | 'proxies' | 'settings' | 'logs' | 'purchases';
@@ -201,32 +198,14 @@ export default function App() {
     }
   };
 
-  const { ref: rootRef, onMouseMove: rootMouseMove, onMouseLeave: rootMouseLeave } = useMousePosition<HTMLDivElement>();
 
-  // Track sidebar for WebGL glass refraction
-  const sidebarTrackRef = useTrackCard('sidebar');
-  // Merge motion ref with tracker ref for sidebar
-  const sidebarRef = useCallback((node: HTMLElement | null) => {
-    sidebarTrackRef(node);
-  }, [sidebarTrackRef]);
-
-  // Track modals for WebGL glass refraction
-  const sniperModalTrackRef = useTrackCard('modal-sniper');
-  const sessionModalTrackRef = useTrackCard('modal-session');
 
   return (
-    <CardTrackerProvider>
     <div
-      ref={rootRef}
-      onMouseMove={rootMouseMove}
-      onMouseLeave={rootMouseLeave}
       style={{ display: 'flex', height: '100vh', fontFamily: font.family }}
     >
-      {/* ─── Unified WebGL Glass Refraction Layer (always-on) ── */}
-      <GlassCanvas />
       {/* ─── Sidebar ──────────────────────────────────────── */}
       <motion.aside
-        ref={sidebarRef as any}
         initial={{ x: -SIDEBAR_WIDTH, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={springSmooth}
@@ -239,7 +218,7 @@ export default function App() {
           top: 0,
           display: 'flex',
           flexDirection: 'column',
-          background: 'transparent',
+          background: 'rgba(255, 255, 255, 0.45)', // Lighter to allow refraction to pop
           borderRight: `1px solid rgba(255, 255, 255, 0.9)`,
           boxShadow: '1px 0 12px rgba(0, 0, 0, 0.03)',
           borderRadius: 0,
@@ -347,25 +326,49 @@ export default function App() {
 
       {/* ─── Main Content ─────────────────────────────────── */}
       <motion.main
-        animate={{
-          filter: countdown ? 'brightness(0.5) blur(8px)' : 'brightness(1) blur(0px)',
-        }}
         transition={springGentle}
         style={{
           flex: 1,
           marginLeft: SIDEBAR_WIDTH,
           height: '100vh',
           overflow: 'auto',
-          background: colors.bgBase,
+          position: 'relative', // Add relative positioning for the full-screen overlay
+          backgroundColor: colors.bgBase,
+          backgroundImage: `
+            radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+            radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 40%),
+            radial-gradient(circle at 50% 50%, rgba(200, 200, 255, 0.08) 0%, transparent 60%)
+          `,
         }}
       >
+        {/* Hardware-safe dimming overlay instead of filter */}
+        <AnimatePresence>
+          {countdown && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: 'fixed',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: SIDEBAR_WIDTH,
+                background: 'rgba(0, 0, 0, 0.65)',
+                zIndex: 900,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+        </AnimatePresence>
+
         <AnimatePresence mode="wait">
           <motion.div
             key={tab}
-            initial={{ opacity: 0, y: 16, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.96 }}
-            transition={springSmooth}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={springResponsive}
             style={{ height: '100%' }}
           >
             {tab === 'feed' && <Feed />}
@@ -392,7 +395,6 @@ export default function App() {
             style={modalOverlay}
           >
             <motion.div
-              ref={sniperModalTrackRef as any}
               key="sniper-modal"
               initial={{ scale: 0.8, y: -40, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
@@ -467,7 +469,7 @@ export default function App() {
       {/* ─── Session Expired Modal ────────────────────────── */}
       {sessionExpired && (
         <div style={{ ...modalOverlay, zIndex: 1002 }}>
-          <div ref={sessionModalTrackRef} style={{ ...modalContent, maxWidth: 480, background: 'transparent' }}>
+          <div style={{ ...modalContent, maxWidth: 480, background: 'transparent' }}>
             <div
               style={{
                 width: 48,
@@ -568,6 +570,5 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
-    </CardTrackerProvider>
   );
 }

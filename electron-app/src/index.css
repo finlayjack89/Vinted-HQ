@@ -28,41 +28,7 @@ html, body, #root {
 ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.20); }
 
-/* ─── Liquid Glass Helper Classes ───────────────────────────── */
 
-.liquid-glass-panel {
-  position: relative;
-  transform: translate3d(0, 0, 0);
-  will-change: transform, backdrop-filter;
-}
-
-/* Diffuse specular shine on panels */
-.liquid-glass-panel::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    rgba(255, 255, 255, 0.15) 0%,
-    transparent 60%
-  );
-  pointer-events: none;
-  z-index: 2;
-  transition: background 0.15s ease;
-}
-
-.liquid-glass-panel::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow:
-    inset 2px 2px 4px rgba(255, 255, 255, 0.95),
-    inset -1px -1px 2px rgba(255, 255, 255, 0.4);
-  pointer-events: none;
-  z-index: 1;
-}
 
 /* ─── Liquid Glass Skeleton Shimmer ─────────────────────────── */
 

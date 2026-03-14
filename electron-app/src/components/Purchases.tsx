@@ -142,7 +142,7 @@ export default function Purchases() {
         </div>
       )}
       {purchases.length === 0 && !loading && (
-        <div className="liquid-glass-panel" style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center' }}>
+        <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>🛒</div>
           <p style={{ color: colors.textMuted, fontSize: font.size.base, margin: 0 }}>
             No purchases yet. Complete a buy from the feed to see it here.

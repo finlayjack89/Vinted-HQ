@@ -78,7 +78,6 @@ export default function Logs() {
     <div style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       {/* Filter bar */}
       <div
-        className="liquid-glass-panel"
         style={{
           ...glassPanel,
           padding: `${spacing.md}px ${spacing.xl}px`,

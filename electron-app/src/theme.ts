@@ -157,30 +157,26 @@ export const springGentle = {
 
 /** Stagger configuration for data grid population */
 export const staggerFast = {
-  staggerChildren: 0.05,
+  staggerChildren: 0.03,
 };
 
 /* ─── Reusable Style Objects (CSSProperties) ────────────────── */
 
-export const liquidGlassPanel: CSSProperties = {
+export const frostedPanel: CSSProperties = {
   position: 'relative',
-  background: colors.glassBg,
-  backdropFilter: `url(#liquid-glass-refraction) ${blur.glass}`,
-  WebkitBackdropFilter: `url(#liquid-glass-refraction) ${blur.glass}`,
-  border: `1px solid ${colors.glassBorder}`,
+  background: 'rgba(255, 255, 255, 0.65)',
+  border: '1px solid rgba(255, 255, 255, 0.9)',
   borderRadius: radius['2xl'],   // 24px
-  boxShadow: shadows.glass,
+  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.04)',
   overflow: 'hidden',
 };
 
-export const liquidGlassCard: CSSProperties = {
+export const frostedCard: CSSProperties = {
   position: 'relative',
-  background: colors.glassHighlight,
-  backdropFilter: `url(#liquid-glass-refraction) ${blur.glassLight}`,
-  WebkitBackdropFilter: `url(#liquid-glass-refraction) ${blur.glassLight}`,
-  border: `1px solid rgba(0, 0, 0, 0.05)`,
+  background: 'rgba(255, 255, 255, 0.8)',
+  border: '1px solid rgba(255, 255, 255, 1)',
   borderRadius: radius.xl,        // 20px
-  boxShadow: shadows.card,
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.03)',
   overflow: 'hidden',
   transition: transition.base,
 };
@@ -200,7 +196,7 @@ export const recessedInput: CSSProperties = {
 };
 
 // Aliases for backward compatibility
-export const glassPanel: CSSProperties = liquidGlassPanel;
+export const glassPanel: CSSProperties = frostedPanel;
 export const glassInput: CSSProperties = recessedInput;
 
 export const glassInner: CSSProperties = {
@@ -280,7 +276,7 @@ export const dangerText: CSSProperties = {
 };
 
 export const glassTable: CSSProperties = {
-  ...liquidGlassPanel,
+  ...frostedPanel,
   overflow: 'hidden',
   padding: 0,
 };
@@ -350,7 +346,7 @@ export const modalOverlay: CSSProperties = {
 };
 
 export const modalContent: CSSProperties = {
-  ...liquidGlassPanel,
+  ...frostedPanel,
   background: colors.bgElevated,
   padding: spacing['2xl'],
   maxWidth: 480,
@@ -363,7 +359,7 @@ export const toast: CSSProperties = {
   bottom: 24,
   left: '50%',
   transform: 'translateX(-50%)',
-  ...liquidGlassPanel,
+  ...frostedPanel,
   padding: '14px 28px',
   fontSize: font.size.base,
   color: colors.textPrimary,
