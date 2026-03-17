@@ -3,8 +3,8 @@
  * Revolut-inspired sidebar layout with liquid glass UI
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+
 import Feed from './components/Feed';
 import Wardrobe from './components/Wardrobe';
 import Settings from './components/Settings';
@@ -24,12 +24,10 @@ import {
   modalContent,
   toast as toastStyle,
   SIDEBAR_WIDTH,
+  shadows,
   radius,
   spacing,
   transition,
-  springSmooth,
-  springGentle,
-  springResponsive,
 } from './theme';
 import type { SniperCountdownParams } from './types/global';
 
@@ -121,6 +119,28 @@ export default function App() {
   const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [countdownDone, setCountdownDone] = useState<string | null>(null);
 
+  // ── Page transition refs ──
+  const contentRef = useRef<HTMLDivElement>(null);
+  const isTransitioning = useRef(false);
+
+  const handleTabSwitch = useCallback((newTab: Tab) => {
+    if (newTab === tab || isTransitioning.current) return;
+    isTransitioning.current = true;
+
+    // Trigger exit animation on the current page content
+    const el = contentRef.current;
+    if (el) {
+      el.classList.add('page-exit');
+    }
+
+    // Wait for exit animation to finish, then switch tab
+    setTimeout(() => {
+      if (el) el.classList.remove('page-exit');
+      setTab(newTab);
+      isTransitioning.current = false;
+    }, 250);
+  }, [tab]);
+
   useEffect(() => {
     const unsubExpired = window.vinted.onSessionExpired(() => setSessionExpired(true));
     const unsubReconnected = window.vinted.onSessionReconnected(() => {
@@ -191,6 +211,29 @@ export default function App() {
     }
   };
 
+  const [isSyncingExtension, setIsSyncingExtension] = useState(false);
+  const [extensionSyncMsg, setExtensionSyncMsg] = useState('');
+
+  const handleSyncFromExtension = async () => {
+    if (isSyncingExtension) return;
+    setIsSyncingExtension(true);
+    setExtensionSyncMsg('Opening Chrome & waiting for extension (up to 45s)...');
+    try {
+      const result = await window.vinted.syncFromExtension();
+      if (result.ok) {
+        setExtensionSyncMsg('✅ Session synced!');
+        setSessionExpired(false);
+        setReconnectCookie('');
+      } else {
+        setExtensionSyncMsg(result.message || 'Extension sync failed.');
+      }
+    } catch {
+      setExtensionSyncMsg('Extension sync failed.');
+    } finally {
+      setIsSyncingExtension(false);
+    }
+  };
+
   const handleCancelCountdown = () => {
     if (countdown) {
       window.vinted.cancelSniperCountdown(countdown.countdownId);
@@ -204,11 +247,20 @@ export default function App() {
     <div
       style={{ display: 'flex', height: '100vh', fontFamily: font.family }}
     >
-      {/* ─── Sidebar ──────────────────────────────────────── */}
-      <motion.aside
-        initial={{ x: -SIDEBAR_WIDTH, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={springSmooth}
+      {/* ─── Sidebar Underlay (Gradient Strip) ──────────────── */}
+      <div style={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        width: SIDEBAR_WIDTH,
+        height: '100vh',
+        background: `linear-gradient(180deg, ${colors.primaryMuted} 0%, rgba(168,85,247,0.05) 50%, rgba(236,72,153,0.02) 100%)`,
+        zIndex: 99,
+        borderRight: `1px solid ${colors.glassBorder}`,
+      }} />
+
+      {/* ─── Sidebar Content ────────────────────────────────── */}
+      <aside
         style={{
           width: SIDEBAR_WIDTH,
           minWidth: SIDEBAR_WIDTH,
@@ -218,10 +270,7 @@ export default function App() {
           top: 0,
           display: 'flex',
           flexDirection: 'column',
-          background: 'rgba(255, 255, 255, 0.45)', // Lighter to allow refraction to pop
-          borderRight: `1px solid rgba(255, 255, 255, 0.9)`,
-          boxShadow: '1px 0 12px rgba(0, 0, 0, 0.03)',
-          borderRadius: 0,
+          background: 'transparent',
           zIndex: 100,
           padding: `${spacing['2xl']}px 0`,
         }}
@@ -262,17 +311,18 @@ export default function App() {
               <button
                 key={t}
                 type="button"
-                onClick={() => setTab(t)}
+                onClick={() => handleTabSwitch(t)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 12,
                   padding: '11px 16px',
                   borderRadius: radius.md,
-                  border: 'none',
-                  background: active ? colors.primaryMuted : 'transparent',
+                  border: `1px solid ${active ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.2)'}`,
+                  background: active ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)',
+                  boxShadow: active ? shadows.cardHover : 'none',
                   color: active ? colors.primary : colors.textSecondary,
-                  fontWeight: active ? font.weight.semibold : font.weight.medium,
+                  fontWeight: active ? font.weight.bold : font.weight.medium,
                   fontSize: font.size.base,
                   cursor: 'pointer',
                   transition: transition.base,
@@ -322,11 +372,10 @@ export default function App() {
             Session expired
           </div>
         )}
-      </motion.aside>
+      </aside>
 
       {/* ─── Main Content ─────────────────────────────────── */}
-      <motion.main
-        transition={springGentle}
+      <main
         style={{
           flex: 1,
           marginLeft: SIDEBAR_WIDTH,
@@ -342,134 +391,106 @@ export default function App() {
         }}
       >
         {/* Hardware-safe dimming overlay instead of filter */}
-        <AnimatePresence>
-          {countdown && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{
-                position: 'fixed',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: SIDEBAR_WIDTH,
-                background: 'rgba(0, 0, 0, 0.65)',
-                zIndex: 900,
-                pointerEvents: 'none',
-              }}
-            />
-          )}
-        </AnimatePresence>
+        {countdown && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: SIDEBAR_WIDTH,
+              background: 'rgba(0, 0, 0, 0.65)',
+              zIndex: 900,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={tab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            transition={springResponsive}
-            style={{ height: '100%' }}
-          >
-            {tab === 'feed' && <Feed />}
-            {tab === 'wardrobe' && <Wardrobe />}
-            {tab === 'sales' && <SalesSuite />}
-            {tab === 'automessage' && <AutoMessage />}
-            {tab === 'proxies' && <ProxyStatus />}
-            {tab === 'settings' && <Settings />}
-            {tab === 'logs' && <Logs />}
-            {tab === 'purchases' && <PurchasesSuite />}
-          </motion.div>
-        </AnimatePresence>
-      </motion.main>
+        <div ref={contentRef} style={{ height: '100%' }}>
+          {tab === 'feed' && <Feed />}
+          {tab === 'wardrobe' && <Wardrobe />}
+          {tab === 'sales' && <SalesSuite />}
+          {tab === 'automessage' && <AutoMessage />}
+          {tab === 'proxies' && <ProxyStatus />}
+          {tab === 'settings' && <Settings />}
+          {tab === 'logs' && <Logs />}
+          {tab === 'purchases' && <PurchasesSuite />}
+        </div>
+      </main>
 
       {/* ─── Sniper Countdown Modal ───────────────────────── */}
-      <AnimatePresence>
-        {countdown && (
-          <motion.div
-            key="sniper-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={springGentle}
-            style={modalOverlay}
+      {countdown && (
+        <div
+          style={modalOverlay}
+        >
+          <div
+            style={{ ...modalContent, textAlign: 'center', background: 'transparent' }}
           >
-            <motion.div
-              key="sniper-modal"
-              initial={{ scale: 0.8, y: -40, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.8, y: -40, opacity: 0 }}
-              transition={springGentle}
-              style={{ ...modalContent, textAlign: 'center', background: 'transparent' }}
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: radius.lg,
+                background: colors.primaryMuted,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}
             >
-              <div
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={colors.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </div>
+            <h3 style={{ margin: '0 0 6px', fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
+              {countdown.sniper.name}
+            </h3>
+            <p style={{ margin: '0 0 4px', fontSize: font.size.base, color: colors.textSecondary }}>
+              {countdown.item.title}
+            </p>
+            <p style={{ margin: '0 0 20px', fontWeight: font.weight.bold, color: colors.primary, fontSize: font.size.lg }}>
+              £{countdown.item.price}
+            </p>
+            <div style={{ margin: '0 0 24px' }}>
+              <span
                 style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: radius.lg,
-                  background: colors.primaryMuted,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 16px',
+                  display: 'block',
+                  fontSize: font.size['3xl'],
+                  fontWeight: font.weight.bold,
+                  color: colors.textPrimary,
+                  fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={colors.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
-              </div>
-              <h3 style={{ margin: '0 0 6px', fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
-                {countdown.sniper.name}
-              </h3>
-              <p style={{ margin: '0 0 4px', fontSize: font.size.base, color: colors.textSecondary }}>
-                {countdown.item.title}
-              </p>
-              <p style={{ margin: '0 0 20px', fontWeight: font.weight.bold, color: colors.primary, fontSize: font.size.lg }}>
-                £{countdown.item.price}
-              </p>
-              <div style={{ margin: '0 0 24px' }}>
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={countdownSeconds}
-                    initial={{ scale: 1.15, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.85, opacity: 0 }}
-                    transition={springResponsive}
-                    style={{
-                      display: 'block',
-                      fontSize: font.size['3xl'],
-                      fontWeight: font.weight.bold,
-                      color: colors.textPrimary,
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    {countdownSeconds > 0 ? countdownSeconds : 'Buying...'}
-                  </motion.span>
-                </AnimatePresence>
-              </div>
-              <button
-                type="button"
-                onClick={handleCancelCountdown}
-                disabled={countdownSeconds <= 0}
-                style={{
-                  ...btnDanger,
-                  opacity: countdownSeconds > 0 ? 1 : 0.4,
-                  cursor: countdownSeconds > 0 ? 'pointer' : 'default',
-                  width: '100%',
-                }}
-              >
-                Cancel
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                {countdownSeconds > 0 ? countdownSeconds : 'Buying...'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelCountdown}
+              disabled={countdownSeconds <= 0}
+              style={{
+                ...btnDanger,
+                opacity: countdownSeconds > 0 ? 1 : 0.4,
+                cursor: countdownSeconds > 0 ? 'pointer' : 'default',
+                width: '100%',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── Session Expired Modal ────────────────────────── */}
       {sessionExpired && (
         <div style={{ ...modalOverlay, zIndex: 1002 }}>
-          <div style={{ ...modalContent, maxWidth: 480, background: 'transparent' }}>
+          <div 
+            style={{ 
+              ...modalContent, 
+              maxWidth: 480,
+            }}
+          >
             <div
               style={{
                 width: 48,
@@ -494,6 +515,34 @@ export default function App() {
             <p style={{ margin: '0 0 20px', color: colors.textSecondary, fontSize: font.size.base, lineHeight: 1.6 }}>
               Your Vinted session has expired. Open the login page to re-authenticate, or paste a cookie string manually.
             </p>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={handleSyncFromExtension}
+                disabled={isSyncingExtension}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  borderRadius: radius.md,
+                  border: 'none',
+                  background: isSyncingExtension
+                    ? colors.textMuted
+                    : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                  color: '#fff',
+                  fontWeight: font.weight.semibold,
+                  fontSize: font.size.base,
+                  cursor: isSyncingExtension ? 'wait' : 'pointer',
+                  opacity: isSyncingExtension ? 0.7 : 1,
+                }}
+              >
+                {isSyncingExtension ? '⏳ Syncing...' : '⚡ 1-Click Sync from Chrome'}
+              </button>
+            </div>
+            {extensionSyncMsg && (
+              <p style={{ margin: '0 0 12px', fontSize: font.size.sm, color: colors.textSecondary }}>
+                {extensionSyncMsg}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
               <button
                 type="button"
@@ -545,9 +594,9 @@ export default function App() {
                   setSessionExpired(false);
                   setReconnectCookie('');
                 }}
-                style={{ ...btnSecondary, flex: 1 }}
+                style={{ ...btnSecondary }}
               >
-                Dismiss
+                Cancel
               </button>
             </div>
           </div>
@@ -555,20 +604,13 @@ export default function App() {
       )}
 
       {/* ─── Countdown Done Toast ─────────────────────────── */}
-      <AnimatePresence>
-        {countdownDone && !countdown && (
-          <motion.div
-            key="countdown-toast"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
-            transition={springSmooth}
-            style={toastStyle}
-          >
-            {countdownDone}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {countdownDone && !countdown && (
+        <div
+          style={toastStyle}
+        >
+          {countdownDone}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import {
   colors,
   font,
@@ -358,22 +359,23 @@ export default function Wardrobe() {
   };
 
   return (
-    <div style={{ padding: spacing['2xl'], maxWidth: 1200, margin: '0 auto' }}>
-      {actionBusy && (
+    <div className="page-enter" style={{ padding: spacing['2xl'], maxWidth: 1200, margin: '0 auto' }}>
+      {actionBusy && ReactDOM.createPortal(
         <div className="modal-overlay" style={modalOverlay}>
           <div
-            style={{ ...modalContent, maxWidth: 420, textAlign: 'center', background: colors.bgElevated, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
+            style={{ ...modalContent, maxWidth: 420, textAlign: 'center' }}
             onClick={(e) => e.stopPropagation()}
 
           >
-            <div style={{ fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }} className="animate-pulse">
+            <div style={{ fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
               {actionBusy.kind === 'push' ? 'Pushing to Vinted…' : 'Pulling from Vinted…'}
             </div>
             <div style={{ marginTop: 8, fontSize: font.size.sm, color: colors.textSecondary, lineHeight: 1.5 }}>
               This can take a few seconds. Please don’t close the app.
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Toolbar ── */}
@@ -694,7 +696,7 @@ export default function Wardrobe() {
 
       {/* ── Ontology Alert Modal ── */}
       {
-        ontologyAlert && (
+        ontologyAlert && ReactDOM.createPortal(
           <div className="modal-overlay" style={modalOverlay} onClick={() => setOntologyAlert(null)}>
             <div style={{ ...modalContent, maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: spacing.lg }}>
@@ -733,7 +735,8 @@ export default function Wardrobe() {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )
       }
     </div >
@@ -851,8 +854,6 @@ function ItemRow({
   selected?: boolean;
   onToggleSelect?: (id: number) => void;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   const photoUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
   const localPaths = Array.isArray(item.local_image_paths) ? item.local_image_paths : [];
   const photoUrl = localPaths[0] ?? photoUrls[0] ?? '';
@@ -861,9 +862,9 @@ function ItemRow({
 
   return (
     <tr
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ background: hovered ? tableRowHoverBg : (selected ? 'rgba(99,102,241,0.08)' : 'transparent'), transition: transition.fast }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = selected ? 'rgba(99,102,241,0.08)' : tableRowHoverBg; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = selected ? 'rgba(99,102,241,0.08)' : 'transparent'; }}
+      style={{ background: selected ? 'rgba(99,102,241,0.08)' : 'transparent', transition: transition.fast }}
     >
       {selectMode && (
         <td style={{ ...tableCell, width: 40, textAlign: 'center' as const }}>
@@ -884,6 +885,8 @@ function ItemRow({
             <img
               src={imgSrc}
               alt=""
+              loading="lazy"
+              decoding="async"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
@@ -1124,7 +1127,7 @@ function WaitingRoom({
               </div>
             </>
           ) : processing ? (
-            <div style={{ fontSize: font.size.lg, color: colors.primary }} className="animate-pulse">
+            <div style={{ fontSize: font.size.lg, color: colors.primary }}>
               Processing...
             </div>
           ) : (
@@ -1190,7 +1193,6 @@ function WaitingRoom({
 }
 
 function QueueRow({ entry, onRemove }: { entry: RelistQueueEntry; onRemove: (localId: number) => void }) {
-  const [hovered, setHovered] = useState(false);
   const thumbSrc = entry.mutatedThumbnailPath
     ? `local-image://${entry.mutatedThumbnailPath}`
     : entry.thumbnailPath
@@ -1200,8 +1202,8 @@ function QueueRow({ entry, onRemove }: { entry: RelistQueueEntry; onRemove: (loc
   const statusBadge = () => {
     switch (entry.status) {
       case 'pending': return <span style={badge(colors.glassBg, colors.textMuted)}>Pending</span>;
-      case 'mutating': return <span style={badge(colors.warningBg, colors.warning)} className="animate-pulse">Mutating</span>;
-      case 'uploading': return <span style={badge(colors.infoBg, colors.info)} className="animate-pulse">Uploading</span>;
+      case 'mutating': return <span style={badge(colors.warningBg, colors.warning)}>Mutating</span>;
+      case 'uploading': return <span style={badge(colors.infoBg, colors.info)}>Uploading</span>;
       case 'done': return <span style={badge(colors.successBg, colors.success)}>Done</span>;
       case 'error': return <span style={badge(colors.errorBg, colors.error)} title={entry.error}>Error</span>;
     }
@@ -1209,9 +1211,9 @@ function QueueRow({ entry, onRemove }: { entry: RelistQueueEntry; onRemove: (loc
 
   return (
     <tr
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ background: hovered ? tableRowHoverBg : 'transparent', transition: transition.fast }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = tableRowHoverBg; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      style={{ background: 'transparent', transition: transition.fast }}
     >
       <td style={tableCell}>
         <div style={{
@@ -1222,6 +1224,8 @@ function QueueRow({ entry, onRemove }: { entry: RelistQueueEntry; onRemove: (loc
             <img
               src={thumbSrc}
               alt="Preview"
+              loading="lazy"
+              decoding="async"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
@@ -2290,7 +2294,7 @@ function EditItemModal({
   const editPhotoUrls = Array.isArray(item?.photo_urls) ? item.photo_urls : [];
   const editPhotos = editLocalPaths.length > 0 ? editLocalPaths : editPhotoUrls;
 
-  return (
+  return ReactDOM.createPortal(
     <div className="modal-overlay" style={modalOverlay} onClick={onClose}>
       <div
         style={{ ...modalContent, maxWidth: 640, maxHeight: '90vh', overflow: 'auto', padding: spacing['2xl'], position: 'relative' }}
@@ -2509,6 +2513,8 @@ function EditItemModal({
                         <img
                           src={src}
                           alt=""
+                          loading="lazy"
+                          decoding="async"
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                         />
@@ -2858,7 +2864,8 @@ function EditItemModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

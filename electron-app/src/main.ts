@@ -17,7 +17,9 @@ import * as sessionService from './main/sessionService';
 
 // Force OpenGL backend — prevents Chrome 138 ANGLE regression
 // where toggling WebGL overlays causes DOM text/image disappearance
-app.commandLine.appendSwitch('use-angle', 'gl');
+// DISABLED: testing if Chromium 144 has fixed the original bug.
+// Metal (default on macOS) is faster than the OpenGL compatibility layer.
+// app.commandLine.appendSwitch('use-angle', 'gl');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -130,7 +132,13 @@ const createWindow = () => {
     );
   }
 
-  // Open DevTools in development only (comment out for production)
+  // Explicitly reset any cached zoom levels from previous sessions back to 100%
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.setZoomFactor(1.0);
+    mainWindow.webContents.setVisualZoomLevelLimits(1, 1);
+  });
+
+  // Open DevTools for performance profiling
   // mainWindow.webContents.openDevTools();
 };
 

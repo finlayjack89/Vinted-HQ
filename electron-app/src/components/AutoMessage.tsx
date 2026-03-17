@@ -216,6 +216,7 @@ function ItemPickerGrid({
               {thumb ? (
                 <img
                   src={thumb} alt={item.title}
+                  loading="lazy" decoding="async"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
@@ -481,6 +482,7 @@ function ConfigForm({
         {itemThumb && (
           <img
             src={itemThumb} alt={itemTitle}
+            loading="lazy" decoding="async"
             style={{ width: 48, height: 48, borderRadius: radius.sm, objectFit: 'cover' }}
           />
         )}
@@ -740,7 +742,7 @@ export default function AutoMessage() {
     wardrobeItems.find((w) => String(w.vinted_item_id) === itemId);
 
   return (
-    <div style={{ padding: spacing['3xl'], maxWidth: 1200 }}>
+    <div className="page-enter" style={{ padding: spacing['3xl'], maxWidth: 1200 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.lg }}>
         <div>
@@ -883,7 +885,7 @@ export default function AutoMessage() {
                       >
                         <td style={{ ...tableCell, minWidth: 180 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
-                            {thumb && <img src={thumb} alt="" style={{ width: 32, height: 32, borderRadius: radius.sm, objectFit: 'cover' }} />}
+                            {thumb && <img src={thumb} alt="" loading="lazy" decoding="async" style={{ width: 32, height: 32, borderRadius: radius.sm, objectFit: 'cover' }} />}
                             <div>
                               <div style={{ fontSize: font.size.sm, fontWeight: font.weight.medium, color: colors.textPrimary, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {wItem?.title || `#${cfg.item_id}`}

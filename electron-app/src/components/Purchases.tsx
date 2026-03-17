@@ -64,7 +64,7 @@ export default function Purchases() {
       </h2>
 
       {loading ? (
-        <p style={{ color: colors.textMuted, padding: spacing.xl }} className="animate-pulse">
+        <p style={{ color: colors.textMuted, padding: spacing.xl }}>
           Loading...
         </p>
       ) : (

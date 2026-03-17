@@ -1,6 +1,6 @@
 /* ─── Elevated Neutral / Liquid Glass Theme ─────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* Google Fonts 'Inter' loaded via <link> in index.html (non-blocking) */
 
 /* ─── Reset & Base ──────────────────────────────────────────── */
 
@@ -29,6 +29,10 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.20); }
 
 
+
+/* ─── Feed Card ─────────────────────────────────────────────── */
+
+/* Feed cards render instantly — no animation classes needed */
 
 /* ─── Liquid Glass Skeleton Shimmer ─────────────────────────── */
 
@@ -185,18 +189,37 @@ input[type="radio"]:focus {
 
 /* ─── Animations (retained) ─────────────────────────────────── */
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
+/* pulse animation removed — was generating animationiteration compositor events */
 
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 
-.animate-pulse {
-  animation: pulse 2s ease-in-out infinite;
+/* ─── High-Performance Page Entrance Animation ─────────────── */
+/* GPU-only: animates opacity + transform on the compositor thread.
+   Zero main-thread cost. Fires once on mount, not during scroll. */
+
+.page-enter {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  /* Spring overshoot curve — matches the original framer-motion spring feel */
+  transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@starting-style {
+  .page-enter {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+}
+
+.page-exit {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 1, 1),
+              transform 0.25s cubic-bezier(0.4, 0, 1, 1);
 }
 
 /* ─── Code/mono styling ─────────────────────────────────────── */

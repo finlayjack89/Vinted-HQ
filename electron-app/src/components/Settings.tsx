@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+
 import {
   colors,
   font,
@@ -22,7 +22,6 @@ import {
   badge,
   radius,
   spacing,
-  springResponsive,
 } from '../theme';
 import type { AppSettings, SearchUrl, Sniper } from '../types/global';
 
@@ -54,10 +53,7 @@ function SniperSpentDisplay({ sniperId, budgetLimit }: { sniperId: number; budge
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={springResponsive}
+    <section
       style={{
         ...glassPanel,
         padding: spacing['2xl'],
@@ -67,7 +63,7 @@ function Section({ title, description, children }: { title: string; description?
       <h3 style={sectionTitle}>{title}</h3>
       {description && <p style={{ ...sectionDesc, marginBottom: spacing.lg }}>{description}</p>}
       <div>{children}</div>
-    </motion.section>
+    </section>
   );
 }
 
@@ -287,8 +283,8 @@ export default function Settings() {
     idle: '',
     checking: '🔍 Checking for extension session data...',
     synced: '✅ Session synced from Chrome Extension!',
-    polling: '🌐 Opened Vinted in Chrome — waiting for extension to harvest session...',
-    failed: '⚠️ Extension sync failed. Make sure the Vinted HQ extension is installed and you are logged into Vinted in Chrome.',
+    polling: '🌐 Opened Vinted in Chrome — waiting for extension (up to 45s)...',
+    failed: '⚠️ Extension sync failed. Make sure Vinted HQ extension is installed and Chrome is signed in.',
   };
 
   const handleSyncFromExtension = async () => {
@@ -449,7 +445,7 @@ export default function Settings() {
   };
 
   return (
-    <div style={{ padding: spacing['2xl'], maxWidth: 620 }}>
+    <div className="page-enter" style={{ padding: spacing['2xl'], maxWidth: 620 }}>
       {/* Page header */}
       <h2
         style={{

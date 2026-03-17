@@ -29,7 +29,7 @@ export const colors = {
   // ── Text ──────────────────────────────────────────────────
   textPrimary:   '#111111',   // Near-black. Max contrast without optical vibration.
   textSecondary: '#666666',   // Dark grey. Metadata, timestamps, descriptions.
-  textMuted:     '#A3A3A3',   // Light grey. Placeholders, disabled states.
+  textMuted:     '#8A8A8A',   // Medium grey. Labels, placeholders, disabled states.
 
   // ── Semantic Status ───────────────────────────────────────
   success:     '#059669',     // Deep emerald text.
@@ -92,11 +92,7 @@ export const shadows = {
     '0 8px 32px rgba(0, 0, 0, 0.08)',
 } as const;
 
-export const blur = {
-  glass:      'blur(20px) saturate(150%)',
-  glassLight: 'blur(16px) saturate(130%)',
-  glassHeavy: 'blur(40px) saturate(150%)',
-} as const;
+
 
 /* ─── Spacing & Radii ───────────────────────────────────────── */
 
@@ -129,36 +125,7 @@ export const transition = {
   spring: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
 } as const;
 
-/* ─── Framer Motion Spring Tokens ───────────────────────────── */
 
-/** Micro-interactions: toggles, buttons, card entrances */
-export const springResponsive = {
-  type: 'spring' as const,
-  stiffness: 350,
-  damping: 25,
-  mass: 1,
-};
-
-/** Macro-spatial transitions: page routing, layout shifts */
-export const springSmooth = {
-  type: 'spring' as const,
-  stiffness: 150,
-  damping: 15,
-  mass: 1,
-};
-
-/** Z-axis elevation: modals, overlays, heavy panels */
-export const springGentle = {
-  type: 'spring' as const,
-  stiffness: 75,
-  damping: 15,
-  mass: 1,
-};
-
-/** Stagger configuration for data grid population */
-export const staggerFast = {
-  staggerChildren: 0.03,
-};
 
 /* ─── Reusable Style Objects (CSSProperties) ────────────────── */
 
@@ -178,7 +145,6 @@ export const frostedCard: CSSProperties = {
   borderRadius: radius.xl,        // 20px
   boxShadow: '0 4px 16px rgba(0, 0, 0, 0.03)',
   overflow: 'hidden',
-  transition: transition.base,
 };
 
 export const recessedInput: CSSProperties = {
@@ -190,7 +156,6 @@ export const recessedInput: CSSProperties = {
   fontSize: font.size.base,
   padding: '12px 16px',
   outline: 'none',
-  transition: transition.base,
   boxSizing: 'border-box' as const,
   boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.04)',
 };
@@ -339,6 +304,7 @@ export const sectionDesc: CSSProperties = {
 export const modalOverlay: CSSProperties = {
   position: 'fixed',
   inset: 0,
+  background: 'rgba(0, 0, 0, 0.45)', // Dimmed backdrop
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -347,11 +313,14 @@ export const modalOverlay: CSSProperties = {
 
 export const modalContent: CSSProperties = {
   ...frostedPanel,
-  background: colors.bgElevated,
+  background: 'rgba(255, 255, 255, 0.65)',
+  border: `1px solid rgba(255, 255, 255, 0.9)`,
+  backdropFilter: 'blur(24px) saturate(1.8)',
+  WebkitBackdropFilter: 'blur(24px) saturate(1.8)',
   padding: spacing['2xl'],
   maxWidth: 480,
   width: '90%',
-  boxShadow: '0 24px 64px rgba(0, 0, 0, 0.12)',
+  boxShadow: '0 24px 64px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.4) inset',
 };
 
 export const toast: CSSProperties = {

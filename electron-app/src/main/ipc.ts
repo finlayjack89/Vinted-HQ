@@ -84,12 +84,14 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // 3. Fallback — Vinted probably isn't open in Chrome; open it to trigger the extension
-      shell.openExternal('https://www.vinted.co.uk/');
-      logger.info('session:sync-opened-browser', { url: 'https://www.vinted.co.uk/' });
+      // 3. Fallback — Vinted probably isn't open in Chrome; open it specifically in Chrome
+      //    (not default browser, which could be Safari — the extension is Chrome-only)
+      execFile('open', ['-a', 'Google Chrome', 'https://www.vinted.co.uk/']);
+      logger.info('session:sync-opened-chrome', { url: 'https://www.vinted.co.uk/' });
 
-      // 4. Continue polling (12s more) for the extension to harvest after the page loads
-      for (let i = 0; i < 12; i++) {
+      // 4. Continue polling (45s more) for the extension to harvest after the page loads.
+      //    Cold-starting Chrome, loading the page, and bypassing Datadome can easily take 10-20s.
+      for (let i = 0; i < 45; i++) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         const row = checkForCookie();
         if (row?.value) {
@@ -98,7 +100,7 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      return { ok: false, reason: 'EXTENSION_NOT_SYNCED', message: 'Chrome Extension did not sync within 15s. Make sure the extension is installed and you are logged into Vinted.' };
+      return { ok: false, reason: 'EXTENSION_NOT_SYNCED', message: 'Chrome Extension did not sync within 45s. Make sure Vinted HQ extension is installed and Vinted is signed in on Chrome.' };
     } catch (err) {
       logger.error('session:syncFromExtension:error', { error: String(err), stack: err instanceof Error ? err.stack : undefined });
       return { ok: false, reason: 'INTERNAL_ERROR', message: String(err) };

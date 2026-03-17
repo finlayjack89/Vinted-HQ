@@ -12,6 +12,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import {
   colors,
   font,
@@ -24,7 +25,10 @@ import {
   radius,
   transition,
   shadows,
+  modalOverlay,
+  modalContent,
 } from '../theme';
+
 import type { VintedSoldItem, BoughtOrderRow, BridgeResult } from '../types/global';
 
 /* ─── Status tab definitions ─────────────────────────── */
@@ -65,6 +69,18 @@ export default function PurchasesSuite() {
   const [detailModal, setDetailModal] = useState<PurchaseDisplayItem | null>(null);
   const perPage = 20;
   const enrichAbort = useRef<AbortController | null>(null);
+
+  // Lock scroll on <main> when modal is open
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (!main) return;
+    if (detailModal) {
+      main.style.overflow = 'hidden';
+    } else {
+      main.style.overflow = 'auto';
+    }
+    return () => { main.style.overflow = 'auto'; };
+  }, [detailModal]);
 
   /* ─── Data loading pipeline ─────────────────────────── */
 
@@ -270,13 +286,15 @@ export default function PurchasesSuite() {
     alignItems: 'flex-start',
     transition: transition.base,
     cursor: 'pointer',
-    border: '1px solid transparent',
-    background: 'transparent',
+    border: `1px solid ${colors.glassBorder}`,
+    background: colors.glassBg,
+    boxShadow: shadows.card,
   };
 
   const cardHoverStyle: React.CSSProperties = {
-    boxShadow: shadows.cardHover,
+    boxShadow: '0 16px 48px rgba(0, 0, 0, 0.10)',
     border: `1px solid ${colors.glassBorderHover}`,
+    background: colors.glassBgHover,
   };
 
   const thumbnailStyle: React.CSSProperties = {
@@ -336,20 +354,10 @@ export default function PurchasesSuite() {
   };
 
 
-  const modalStyle: React.CSSProperties = {
-    ...glassPanel,
-    width: '90%',
-    maxWidth: 640,
-    maxHeight: '85vh',
-    overflow: 'auto',
-    padding: spacing['2xl'],
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacing.lg,
-  };
+
 
   return (
-    <div style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div className="page-enter" style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
@@ -447,57 +455,71 @@ export default function PurchasesSuite() {
       )}
 
       {/* Detail Modal */}
-      {detailModal && (
+      {detailModal && ReactDOM.createPortal(
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9998,
-          }}
+          style={{ ...modalOverlay, zIndex: 9999 }}
           onClick={(e) => { if (e.target === e.currentTarget) setDetailModal(null); }}
         >
-          <div style={{ ...modalStyle, position: 'relative', background: colors.bgElevated }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: font.size.xl, fontWeight: font.weight.bold, color: colors.textPrimary }}>
-                Purchase Details
-              </h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm }}>
-                <span style={{ ...badge('rgba(99,102,241,0.12)', colors.primary), fontSize: font.size.xs }}>BOUGHT</span>
-                <button type="button" onClick={() => setDetailModal(null)}
-                  style={{ background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer', fontSize: 20, padding: 4 }}>✕</button>
-              </div>
-            </div>
+          <div 
+            style={{ 
+              ...modalContent, 
+              position: 'relative', 
+              maxWidth: 620,
+              maxHeight: '85vh',
+              overflow: 'auto',
+              padding: spacing.xl,
+            }}
+          >
+            {/* Close button */}
+            <button type="button" onClick={() => setDetailModal(null)}
+              style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer', fontSize: 20, padding: 4, zIndex: 1 }}>✕</button>
 
-            <div style={{ display: 'flex', gap: spacing.xl, alignItems: 'flex-start' }}>
+            {/* Main: Image left + Details right */}
+            <div style={{ display: 'flex', gap: spacing.xl, alignItems: 'stretch' }}>
+              {/* Left: Image */}
               {detailModal.photo_url && (
-              <img src={detailModal.photo_url} alt={detailModal.title}
-                  style={{ width: 120, height: 120, borderRadius: radius.lg, objectFit: 'cover', flexShrink: 0 }} />
+                <div style={{ width: 180, flexShrink: 0, borderRadius: radius.lg, overflow: 'hidden', aspectRatio: '3 / 4' }}>
+                  <img src={detailModal.photo_url} alt={detailModal.title}
+                    loading="lazy" decoding="async"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
               )}
-              <div style={{ flex: 1 }}>
-                <h4 style={{ margin: '0 0 4px', fontSize: font.size.lg, color: colors.textPrimary }}>{detailModal.title}</h4>
-                <div style={{ fontSize: font.size.sm, color: colors.textMuted }}>
-                  {detailModal.seller_username ? `Bought from @${detailModal.seller_username}` : 'Seller details loading…'}
+
+              {/* Right: Title + Details */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+                {/* Title + Username */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, marginBottom: 4 }}>
+                    <h3 style={{ margin: 0, fontSize: font.size.lg, fontWeight: font.weight.bold, color: colors.textPrimary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {detailModal.title}
+                    </h3>
+                    <span style={{ ...badge('rgba(99,102,241,0.12)', colors.primary), fontSize: font.size.xs, flexShrink: 0 }}>BOUGHT</span>
+                  </div>
+                  <div style={{ fontSize: font.size.sm, color: colors.textMuted, marginBottom: spacing.lg }}>
+                    {detailModal.seller_username ? `Bought from @${detailModal.seller_username}` : 'Seller details loading…'}
+                  </div>
+                </div>
+
+                {/* Price + IDs grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `${spacing.sm}px ${spacing.md}px` }}>
+                  <InfoField label="Purchase Price" value={formatPrice(detailModal.price_amount, detailModal.price_currency)} highlight />
+                  <InfoField label="Listing Price" value={detailModal.listing_price ? formatPrice(String(detailModal.listing_price), detailModal.price_currency) : '—'} />
+                  <InfoField label="Item ID" value={detailModal.item_id ? `#${detailModal.item_id}` : '—'} mono />
+                  <InfoField label="Transaction ID" value={`#${detailModal.transaction_id}`} mono />
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `${spacing.md}px ${spacing.xl}px` }}>
-              <InfoField label="Purchase Price" value={formatPrice(detailModal.price_amount, detailModal.price_currency)} highlight />
-              <InfoField label="Listing Price" value={detailModal.listing_price ? formatPrice(String(detailModal.listing_price), detailModal.price_currency) : '—'} />
-              <InfoField label="Item ID" value={detailModal.item_id ? `#${detailModal.item_id}` : '—'} mono />
-              <InfoField label="Transaction ID" value={`#${detailModal.transaction_id}`} mono />
+            {/* Bottom: Date + Status */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `${spacing.sm}px ${spacing.md}px`, borderTop: `1px solid ${colors.glassBorder}`, paddingTop: spacing.md, marginTop: spacing.md }}>
               <InfoField label="Bought On" value={formatDate(detailModal.date)} />
               <InfoField label="Status" value={detailModal.status} />
             </div>
 
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: spacing.sm, paddingTop: spacing.sm }}>
+            {/* Actions — full width, evenly spaced */}
+            <div style={{ display: 'flex', gap: spacing.sm, paddingTop: spacing.md, borderTop: `1px solid ${colors.glassBorder}`, marginTop: spacing.md }}>
               {detailModal.conversation_id && (
-                <button type="button" style={{ ...btnSecondary, ...btnSmall, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                <button type="button" style={{ ...btnSecondary, ...btnSmall, flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                   onClick={() => window.vinted.openExternal(`https://www.vinted.co.uk/inbox/${detailModal.conversation_id}`)}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -506,15 +528,16 @@ export default function PurchasesSuite() {
                 </button>
               )}
               {detailModal.item_id && (
-                <button type="button" style={{ ...btnSecondary, ...btnSmall, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                <button type="button" style={{ ...btnSecondary, ...btnSmall, flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                   onClick={() => window.vinted.openExternal(`https://www.vinted.co.uk/items/${detailModal.item_id}`)}>
                   View Listing
                 </button>
               )}
-              <button type="button" style={{ ...btnSecondary, ...btnSmall }} onClick={() => setDetailModal(null)}>Close</button>
+              <button type="button" style={{ ...btnSecondary, ...btnSmall, flex: 1 }} onClick={() => setDetailModal(null)}>Close</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -541,7 +564,7 @@ function InfoField({ label, value, highlight, mono }: { label: string; value: st
   );
 }
 
-function PurchaseItemCard({
+const PurchaseItemCard = React.memo(function PurchaseItemCard({
   item, cardStyle, cardHoverStyle, thumbnailStyle, labelStyle, valueStyle,
   formatDate, formatPrice, statusBadge, onClick,
 }: {
@@ -556,14 +579,15 @@ function PurchaseItemCard({
   statusBadge: (status: string) => React.CSSProperties;
   onClick: () => void;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   return (
-    <div style={{ ...cardStyle, ...(hovered ? cardHoverStyle : {}) }}
-      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onClick={onClick}>
+    <div style={cardStyle}
+      onMouseEnter={(e) => { Object.assign(e.currentTarget.style, cardHoverStyle); }}
+      onMouseLeave={(e) => { Object.assign(e.currentTarget.style, cardStyle); }}
+      onClick={onClick}>
       {/* Thumbnail */}
       {item.photo_url ? (
         <img src={item.photo_url} alt={item.title} style={thumbnailStyle}
+          loading="lazy" decoding="async"
           onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
       ) : (
         <div style={{ ...thumbnailStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${colors.glassBorder}` }}>
@@ -620,4 +644,4 @@ function PurchaseItemCard({
       </div>
     </div>
   );
-}
+});

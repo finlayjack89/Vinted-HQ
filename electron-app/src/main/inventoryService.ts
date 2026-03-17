@@ -1334,8 +1334,69 @@ export async function pushToVinted(localId: number, proxy?: string): Promise<{
   }
 
   const itemData = buildVintedItemData(item);
+  const uploadSessionId = crypto.randomUUID();
+  itemData.temp_uuid = uploadSessionId;
 
-  const result = await bridge.createListing(itemData, undefined, proxy);
+  // ── Upload photos before creating the listing ──
+  // Local-only items have photos stored as local file paths and/or remote URLs.
+  // We must upload each to Vinted's photo service to get assigned_photos IDs.
+  const localPaths = Array.isArray(item.local_image_paths) ? (item.local_image_paths as string[]).filter(Boolean) : [];
+  const remoteUrls = Array.isArray(item.photo_urls) ? (item.photo_urls as string[]).filter(Boolean) : [];
+  const photoSources = localPaths.length > 0 ? localPaths : remoteUrls;
+
+  if (photoSources.length === 0) {
+    logger.warn('wardrobe-push-no-photos', { localId }, requestId);
+    return { ok: false, error: 'No photos found. Add at least one photo before publishing.' };
+  }
+
+  const assignedPhotos: { id: number; orientation: number }[] = [];
+  for (let i = 0; i < photoSources.length; i++) {
+    const src = photoSources[i];
+    let buf: Buffer;
+    try {
+      if (src.startsWith('http')) {
+        // Download from remote URL
+        const resp = await fetch(src);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const arrayBuf = await resp.arrayBuffer();
+        buf = Buffer.from(arrayBuf);
+      } else {
+        // Read from local file
+        buf = Buffer.from(fs.readFileSync(src));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('wardrobe-push-photo-read-failed', { localId, index: i, source: src.slice(0, 100), error: msg }, requestId);
+      return { ok: false, error: `Failed to read photo ${i + 1}: ${msg}` };
+    }
+
+    const up = await bridge.uploadPhotoRaw(buf, uploadSessionId, undefined, 'DIRECT', true);
+    if (!up.ok) {
+      const msg = (up as { message?: string }).message ?? 'Upload failed';
+      logger.error('wardrobe-push-photo-upload-failed', { localId, index: i, error: msg }, requestId);
+      return { ok: false, error: `Photo upload failed (${i + 1}/${photoSources.length}): ${msg}` };
+    }
+
+    const data = (up as { data: unknown }).data as Record<string, unknown>;
+    const photoId = Number(data.id || 0);
+    if (photoId <= 0) {
+      logger.error('wardrobe-push-photo-no-id', { localId, index: i }, requestId);
+      return { ok: false, error: `Photo upload returned no ID for photo ${i + 1}.` };
+    }
+
+    assignedPhotos.push({ id: photoId, orientation: 0 });
+    logger.debug('wardrobe-push-photo-uploaded', { localId, index: i, photoId }, requestId);
+
+    // Small delay between uploads to mimic human behavior
+    if (i < photoSources.length - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 300 + Math.random() * 500));
+    }
+  }
+
+  itemData.assigned_photos = assignedPhotos;
+  logger.info('wardrobe-push-photos-ready', { localId, count: assignedPhotos.length }, requestId);
+
+  const result = await bridge.createListing(itemData, uploadSessionId, proxy);
   if (!result.ok) {
     const code = (result as { code?: string }).code ?? '';
     const msg = (result as { message?: string }).message ?? 'Create failed';

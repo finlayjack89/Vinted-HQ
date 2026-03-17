@@ -104,7 +104,7 @@ export default function ProxyStatus() {
   const blockedCount = scrapingProxies.filter((p) => p.status === 'blocked').length;
 
   return (
-    <div style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div className="page-enter" style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       {/* Summary bar */}
       <div
         style={{
@@ -147,7 +147,7 @@ export default function ProxyStatus() {
       </div>
 
       {loading ? (
-        <p style={{ color: colors.textMuted, padding: spacing.xl }} className="animate-pulse">
+        <p style={{ color: colors.textMuted, padding: spacing.xl }}>
           Loading proxy status...
         </p>
       ) : (

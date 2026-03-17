@@ -4,7 +4,6 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import {
   colors,
   font,
@@ -22,8 +21,6 @@ import {
   radius,
   spacing,
   transition,
-  springResponsive,
-  staggerFast,
 } from '../theme';
 import GlassSkeleton from './GlassSkeleton';
 import type { LogEntry } from '../types/global';
@@ -75,7 +72,7 @@ export default function Logs() {
   };
 
   return (
-    <div style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+    <div className="page-enter" style={{ padding: spacing['2xl'], display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
       {/* Filter bar */}
       <div
         style={{
@@ -138,24 +135,12 @@ export default function Logs() {
                 <th style={tableHeaderCell}>Payload</th>
               </tr>
             </thead>
-            <motion.tbody
-              initial="hidden"
-              animate="visible"
-              variants={{
-                hidden: {},
-                visible: { transition: staggerFast },
-              }}
-            >
+            <tbody>
               {logs.map((log) => {
                 const lc = levelColors[log.level] || levelColors.DEBUG;
                 return (
-                  <motion.tr
+                  <tr
                     key={log.id}
-                    variants={{
-                      hidden: { opacity: 0, y: 10 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    transition={springResponsive}
                     style={{ transition: transition.fast }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = tableRowHoverBg;
@@ -193,10 +178,10 @@ export default function Logs() {
                         <span style={{ color: colors.textMuted }}>—</span>
                       )}
                     </td>
-                  </motion.tr>
+                  </tr>
                 );
               })}
-            </motion.tbody>
+            </tbody>
           </table>
         </div>
       )}

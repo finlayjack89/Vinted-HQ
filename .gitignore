@@ -1,0 +1,6 @@
+# OS
+.DS_Store
+
+# Performance traces (too large for GitHub)
+electron-app/docs/Performance Diagnostics/*.json
+electron-app/docs/Performance Diagnostics/*.json.gz
