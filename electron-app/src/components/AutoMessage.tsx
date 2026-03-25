@@ -13,6 +13,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   colors,
   font,
+  frostedCard,
   glassPanel,
   glassInput,
   glassTextarea,
@@ -40,73 +41,7 @@ import type {
   InventoryItem,
 } from '../types/global';
 
-// ─── Dual Range Slider ──────────────────────────────────────────────────────
-
-function DualRangeSlider({
-  min,
-  max,
-  valueMin,
-  valueMax,
-  onChange,
-  unit = 'min',
-}: {
-  min: number;
-  max: number;
-  valueMin: number;
-  valueMax: number;
-  onChange: (low: number, high: number) => void;
-  unit?: string;
-}) {
-  const pctMin = ((valueMin - min) / (max - min)) * 100;
-  const pctMax = ((valueMax - min) / (max - min)) * 100;
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: font.size.sm, color: colors.textSecondary }}>
-          {valueMin} {unit}
-        </span>
-        <span style={{ fontSize: font.size.sm, color: colors.textSecondary }}>
-          {valueMax} {unit}
-        </span>
-      </div>
-      <div style={{ position: 'relative', height: 32 }}>
-        <div style={{
-          position: 'absolute', top: 13, left: 0, right: 0, height: 6,
-          background: 'rgba(255,255,255,0.06)', borderRadius: 3,
-        }} />
-        <div style={{
-          position: 'absolute', top: 13, height: 6,
-          left: `${pctMin}%`, width: `${pctMax - pctMin}%`,
-          background: `linear-gradient(90deg, ${colors.primary}, ${colors.primaryHover})`,
-          borderRadius: 3, boxShadow: `0 0 8px ${colors.primaryGlow}`,
-        }} />
-        <input
-          type="range" min={min} max={max} value={valueMin}
-          onChange={(e) => onChange(Math.min(Number(e.target.value), valueMax - 1), valueMax)}
-          style={{ ...sliderInputStyle, zIndex: 3 }}
-        />
-        <input
-          type="range" min={min} max={max} value={valueMax}
-          onChange={(e) => onChange(valueMin, Math.max(Number(e.target.value), valueMin + 1))}
-          style={{ ...sliderInputStyle, zIndex: 4 }}
-        />
-      </div>
-      <div style={{
-        textAlign: 'center', marginTop: 4,
-        fontSize: font.size.xs, color: colors.textMuted,
-      }}>
-        Random delay between {valueMin}–{valueMax} {unit}
-      </div>
-    </div>
-  );
-}
-
-const sliderInputStyle: React.CSSProperties = {
-  position: 'absolute', top: 0, left: 0, width: '100%', height: 32,
-  appearance: 'none', WebkitAppearance: 'none',
-  background: 'transparent', pointerEvents: 'none', cursor: 'pointer',
-};
+import { DualRangeSlider } from './DualRangeSlider';
 
 // ─── Global Delay Settings ──────────────────────────────────────────────────────────
 
@@ -133,12 +68,12 @@ function GlobalDelaySettings() {
 
   return (
     <div style={{ ...glassPanel, padding: spacing.md, marginBottom: spacing.lg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
         <h3 style={{ ...sectionTitle, margin: 0, fontSize: font.size.base }}>
           Delay Between Messages
         </h3>
-        <span style={{ fontSize: font.size.xs, color: colors.textMuted }}>
-          Random {delayMin}–{delayMax} min between each user
+        <span style={{ fontSize: font.size.sm, color: colors.textSecondary, fontWeight: font.weight.semibold }}>
+          {delayMin} <span style={{ color: colors.textMuted, fontWeight: font.weight.normal }}>to</span> {delayMax} min
         </span>
       </div>
       <DualRangeSlider
@@ -178,40 +113,45 @@ function ItemPickerGrid({
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(2, 1fr)',
-      gap: spacing.sm,
-      maxHeight: 340,
+      gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+      gap: spacing.lg,
+      maxHeight: 400,
       overflowY: 'auto',
-      padding: spacing.xs,
+      padding: spacing.sm,
     }}>
       {available.map((item) => {
         const thumb = item.photo_urls?.[0] || item.local_image_paths?.[0] || '';
+        const condition = (item as Record<string, unknown>).condition as string | undefined;
         return (
           <button
             key={item.id}
             onClick={() => onSelect(item)}
             style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: `1px solid ${colors.glassBorder}`,
-              borderRadius: radius.md,
+              ...frostedCard,
               padding: 0,
               cursor: 'pointer',
-              overflow: 'hidden',
-              transition: transition.base,
               textAlign: 'left',
+              display: 'flex',
+              flexDirection: 'column',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = colors.primary;
               e.currentTarget.style.boxShadow = `0 0 10px ${colors.primaryGlow}`;
+              e.currentTarget.style.transform = 'translateY(-2px)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = colors.glassBorder;
-              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 1)';
+              e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.03)';
+              e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
+            {/* Square image */}
             <div style={{
-              width: '100%', height: 100, overflow: 'hidden',
+              aspectRatio: '1',
               background: colors.bgElevated,
+              position: 'relative',
+              overflow: 'hidden',
+              borderRadius: '20px 20px 0 0',
             }}>
               {thumb ? (
                 <img
@@ -223,25 +163,45 @@ function ItemPickerGrid({
                 <div style={{
                   width: '100%', height: '100%',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: colors.textMuted, fontSize: font.size.xs,
+                  color: colors.textMuted, fontSize: font.size.sm,
                 }}>No image</div>
               )}
             </div>
-            <div style={{
-              padding: `4px ${spacing.sm}px`,
-              fontSize: font.size.xs,
-              fontWeight: font.weight.medium,
-              color: colors.textPrimary,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {item.title}
-            </div>
-            <div style={{
-              padding: `0 ${spacing.sm}px 4px`,
-              fontSize: 10,
-              color: colors.textMuted,
-            }}>
-              {(item as Record<string, unknown>).brand as string || ''} · £{typeof item.price === 'number' ? item.price.toFixed(2) : item.price}
+            {/* Info */}
+            <div style={{ padding: spacing.md, flex: 1 }}>
+              <div
+                style={{
+                  fontWeight: font.weight.medium,
+                  fontSize: font.size.base,
+                  color: colors.textPrimary,
+                  marginBottom: 4,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={item.title}
+              >
+                {item.title.length > 40 ? item.title.slice(0, 40) + '\u2026' : item.title}
+              </div>
+              <div style={{
+                fontSize: font.size.lg,
+                fontWeight: font.weight.semibold,
+                color: colors.textPrimary,
+                textShadow: '0 1px 0 rgba(255,255,255,0.9)',
+              }}>
+                £{typeof item.price === 'number' ? item.price.toFixed(2) : item.price}
+              </div>
+              {condition && (
+                <span style={{
+                  fontSize: font.size.sm,
+                  color: colors.textSecondary,
+                  marginTop: 2,
+                  display: 'block',
+                  fontWeight: font.weight.normal,
+                }}>
+                  {condition}
+                </span>
+              )}
             </div>
           </button>
         );
@@ -1003,21 +963,6 @@ export default function AutoMessage() {
 
       <style>{`
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        input[type="range"]::-webkit-slider-thumb {
-          -webkit-appearance: none; appearance: none;
-          width: 18px; height: 18px; border-radius: 50%;
-          background: linear-gradient(135deg, ${colors.primary}, ${colors.primaryHover});
-          box-shadow: 0 2px 8px ${colors.primaryGlow};
-          cursor: pointer; pointer-events: all;
-          border: 2px solid ${colors.bgElevated};
-        }
-        input[type="range"]::-moz-range-thumb {
-          width: 18px; height: 18px; border-radius: 50%;
-          background: linear-gradient(135deg, ${colors.primary}, ${colors.primaryHover});
-          box-shadow: 0 2px 8px ${colors.primaryGlow};
-          cursor: pointer; pointer-events: all;
-          border: 2px solid ${colors.bgElevated};
-        }
       `}</style>
     </div>
   );

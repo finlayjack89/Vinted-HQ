@@ -278,41 +278,44 @@ async function processQueue(): Promise<void> {
 
   console.log(`[CRM] Queue processor started. ${actionQueue.length} item(s) in queue.`);
 
-  while (actionQueue.length > 0 && isRunning) {
-    const item = actionQueue.shift()!;
+  try {
+    let needsDelay = false; // only true after a successful send
 
-    // Read global delay settings
-    const delayMin = getSetting('crm_delay_min_minutes');
-    const delayMax = getSetting('crm_delay_max_minutes');
+    while (actionQueue.length > 0 && isRunning) {
+      const item = actionQueue.shift()!;
 
-    // If not the first action, wait the inter-user delay
-    if (!isFirstAction) {
-      const minMs = delayMin * 60 * 1000;
-      const maxMs = delayMax * 60 * 1000;
-      const waitMs = minMs + Math.random() * (maxMs - minMs);
-      console.log(`[CRM] Waiting ${Math.round(waitMs / 1000)}s before next action…`);
-      await sleep(waitMs);
+      // Only delay after a successful send (not after errors/skips)
+      if (needsDelay) {
+        const delayMin = getSetting('crm_delay_min_minutes');
+        const delayMax = getSetting('crm_delay_max_minutes');
+        const minMs = delayMin * 60 * 1000;
+        const maxMs = delayMax * 60 * 1000;
+        const waitMs = minMs + Math.random() * (maxMs - minMs);
+        console.log(`[CRM] Waiting ${Math.round(waitMs / 1000)}s before next action…`);
+        await sleep(waitMs);
+        needsDelay = false;
+      }
+
+      // Check if still running after the wait
+      if (!isRunning) {
+        actionQueue.unshift(item);
+        break;
+      }
+
+      const didSend = await executeAction(item);
+      if (didSend) {
+        needsDelay = true; // delay before next item
+      }
+      // If action failed/skipped, needsDelay stays false → next item fires immediately
     }
-
-    // Check if still running after the wait
-    if (!isRunning) {
-      // Re-enqueue the item since we were stopped mid-wait
-      actionQueue.unshift(item);
-      break;
-    }
-
-    const didSend = await executeAction(item);
-
-    if (didSend) {
-      isFirstAction = false; // only set after an actual send
-    }
-    // If action was skipped, isFirstAction stays as-is,
-    // so the next action fires without delay
+  } catch (err) {
+    console.error('[CRM] Queue processor error:', err instanceof Error ? err.message : err);
+  } finally {
+    isProcessingQueue = false;
+    console.log('[CRM] Queue processor finished.');
   }
-
-  isProcessingQueue = false;
-  console.log('[CRM] Queue processor finished.');
 }
+
 
 // ─── Action Execution ───────────────────────────────────────────────────────
 
@@ -343,7 +346,7 @@ async function executeAction(item: QueueItem): Promise<boolean> {
 
     if (!initResult.ok) {
       const err = initResult as BridgeErrorResult;
-      console.error(`[CRM] Init conversation failed:`, JSON.stringify(initResult).slice(0, 500));
+      console.error(`[CRM] Init conversation failed for item=${itemId}, receiver=${receiverId}:`, err.code, err.message);
       throw new Error(`Init conversation failed: ${err.code} — ${err.message}`);
     }
 
@@ -388,6 +391,11 @@ async function executeAction(item: QueueItem): Promise<boolean> {
         });
         return false; // skipped — do NOT consume a delay slot
       }
+    }
+
+    // If we couldn't obtain a conversation ID, fail this action
+    if (!conversationId) {
+      throw new Error(`Could not obtain conversation_id from initiate response (keys: ${Object.keys(initData).join(', ')})`);
     }
 
     // 5-10 second delay before first API action
@@ -532,31 +540,6 @@ async function pollNotifications(): Promise<void> {
 
     const likeDate = extractLikeTimestamp(notif);
 
-    // *** PRE-ENQUEUE CONVERSATION CHECK ***
-    // Check if conversation already exists BEFORE scheduling
-    const alreadyHasConvo = await checkConversationExists(itemId, receiverId);
-    if (alreadyHasConvo) {
-      console.log(`[CRM] Pre-check: conversation exists for item=${itemId}, receiver=${receiverId} — not scheduling`);
-      insertAutoMessageLog({
-        notification_id: notifId,
-        item_id: itemId,
-        receiver_id: receiverId,
-        receiver_username: likerUsername || null,
-        action_type: config.offer_price ? 'offer+message' : 'message',
-        status: 'skipped_existing_convo',
-        error_message: 'Conversation already has messages',
-        like_date: likeDate ? Math.round(likeDate / 1000) : null,
-      });
-      emitToRenderer('crm:action-log', {
-        type: 'skipped',
-        notification_id: notifId,
-        item_id: itemId,
-        receiver_id: receiverId,
-        reason: 'Conversation already exists (pre-check)',
-        timestamp: Date.now(),
-      });
-      continue;
-    }
 
     if (enqueueAction({
       notificationId: notifId,
@@ -692,12 +675,6 @@ export async function backfillItem(
       const likerUsername = extractLikerUsername(notif);
       if (likerUsername && isCrmIgnoredUser(likerUsername)) continue;
 
-      // *** PRE-ENQUEUE CONVERSATION CHECK ***
-      const alreadyHasConvo = await checkConversationExists(parsed.itemId, parsed.receiverId);
-      if (alreadyHasConvo) {
-        console.log(`[CRM] Backfill pre-check: conversation exists for item=${parsed.itemId}, receiver=${parsed.receiverId} — not scheduling`);
-        continue;
-      }
 
       if (enqueueAction({
         notificationId: notifId,

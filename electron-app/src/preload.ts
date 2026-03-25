@@ -92,6 +92,8 @@ contextBridge.exposeInMainWorld('vinted', {
   isFeedPolling: () => ipcRenderer.invoke('feed:isPolling'),
   checkoutBuy: (item: { id: number; order_id?: number; price: string;[k: string]: unknown }, proxy?: string) =>
     ipcRenderer.invoke('checkout:buy', item, proxy),
+  checkOfferPrice: (itemId: number, sellerId: number): Promise<{ offerPrice: string | null }> =>
+    ipcRenderer.invoke('feed:checkOfferPrice', itemId, sellerId),
   onCheckoutProgress: (callback: (step: string) => void) => {
     const handler = (_: unknown, step: string) => callback(step);
     ipcRenderer.on('checkout:progress', handler);
@@ -119,6 +121,14 @@ contextBridge.exposeInMainWorld('vinted', {
     const handler = (_: unknown, params: { countdownId: string; simulated?: boolean; ok?: boolean; message: string }) => callback(params);
     ipcRenderer.on('sniper:countdown-done', handler);
     return () => ipcRenderer.removeListener('sniper:countdown-done', handler);
+  },
+  getSniperHits: (opts?: { limit?: number; simulated?: boolean }) =>
+    ipcRenderer.invoke('sniperHits:getAll', opts),
+  clearSniperHits: () => ipcRenderer.invoke('sniperHits:clear'),
+  onSniperHit: (callback: (hit: unknown) => void) => {
+    const handler = (_: unknown, hit: unknown) => callback(hit);
+    ipcRenderer.on('sniper:hit', handler);
+    return () => ipcRenderer.removeListener('sniper:hit', handler);
   },
   onSessionExpired: (callback: () => void) => {
     const handler = () => callback();
@@ -210,16 +220,29 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('wardrobe:enqueueRelist', localIds),
   dequeueRelist: (localId: number) =>
     ipcRenderer.invoke('wardrobe:dequeueRelist', localId),
+  retryRelistSkipDelete: (localId: number) =>
+    ipcRenderer.invoke('wardrobe:retryRelistSkipDelete', localId),
   clearRelistQueue: () =>
     ipcRenderer.invoke('wardrobe:clearQueue'),
   getQueueSettings: () =>
     ipcRenderer.invoke('wardrobe:getQueueSettings'),
   setQueueSettings: (minDelay: number, maxDelay: number) =>
     ipcRenderer.invoke('wardrobe:setQueueSettings', minDelay, maxDelay),
-  onQueueUpdate: (callback: (data: { queue: unknown[]; countdown: number; processing: boolean }) => void) => {
-    const handler = (_: unknown, data: { queue: unknown[]; countdown: number; processing: boolean }) => callback(data);
+  pauseRelistQueue: () =>
+    ipcRenderer.invoke('wardrobe:pauseRelistQueue'),
+  resumeRelistQueue: () =>
+    ipcRenderer.invoke('wardrobe:resumeRelistQueue'),
+  loadPersistedQueue: () =>
+    ipcRenderer.invoke('wardrobe:loadPersistedQueue') as Promise<{ pending: number[]; interrupted: { localId: number; status: string }[] }>,
+  onQueueUpdate: (callback: (data: { queue: unknown[]; countdown: number; processing: boolean; paused: boolean }) => void) => {
+    const handler = (_: unknown, data: { queue: unknown[]; countdown: number; processing: boolean; paused: boolean }) => callback(data);
     ipcRenderer.on('wardrobe:queue-update', handler);
     return () => ipcRenderer.removeListener('wardrobe:queue-update', handler);
+  },
+  onDeleteBlocked: (callback: (data: { localId: number; title: string; reason: string }) => void) => {
+    const handler = (_: unknown, data: { localId: number; title: string; reason: string }) => callback(data);
+    ipcRenderer.on('wardrobe:delete-blocked', handler);
+    return () => ipcRenderer.removeListener('wardrobe:delete-blocked', handler);
   },
 
   // ─── Ontology ───────────────────────────────────────────────────────────
@@ -312,4 +335,13 @@ contextBridge.exposeInMainWorld('vinted', {
   // Backfill past likes
   backfillCrmItem: (itemId: string, backfillHours: number) =>
     ipcRenderer.invoke('crm:backfill', itemId, backfillHours),
+
+  // ─── Vinted User Settings ──────────────────────────────────────────────────
+
+  fetchCurrentUser: (proxy?: string) =>
+    ipcRenderer.invoke('bridge:fetchCurrentUser', proxy),
+  fetchUserCards: (proxy?: string) =>
+    ipcRenderer.invoke('bridge:fetchUserCards', proxy),
+  fetchUserAddresses: (proxy?: string) =>
+    ipcRenderer.invoke('bridge:fetchUserAddresses', proxy),
 });

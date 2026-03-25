@@ -30,6 +30,10 @@ export interface AppSettings {
   relist_max_delay: number;
   crm_delay_min_minutes: number;
   crm_delay_max_minutes: number;
+  defaultCardId: string;
+  defaultAddressId: string;
+  availableCards: any[];
+  availableAddresses: any[];
 }
 
 const DEFAULTS: AppSettings = {
@@ -57,6 +61,10 @@ const DEFAULTS: AppSettings = {
   relist_max_delay: 90,
   crm_delay_min_minutes: 2,
   crm_delay_max_minutes: 5,
+  defaultCardId: '',
+  defaultAddressId: '',
+  availableCards: [],
+  availableAddresses: [],
 };
 
 const SETTINGS_KEYS: (keyof AppSettings)[] = [
@@ -84,6 +92,10 @@ const SETTINGS_KEYS: (keyof AppSettings)[] = [
   'relist_max_delay',
   'crm_delay_min_minutes',
   'crm_delay_max_minutes',
+  'defaultCardId',
+  'defaultAddressId',
+  'availableCards',
+  'availableAddresses',
 ];
 
 function serialize(value: unknown): string {
@@ -112,7 +124,7 @@ function deserialize(key: keyof AppSettings, value: string): unknown {
   if (key === 'browser_proxy_mode') {
     return value === 'ISP_DEDICATED' ? 'ISP_DEDICATED' : 'DIRECT';
   }
-  if (key === 'proxyUrls' || key === 'scrapingProxies' || key === 'checkoutProxies') {
+  if (key === 'proxyUrls' || key === 'scrapingProxies' || key === 'checkoutProxies' || key === 'availableCards' || key === 'availableAddresses') {
     try {
       const arr = JSON.parse(value) as string[];
       return Array.isArray(arr) ? arr : [];

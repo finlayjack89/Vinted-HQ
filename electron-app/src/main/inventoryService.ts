@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import * as bridge from './bridge';
 import * as inventoryDb from './inventoryDb';
+import { getDb } from './db';
 import * as proxyService from './proxyService';
 import { logger } from './logger';
 import * as settings from './settings';
@@ -148,8 +149,61 @@ export async function getDetailCompleteness(localId: number): Promise<DetailComp
   const missing: string[] = [];
   if (!isPositiveInt(item.category_id)) missing.push('category_id');
   if (!isPositiveInt(item.brand_id)) missing.push('brand_id');
-  if (!isPositiveInt(item.status_id)) missing.push('status_id');
-  if (requiresSize && !isPositiveInt(item.size_id)) missing.push('size_id');
+
+  // Infer status_id from condition if missing (fixes Chrome extension ingests)
+  let statusId = item.status_id;
+  if (!isPositiveInt(statusId) && item.condition) {
+    const conditionMap: Record<string, number> = {
+      'New with tags': 6, 'New without tags': 1, 'Very good': 2, 'Good': 3, 'Satisfactory': 4, 'Not fully functional': 5,
+    };
+    statusId = conditionMap[item.condition] ?? statusId;
+  }
+  if (!isPositiveInt(statusId)) missing.push('status_id');
+
+  if (requiresSize && !isPositiveInt(item.size_id)) {
+    let resolvedSizeId: number | null = null;
+    const sizeLabel = (item as any).size_label || (item as any).size_title || '';
+    if (categoryId) {
+      const sizeEntity = inventoryDb.getOntologyEntity('category_sizes', categoryId);
+      if (sizeEntity && sizeEntity.extra) {
+        try {
+          const parsed = JSON.parse(sizeEntity.extra);
+          const allSizes: any[] = parsed.size_groups?.flatMap((g: any) => g.sizes || []) || (Array.isArray(parsed) ? parsed : []);
+          
+          let match = null;
+          if (sizeLabel) {
+             // 1. Try exact textual match (e.g. "Size 39" -> "39")
+             match = allSizes.find(s => String(s.title).trim() === String(sizeLabel).trim() || String(s.title).includes(String(sizeLabel)));
+          }
+          
+          if (!match && !sizeLabel) {
+             // 2. If it's a bag/accessory (no size label exists) but Vinted bizarrely requires one,
+             // default to "One size" (usually ID 90) or "Other" (usually ID 97)
+             match = allSizes.find(s => String(s.title).toLowerCase() === 'one size' || String(s.title).toLowerCase() === 'no size');
+          }
+
+          if (match && match.id) {
+            resolvedSizeId = Number(match.id);
+            // Patch it directly in the DB so future checks succeed
+            if (item.id && item.title) {
+              inventoryDb.upsertInventoryItemExplicit({
+                id: item.id,
+                size_id: resolvedSizeId,
+                title: item.title,
+                price: item.price ?? 0
+              });
+            }
+            (item as any).size_id = resolvedSizeId;
+          }
+        } catch (e) {
+          // ignore parsing error
+        }
+      }
+    }
+    if (!resolvedSizeId) {
+      missing.push('size_id');
+    }
+  }
 
   const desc = typeof item.description === 'string' ? item.description : '';
   if (!desc.trim()) missing.push('description');
@@ -469,6 +523,15 @@ export async function pullFromVinted(userId: number): Promise<{
         const existing = inventoryDb.getInventoryItemByVintedId(vintedId);
         const snapshotFetchedAt = Math.floor(Date.now() / 1000);
         const listFingerprint = computeWardrobeListFingerprint(vintedItem);
+
+        // Skip items marked as deprecated (from skip-delete relists).
+        // Keep them stamped so the reconciliation sweep doesn't remove them prematurely —
+        // they'll be cleaned up when they disappear from Vinted (moderation removes them).
+        if (existing && existing.status === 'deprecated') {
+          inventoryDb.touchLastSeenAt(existing.id, syncBatchTime);
+          pulled++;
+          continue;
+        }
 
         // Ensure the item exists locally so we have a stable localId for caching, etc.
         // For existing items with a stored snapshot, we avoid overwriting local fields
@@ -1914,6 +1977,14 @@ function buildVintedItemData(item: inventoryDb.InventoryItemJoined, opts?: { req
     'shipment_prices'
   ) as { domestic?: unknown; international?: unknown };
 
+  let statusId = item.status_id;
+  if (!isPositiveInt(statusId) && item.condition) {
+    const conditionMap: Record<string, number> = {
+      'New with tags': 6, 'New without tags': 1, 'Very good': 2, 'Good': 3, 'Satisfactory': 4, 'Not fully functional': 5,
+    };
+    statusId = conditionMap[item.condition] ?? statusId;
+  }
+
   const data: Record<string, unknown> = {
     currency: item.currency || 'GBP',
     temp_uuid: '',
@@ -1925,7 +1996,7 @@ function buildVintedItemData(item: inventoryDb.InventoryItemJoined, opts?: { req
     catalog_id: item.category_id,
     isbn: item.isbn || null,
     is_unisex: Boolean(item.is_unisex),
-    status_id: item.status_id || 2,
+    status_id: statusId || 2,
     video_game_rating_id: item.video_game_rating_id || null,
     price: item.price,
     package_size_id: item.package_size_id || 3,
@@ -1971,8 +2042,75 @@ function buildVintedItemData(item: inventoryDb.InventoryItemJoined, opts?: { req
 let queue: RelistQueueEntry[] = [];
 let queueProcessing = false;
 let queueAborted = false;
+let queuePaused = false;
 let nextRelistCountdown = 0;
 let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+// ─── Queue Persistence Helpers ──────────────────────────────────────────────
+
+function persistQueueEntry(localId: number, status: string, error?: string | null): void {
+  try {
+    const d = getDb();
+    if (!d) return;
+    const now = Math.floor(Date.now() / 1000);
+    d.prepare(`
+      INSERT INTO relist_queue (local_id, status, error, enqueued_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(local_id) DO UPDATE SET
+        status = excluded.status,
+        error = excluded.error,
+        started_at = CASE WHEN excluded.status IN ('mutating','uploading') THEN ? ELSE started_at END,
+        completed_at = CASE WHEN excluded.status IN ('done','error','interrupted') THEN ? ELSE completed_at END
+    `).run(localId, status, error ?? null, now, now, now);
+  } catch { /* non-fatal */ }
+}
+
+function removePersistedEntry(localId: number): void {
+  try {
+    const d = getDb();
+    if (!d) return;
+    d.prepare('DELETE FROM relist_queue WHERE local_id = ?').run(localId);
+  } catch { /* non-fatal */ }
+}
+
+function clearPersistedQueue(): void {
+  try {
+    const d = getDb();
+    if (!d) return;
+    d.prepare("DELETE FROM relist_queue WHERE status IN ('pending','interrupted')").run();
+  } catch { /* non-fatal */ }
+}
+
+/**
+ * Load persisted queue entries on startup.
+ * Returns entries that were pending or interrupted when the app last closed.
+ */
+export function loadPersistedQueue(): { pending: number[]; interrupted: { localId: number; status: string }[] } {
+  try {
+    const d = getDb();
+    if (!d) return { pending: [], interrupted: [] };
+
+    const pendingRows = d.prepare(
+      "SELECT local_id FROM relist_queue WHERE status = 'pending' ORDER BY enqueued_at"
+    ).all() as { local_id: number }[];
+
+    const interruptedRows = d.prepare(
+      "SELECT local_id, status FROM relist_queue WHERE status IN ('mutating','uploading','interrupted')"
+    ).all() as { local_id: number; status: string }[];
+
+    // Mark interrupted rows
+    d.prepare(
+      "UPDATE relist_queue SET status = 'interrupted' WHERE status IN ('mutating','uploading')"
+    ).run();
+
+    return {
+      pending: pendingRows.map(r => r.local_id),
+      interrupted: interruptedRows.map(r => ({ localId: r.local_id, status: 'interrupted' })),
+    };
+  } catch {
+    return { pending: [], interrupted: [] };
+  }
+}
 
 export function getQueue(): RelistQueueEntry[] {
   return [...queue];
@@ -1980,6 +2118,36 @@ export function getQueue(): RelistQueueEntry[] {
 
 export function getQueueCountdown(): number {
   return nextRelistCountdown;
+}
+
+/**
+ * Pause the queue — the current item will finish, then processing stops.
+ */
+export function pauseQueue(): void {
+  if (!queueProcessing || queuePaused) return;
+  queuePaused = true;
+  // Stop the countdown timer immediately
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+  nextRelistCountdown = 0;
+  emitQueueUpdate();
+  logger.info('relist-queue-pause-requested', { remaining: queue.filter(e => e.status === 'pending').length });
+}
+
+/**
+ * Resume a paused queue.
+ */
+export function resumeQueue(): void {
+  if (!queuePaused) return;
+  queuePaused = false;
+  emitQueueUpdate();
+  logger.info('relist-queue-resumed', { remaining: queue.filter(e => e.status === 'pending').length });
+  // Restart processing if there are pending items
+  if (!queueProcessing && queue.some(e => e.status === 'pending')) {
+    processQueue();
+  }
 }
 
 /**
@@ -2069,6 +2237,7 @@ export async function enqueueRelist(localIds: number[]): Promise<RelistQueueEntr
     };
 
     queue.push(entry);
+    persistQueueEntry(localId, 'pending');
     added.push(entry);
   }
 
@@ -2108,8 +2277,34 @@ export function dequeueRelist(localId: number): boolean {
     return false;
   }
   queue.splice(idx, 1);
+  removePersistedEntry(localId);
   emitQueueUpdate();
   logger.info('relist-dequeue', { localId }, requestId);
+  return true;
+}
+
+/**
+ * Retry a DELETE_BLOCKED relist by skipping the delete step.
+ * Resets the entry to 'pending' with deleteSkipped=true and restarts queue.
+ */
+export function retryRelistSkipDelete(localId: number): boolean {
+  const requestId = crypto.randomUUID();
+  const entry = queue.find((e) => e.localId === localId);
+  if (!entry) {
+    logger.debug('relist-retry-skip-delete-miss', { localId }, requestId);
+    return false;
+  }
+  entry.status = 'pending';
+  entry.error = undefined;
+  entry.deleteSkipped = true; // signals processQueue to pass skipDelete=true
+  persistQueueEntry(localId, 'pending');
+  emitQueueUpdate();
+  logger.info('relist-retry-skip-delete', { localId }, requestId);
+
+  // Restart queue processing if not already running
+  if (!queueProcessing) {
+    processQueue();
+  }
   return true;
 }
 
@@ -2121,6 +2316,7 @@ export function clearQueue(): void {
   const pendingBefore = queue.filter((e) => e.status === 'pending').length;
   queueAborted = true;
   queue = queue.filter((e) => e.status !== 'pending');
+  clearPersistedQueue();
   if (countdownInterval) {
     clearInterval(countdownInterval);
     countdownInterval = null;
@@ -2138,8 +2334,8 @@ export function getQueueSettings(): { minDelay: number; maxDelay: number } {
   const maxDelay = settings.getSetting('relist_max_delay');
 
   return {
-    minDelay: minDelay ?? 30,
-    maxDelay: maxDelay ?? 90,
+    minDelay: minDelay ?? 60,
+    maxDelay: maxDelay ?? 300,
   };
 }
 
@@ -2171,7 +2367,7 @@ async function processQueue(): Promise<void> {
     requestId,
   );
 
-  while (!queueAborted) {
+  while (!queueAborted && !queuePaused) {
     const entry = queue.find((e) => e.status === 'pending');
     if (!entry) break;
 
@@ -2186,6 +2382,7 @@ async function processQueue(): Promise<void> {
     try {
       // Step 1: Set status to mutating
       entry.status = 'mutating';
+      persistQueueEntry(entry.localId, 'mutating');
       emitQueueUpdate();
 
       const item = inventoryDb.getInventoryItem(entry.localId);
@@ -2229,23 +2426,35 @@ async function processQueue(): Promise<void> {
 
       // Step 3: Set status to uploading
       entry.status = 'uploading';
+      persistQueueEntry(entry.localId, 'uploading');
       emitQueueUpdate();
 
       // Step 4: Browser-only relist (upload, delete, wait, publish)
       const comp = await getDetailCompleteness(entry.localId);
-      if (!comp.ok || !comp.complete) {
+      // size_id is non-fatal for relists: some categories (bags, accessories) don't
+      // actually require it despite what our ontology cache says. Let Vinted's API
+      // be the final arbiter.
+      const fatalMissing = comp.ok ? comp.missing.filter(f => f !== 'size_id') : ['unknown'];
+      if (!comp.ok || fatalMissing.length > 0) {
         entry.status = 'error';
-        entry.error = `Missing required listing fields for relist: ${(comp.ok ? comp.missing : ['unknown']).join(', ')}`;
+        entry.error = `Missing required listing fields for relist: ${fatalMissing.join(', ')}`;
         emitQueueUpdate();
         logger.warn(
           'relist-item-missing-required-fields',
-          { localId: entry.localId, vintedItemId: item.vinted_item_id, missing: comp.ok ? comp.missing : ['unknown'], queueRequestId: requestId },
+          { localId: entry.localId, vintedItemId: item.vinted_item_id, missing: fatalMissing, queueRequestId: requestId },
           itemRequestId,
         );
         continue;
       }
+      if (comp.ok && comp.missing.length > 0) {
+        logger.info(
+          'relist-item-non-fatal-missing',
+          { localId: entry.localId, missing: comp.missing, queueRequestId: requestId },
+          itemRequestId,
+        );
+      }
 
-      const itemData = buildVintedItemData(item, { requiresSize: comp.requires_size });
+      const itemData = buildVintedItemData(item, { requiresSize: comp.requires_size && isPositiveInt(item.size_id) });
 
       // Extract photo URLs from local vault (Vinted CDN URLs)
       const photoUrls: string[] = [];
@@ -2269,10 +2478,27 @@ async function processQueue(): Promise<void> {
         itemData,
         photoUrls,
         entry.relistCount,
+        undefined, // proxy
+        entry.deleteSkipped ?? false, // skipDelete
       );
 
       if (!relistResult.ok) {
         const errResult = relistResult as { code: string; message: string };
+        // DELETE_BLOCKED: old listing can't be deleted (under moderation review).
+        // Pause the queue and ask the user before proceeding.
+        if (errResult.code === 'DELETE_BLOCKED') {
+          entry.status = 'error';
+          entry.error = 'Old listing under review — cannot delete';
+          persistQueueEntry(entry.localId, 'error', entry.error);
+          emitQueueUpdate();
+          emitDeleteBlocked(entry.localId, entry.title, errResult.message);
+          logger.warn(
+            'relist-delete-blocked',
+            { localId: entry.localId, message: errResult.message, queueRequestId: requestId },
+            itemRequestId,
+          );
+          continue;
+        }
         // Surface Datadome errors with a user-friendly prompt
         if (errResult.code === 'DATADOME_CHALLENGE') {
           entry.status = 'error';
@@ -2346,6 +2572,50 @@ async function processQueue(): Promise<void> {
             photo_urls: JSON.stringify(newPhotoUrls),
           } as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
         }
+
+        // 4. Skip-Delete Identity Transfer: when the old listing couldn't be deleted
+        //    (e.g. "check in progress"), transfer auto-message config to new ID and
+        //    mark the old item as deprecated so wardrobe sync doesn't re-import it.
+        const deleteSucceeded = relistData && 'delete_succeeded' in relistData
+          ? !!(relistData as Record<string, unknown>).delete_succeeded
+          : true; // default true for backward compat
+        if (!deleteSucceeded && item.vinted_item_id) {
+          const oldVintedIdStr = String(item.vinted_item_id);
+          const newVintedIdStr = String(newItemId);
+
+          // Transfer auto-message config (if any)
+          const transferred = inventoryDb.transferAutoMessageConfig(oldVintedIdStr, newVintedIdStr);
+          if (transferred) {
+            logger.info(
+              'relist-skip-delete-crm-transfer',
+              { localId: entry.localId, oldVintedId: oldVintedIdStr, newVintedId: newVintedIdStr },
+              itemRequestId,
+            );
+          }
+
+          // Mark old listing as deprecated so wardrobe sync skips it
+          const oldItem = inventoryDb.getInventoryItemByVintedId(item.vinted_item_id);
+          if (oldItem && oldItem.id !== entry.localId) {
+            inventoryDb.setInventoryStatus(oldItem.id, 'deprecated');
+            logger.info(
+              'relist-skip-delete-deprecate-old',
+              { deprecatedLocalId: oldItem.id, oldVintedId: item.vinted_item_id },
+              itemRequestId,
+            );
+          }
+
+          entry.deleteSkipped = true;
+          logger.warn(
+            'relist-skip-delete',
+            {
+              localId: entry.localId,
+              oldVintedId: item.vinted_item_id,
+              newVintedId: newItemId,
+              deleteError: (relistData as Record<string, unknown>).delete_error,
+            },
+            itemRequestId,
+          );
+        }
       }
       inventoryDb.incrementRelistCount(entry.localId);
 
@@ -2364,6 +2634,7 @@ async function processQueue(): Promise<void> {
       }
 
       entry.status = 'done';
+      persistQueueEntry(entry.localId, 'done');
       emitQueueUpdate();
       logger.info(
         'relist-item-done',
@@ -2373,6 +2644,7 @@ async function processQueue(): Promise<void> {
           newVintedId: newItemId,
           photoCount: photoIds.length,
           generation: entry.relistCount + 1,
+          deleteSkipped: entry.deleteSkipped ?? false,
           durationMs: Date.now() - itemStartedAtMs,
           queueRequestId: requestId,
         },
@@ -2383,6 +2655,7 @@ async function processQueue(): Promise<void> {
     } catch (err) {
       entry.status = 'error';
       entry.error = String(err);
+      persistQueueEntry(entry.localId, 'error', entry.error);
       emitQueueUpdate();
       logger.error(
         'relist-item-error',
@@ -2392,7 +2665,7 @@ async function processQueue(): Promise<void> {
     }
 
     // Wait randomized delay before next item
-    if (!queueAborted && queue.some((e) => e.status === 'pending')) {
+    if (!queueAborted && !queuePaused && queue.some((e) => e.status === 'pending')) {
       const { minDelay, maxDelay } = getQueueSettings();
       const delay = minDelay + Math.random() * (maxDelay - minDelay);
       await startCountdown(delay);
@@ -2400,15 +2673,19 @@ async function processQueue(): Promise<void> {
   }
 
   queueProcessing = false;
-  logger.info(
-    'relist-queue-finished',
-    {
-      done: queue.filter((e) => e.status === 'done').length,
-      errors: queue.filter((e) => e.status === 'error').length,
-      durationMs: Date.now() - startedAtMs,
-    },
-    requestId,
-  );
+  if (queuePaused) {
+    logger.info('relist-queue-paused', { remaining: queue.filter(e => e.status === 'pending').length }, requestId);
+  } else {
+    logger.info(
+      'relist-queue-finished',
+      {
+        done: queue.filter((e) => e.status === 'done').length,
+        errors: queue.filter((e) => e.status === 'error').length,
+        durationMs: Date.now() - startedAtMs,
+      },
+      requestId,
+    );
+  }
 }
 
 async function startCountdown(seconds: number): Promise<void> {
@@ -2446,8 +2723,15 @@ export function abortQueue(): void {
     clearInterval(countdownInterval);
     countdownInterval = null;
   }
+  // Mark in-progress items as interrupted in persistent store
+  for (const entry of queue) {
+    if (entry.status === 'mutating' || entry.status === 'uploading') {
+      persistQueueEntry(entry.localId, 'interrupted');
+    }
+  }
   queue = [];
   queueProcessing = false;
+  queuePaused = false;
   nextRelistCountdown = 0;
   logger.info('relist-queue-aborted', { reason: 'app-shutdown', pendingRemoved: pendingBefore }, requestId);
 }
@@ -2460,9 +2744,17 @@ function emitQueueUpdate(): void {
     queue: queue.map((e) => ({ ...e })),
     countdown: nextRelistCountdown,
     processing: queueProcessing,
+    paused: queuePaused,
   };
   for (const win of windows) {
     win.webContents.send('wardrobe:queue-update', payload);
+  }
+}
+
+function emitDeleteBlocked(localId: number, title: string, reason: string): void {
+  const windows = BrowserWindow.getAllWindows();
+  for (const win of windows) {
+    win.webContents.send('wardrobe:delete-blocked', { localId, title, reason });
   }
 }
 

@@ -15,8 +15,10 @@ from fastapi.responses import JSONResponse, Response
 from vinted_client import (
     VintedError,
     search as vinted_search,
+    fetch_item_json as vinted_fetch_item_json,
     checkout_build as vinted_checkout_build,
     checkout_put as vinted_checkout_put,
+    checkout_pay as vinted_checkout_pay,
     nearby_pickup_points as vinted_nearby_pickup_points,
     apply_rate_limit,
     fetch_wardrobe as vinted_fetch_wardrobe,
@@ -43,6 +45,10 @@ from vinted_client import (
     send_message as vinted_send_message,
     send_offer as vinted_send_offer,
     initiate_conversation as vinted_initiate_conversation,
+    create_buy_conversation as vinted_create_buy_conversation,
+    fetch_current_user as vinted_fetch_current_user,
+    fetch_user_payment_cards as vinted_fetch_user_payment_cards,
+    fetch_user_addresses as vinted_fetch_user_addresses,
 )
 from image_mutator import mutate_image
 
@@ -128,6 +134,30 @@ def search(
         return _error_response(e.code, e.message, status)
 
 
+@app.get("/item/{item_id}/json")
+def get_item_json(
+    item_id: int,
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Fetch item JSON from Vinted API — lightweight, returns transaction_id."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_item_json(
+            item_id=item_id,
+            cookie=x_vinted_cookie,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
 @app.post("/checkout/build")
 def checkout_build(
     body: dict = Body(...),
@@ -136,6 +166,8 @@ def checkout_build(
     base_interval: float = Query(0, ge=0),
     jitter: float = Query(1, ge=0),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
     x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """
@@ -159,6 +191,8 @@ def checkout_build(
         data = vinted_checkout_build(
             order_id=order_id,
             cookie=x_vinted_cookie,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
             user_agent=x_vinted_user_agent,
@@ -178,6 +212,8 @@ def checkout_put(
     base_interval: float = Query(0, ge=0),
     jitter: float = Query(1, ge=0),
     x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
     x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
 ):
     """
@@ -195,6 +231,8 @@ def checkout_put(
             purchase_id=purchase_id,
             components=components,
             cookie=x_vinted_cookie,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
             proxy=proxy,
             transport_mode=transport_mode,
             user_agent=x_vinted_user_agent,
@@ -557,6 +595,72 @@ def ontology_sizes(
             catalog_id=catalog_id,
             csrf_token=x_csrf_token,
             anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/users/current")
+def get_current_user(
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Fetch the currently logged-in user profile."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_current_user(
+            cookie=x_vinted_cookie,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/user/payment-cards")
+def get_user_payment_cards(
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Fetch all saved payment methods."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_user_payment_cards(
+            cookie=x_vinted_cookie,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.get("/user/addresses")
+def get_user_addresses(
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Fetch all saved shipping addresses."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    try:
+        data = vinted_fetch_user_addresses(
+            cookie=x_vinted_cookie,
             proxy=proxy,
             transport_mode=transport_mode,
             user_agent=x_vinted_user_agent,
@@ -1034,6 +1138,7 @@ async def relist_v2(
     item_data = body.get("item_data", {})
     photo_urls = body.get("photo_urls", [])
     relist_count = body.get("relist_count", 0)
+    skip_delete = bool(body.get("skip_delete", False))
 
     if old_item_id is None:
         return _error_response("INVALID_BODY", "old_item_id required", 400)
@@ -1052,6 +1157,7 @@ async def relist_v2(
             proxy=proxy,
             transport_mode=transport_mode,
             user_agent=x_vinted_user_agent,
+            skip_delete=skip_delete,
         )
         return {"ok": True, "data": result}
     except VintedError as e:
@@ -1066,6 +1172,35 @@ import sqlite3
 import os
 import json
 import time
+
+
+@app.get("/session/latest")
+def session_latest():
+    """
+    Return the latest session sync state from SQLite.
+    Uses a fresh Python sqlite3 connection to avoid stale reads.
+    The Electron app polls this instead of reading SQLite directly
+    (better-sqlite3's page cache can miss cross-process writes).
+    """
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if not db_path:
+        return {"ok": False, "has_cookie": False, "synced_at": 0}
+    try:
+        with sqlite3.connect(db_path, timeout=5.0) as conn:
+            cookie_row = conn.execute(
+                "SELECT value FROM settings WHERE key = 'vinted_cookie_plain'"
+            ).fetchone()
+            synced_row = conn.execute(
+                "SELECT value FROM settings WHERE key = 'session_synced_at'"
+            ).fetchone()
+        return {
+            "ok": True,
+            "has_cookie": cookie_row is not None and bool(cookie_row[0]),
+            "cookie_header": cookie_row[0] if cookie_row else None,
+            "synced_at": int(synced_row[0]) if synced_row else 0,
+        }
+    except Exception as e:
+        return {"ok": False, "has_cookie": False, "synced_at": 0, "error": str(e)}
 
 
 @app.post("/ingest/session")
@@ -1720,6 +1855,72 @@ def init_transaction(
             cookie=x_vinted_cookie,
             item_id=item_id,
             receiver_id=receiver_id,
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.post("/conversations/buy")
+def create_buy_conv(
+    body: dict = Body(...),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Create a buy conversation to obtain transaction_id for checkout."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    item_id = body.get("item_id")
+    seller_id = body.get("seller_id")
+    if not item_id or not seller_id:
+        return _error_response("MISSING_PARAMS", "item_id and seller_id required", 400)
+    try:
+        data = vinted_create_buy_conversation(
+            cookie=x_vinted_cookie,
+            item_id=int(item_id),
+            seller_id=int(seller_id),
+            csrf_token=x_csrf_token,
+            anon_id=x_anon_id,
+            proxy=proxy,
+            transport_mode=transport_mode,
+            user_agent=x_vinted_user_agent,
+        )
+        return {"ok": True, "data": data}
+    except VintedError as e:
+        return _error_response(e.code, e.message, e.status_code or 500)
+
+
+@app.post("/checkout/pay")
+def checkout_pay_endpoint(
+    body: dict = Body(...),
+    proxy: Optional[str] = Query(None),
+    transport_mode: Optional[str] = Query(None),
+    x_vinted_cookie: Optional[str] = Header(None, alias="X-Vinted-Cookie"),
+    x_csrf_token: Optional[str] = Header(None, alias="X-Csrf-Token"),
+    x_anon_id: Optional[str] = Header(None, alias="X-Anon-Id"),
+    x_vinted_user_agent: Optional[str] = Header(None, alias="X-Vinted-User-Agent"),
+):
+    """Execute the final payment for a checkout."""
+    if not x_vinted_cookie:
+        return _error_response("MISSING_COOKIE", "X-Vinted-Cookie header required", 400)
+    purchase_id = body.get("purchase_id")
+    checksum = body.get("checksum")
+    if not purchase_id or not checksum:
+        return _error_response("MISSING_PARAMS", "purchase_id and checksum required", 400)
+    try:
+        data = vinted_checkout_pay(
+            purchase_id=str(purchase_id),
+            checksum=str(checksum),
+            cookie=x_vinted_cookie,
             csrf_token=x_csrf_token,
             anon_id=x_anon_id,
             proxy=proxy,

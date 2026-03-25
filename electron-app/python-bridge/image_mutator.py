@@ -49,10 +49,10 @@ except ImportError:
 MIN_CROP_DIM = 400
 
 # Minimum Hamming distance to pass Vinted's duplicate detection.
-# dHash produces 64-bit hashes; Vinted's match threshold is approximately 5 bits.
-# We target 5 to avoid unnecessary fallback escalation — the Phase 2 mutations
+# dHash produces 64-bit hashes; Vinted's match threshold is unknown but likely low.
+# We target 3 to avoid unnecessary fallback escalation — the Phase 2 mutations
 # already change the binary fingerprint significantly even at low dHash distances.
-MIN_DHASH_DISTANCE = 5
+MIN_DHASH_DISTANCE = 3
 
 
 # ─── Legacy Random Mutation (existing behaviour, used by /upload) ────────────
@@ -78,16 +78,16 @@ def mutate_image(image_bytes: bytes, relist_count: int) -> bytes:
     # 1. Strip all metadata (EXIF, ICC profile, JFIF comments)
     img.info.clear()
 
-    # 2. Alternating rotation: +-0.3-0.6 degrees (imperceptible)
-    angle = random.uniform(0.3, 0.6)
+    # 2. Alternating rotation: +-0.15-0.3 degrees (sub-pixel, invisible)
+    angle = random.uniform(0.15, 0.3)
     if relist_count % 2 == 0:
         angle = -angle  # clockwise
 
     img = img.rotate(angle, resample=Image.BICUBIC, expand=False, fillcolor=None)
 
-    # 3. Random 1-2% edge crop
+    # 3. Random 0.3-0.8% edge crop (just enough to shift dHash grid)
     w, h = img.size
-    crop_pct = random.uniform(0.01, 0.02)
+    crop_pct = random.uniform(0.003, 0.008)
     left = int(w * crop_pct)
     top = int(h * crop_pct)
     right = w - int(w * crop_pct)
@@ -95,9 +95,9 @@ def mutate_image(image_bytes: bytes, relist_count: int) -> bytes:
     if (right - left) >= MIN_CROP_DIM and (bottom - top) >= MIN_CROP_DIM:
         img = img.crop((left, top, right, bottom))
 
-    # 4. Slight brightness & contrast shift (+-1%)
-    img = ImageEnhance.Brightness(img).enhance(random.uniform(0.99, 1.01))
-    img = ImageEnhance.Contrast(img).enhance(random.uniform(0.99, 1.01))
+    # 4. Slight brightness & contrast shift (+-0.5%)
+    img = ImageEnhance.Brightness(img).enhance(random.uniform(0.995, 1.005))
+    img = ImageEnhance.Contrast(img).enhance(random.uniform(0.995, 1.005))
 
     # 5. Pixel jitter: randomly alter RGB values of 80 pixels by +-3
     pixels = img.load()
@@ -124,19 +124,21 @@ def mutate_image(image_bytes: bytes, relist_count: int) -> bytes:
 # 12 clockface crop positions.  Each is (left%, top%, right%, bottom%)
 # representing the fraction to remove from each edge.  Asymmetric removal
 # shifts the spatial geometry differently for each position.
+# Values kept to 0.3-0.8% — just enough to shift the dHash 9×8 gradient grid
+# while preserving virtually all visible image content.
 _CLOCKFACE_CROPS = [
-    (0.01, 0.00, 0.00, 0.02),  # 12 o'clock — trim top-left, bottom-right
-    (0.02, 0.01, 0.00, 0.00),  # 1 o'clock
-    (0.03, 0.01, 0.00, 0.01),  # 2 o'clock
-    (0.00, 0.02, 0.01, 0.00),  # 3 o'clock
-    (0.00, 0.03, 0.01, 0.01),  # 4 o'clock
-    (0.01, 0.00, 0.02, 0.01),  # 5 o'clock
-    (0.00, 0.01, 0.02, 0.00),  # 6 o'clock
-    (0.01, 0.01, 0.01, 0.02),  # 7 o'clock
-    (0.02, 0.00, 0.01, 0.01),  # 8 o'clock
-    (0.00, 0.01, 0.01, 0.03),  # 9 o'clock
-    (0.01, 0.02, 0.00, 0.01),  # 10 o'clock
-    (0.00, 0.00, 0.03, 0.02),  # 11 o'clock
+    (0.003, 0.000, 0.000, 0.005),  # 12 o'clock
+    (0.005, 0.003, 0.000, 0.000),  # 1 o'clock
+    (0.008, 0.003, 0.000, 0.003),  # 2 o'clock
+    (0.000, 0.005, 0.003, 0.000),  # 3 o'clock
+    (0.000, 0.008, 0.003, 0.003),  # 4 o'clock
+    (0.003, 0.000, 0.005, 0.003),  # 5 o'clock
+    (0.000, 0.003, 0.005, 0.000),  # 6 o'clock
+    (0.003, 0.003, 0.003, 0.005),  # 7 o'clock
+    (0.005, 0.000, 0.003, 0.003),  # 8 o'clock
+    (0.000, 0.003, 0.003, 0.008),  # 9 o'clock
+    (0.003, 0.005, 0.000, 0.003),  # 10 o'clock
+    (0.000, 0.000, 0.008, 0.005),  # 11 o'clock
 ]
 
 
@@ -164,35 +166,35 @@ def apply_fallback_mutation(img: Image.Image, attempt: int, generation: int = 0)
     rng = random.Random(generation * 100 + attempt)
 
     if attempt == 1:
-        # Micro hue rotation (2-5°): shift colour channels by tiny amounts.
+        # Micro hue rotation (1-3°): shift colour channels by tiny amounts.
         # This changes the gradient directions that dHash measures but is
         # imperceptible to the human eye (similar to white balance drift).
-        angle_deg = rng.uniform(2.0, 5.0)
+        angle_deg = rng.uniform(1.0, 3.0)
         angle_rad = angle_deg * 3.14159 / 180.0
         cos_a = np.cos(angle_rad)
         sin_a = np.sin(angle_rad)
-        # Apply rotation in RGB color space (simplified hue shift)
+        # Apply rotation in RGB color space (very gentle hue shift)
         arr = np.array(img, dtype=np.float32)
         r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
-        new_r = np.clip(r * cos_a - g * sin_a * 0.3, 0, 255)
-        new_g = np.clip(g * cos_a + r * sin_a * 0.3, 0, 255)
+        new_r = np.clip(r * cos_a - g * sin_a * 0.15, 0, 255)
+        new_g = np.clip(g * cos_a + r * sin_a * 0.15, 0, 255)
         arr[:, :, 0] = new_r
         arr[:, :, 1] = new_g
         img = Image.fromarray(arr.astype(np.uint8), mode="RGB")
 
     elif attempt == 2:
-        # Very light Gaussian noise (sigma=3): barely visible, shifts
+        # Very light Gaussian noise (sigma=2): invisible, shifts
         # fine-grained gradients enough to alter the dHash thumbnail.
         arr = np.array(img, dtype=np.int16)
-        noise = np.random.default_rng(seed=generation * 1000 + attempt).normal(0, 3, arr.shape).astype(np.int16)
+        noise = np.random.default_rng(seed=generation * 1000 + attempt).normal(0, 2, arr.shape).astype(np.int16)
         arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
         img = Image.fromarray(arr, mode="RGB")
 
     elif attempt == 3:
-        # Gentle asymmetric crop: 2-3% off one edge only.
+        # Gentle asymmetric crop: 1-1.5% off one edge only.
         # Shifts content within the dHash grid without visibly changing the image.
         edge = rng.choice(["top", "bottom", "left", "right"])
-        pct = rng.uniform(0.02, 0.03)
+        pct = rng.uniform(0.01, 0.015)
         if edge == "top":
             crop_px = int(h * pct)
             if (h - crop_px) >= MIN_CROP_DIM:
@@ -300,12 +302,12 @@ def mutate_image_for_relist(image_bytes: bytes, generation: int) -> bytes:
     # 1. Strip all EXIF / ICC metadata
     img.info.clear()
 
-    # 2. Alternating brightness (even) / contrast (odd) micro-shift (±1%)
+    # 2. Alternating brightness (even) / contrast (odd) micro-shift (±0.5%)
     if generation % 2 == 0:
-        factor = rng.uniform(0.99, 1.01)
+        factor = rng.uniform(0.995, 1.005)
         img = ImageEnhance.Brightness(img).enhance(factor)
     else:
-        factor = rng.uniform(0.99, 1.01)
+        factor = rng.uniform(0.995, 1.005)
         img = ImageEnhance.Contrast(img).enhance(factor)
 
     # 3. Clockface geometric crop — generation mod 12 selects position
@@ -358,35 +360,25 @@ def mutate_image_for_relist(image_bytes: bytes, generation: int) -> bytes:
 
 # ─── Text Jitter Helpers ─────────────────────────────────────────────────────
 
-
-# Unicode whitespace variants that survive basic ASCII strip() normalisation.
-# Cycled by relist_count to produce a different text fingerprint each time.
-_TEXT_JITTER_VARIANTS = [
-    "\u2009",   # thin space
-    "\u200A",   # hair space
-    "\u200B",   # zero-width space
-    "\u2009\u200B",  # thin + zero-width
-    "\u200A\u200B",  # hair + zero-width
-]
-
-
 def jitter_text(text: str, relist_count: int) -> str:
     """
-    Append a visually-invisible Unicode whitespace variant to the text.
-    Cycles through variants based on relist_count so each relist produces
-    a distinct string that survives basic ASCII strip() normalisation.
+    Mutate text by naturally inserting a double-space between words.
+    This evades Vinted's new strict validation against zero-width and Unicode invisible characters.
     """
-    stripped = text.rstrip()
-    suffix = _TEXT_JITTER_VARIANTS[relist_count % len(_TEXT_JITTER_VARIANTS)]
-    return stripped + suffix
+    stripped = text.strip()
+    words = stripped.split(" ")
+    if len(words) > 1:
+        # Pick a deterministic gap based on relist count to double-space
+        gap_idx = (relist_count % (len(words) - 1)) + 1
+        words.insert(gap_idx, "")  # Creates a double space when joined
+        return " ".join(words)
+    # Fallback for single-word titles
+    return stripped + ("." * ((relist_count % 3) + 1))
 
 
 def jitter_text_zwsp(text: str, generation: int) -> str:
     """
-    Append 1-4 zero-width spaces to text based on generation.
-    This is the V2 jitter used by the relist orchestrator.
+    Legacy wrapper now pointing to the natural double-space jitter algorithm.
     """
-    rng = random.Random(generation + 0xCAFE)  # offset seed to differ from image RNG
-    count = rng.randint(1, 4)
-    return text.rstrip() + ("\u200B" * count)
+    return jitter_text(text, generation)
 

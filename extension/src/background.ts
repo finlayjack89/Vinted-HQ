@@ -126,6 +126,19 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
     }
 });
 
+// Harvest when a Vinted tab gains focus (e.g. opened by Electron app via `open -a Chrome`)
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+    try {
+        const tab = await chrome.tabs.get(activeInfo.tabId);
+        if (tab.url && tab.url.includes('vinted.co.uk')) {
+            console.log('[Vinted HQ BG] 🔑 Vinted tab activated — triggering harvest.');
+            harvestSession();
+        }
+    } catch {
+        // Tab may have been closed before we could query it
+    }
+});
+
 // ─── Network Sniffing (CSRF, Anon ID, User-Agent) ──────────────────────────
 // Sniff all Vinted API requests to dynamically capture tokens from headers.
 

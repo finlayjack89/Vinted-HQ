@@ -8,14 +8,16 @@ import * as snipers from './snipers';
 import * as settings from './settings';
 import * as checkoutService from './checkoutService';
 import * as proxyService from './proxyService';
+import * as sniperHits from './sniperHits';
 import { logger } from './logger';
 import type { FeedItem } from './feedService';
 
 const COUNTDOWN_SECONDS = 3;
 const CHANNEL_COUNTDOWN = 'sniper:countdown';
 const CHANNEL_COUNTDOWN_DONE = 'sniper:countdown-done';
+const CHANNEL_HIT = 'sniper:hit';
 
-let seenItemIds = new Set<number>();
+let processedItemIds = new Set<number>();
 const pendingCountdowns = new Map<string, ReturnType<typeof setTimeout>>();
 
 function matchesSniper(item: FeedItem, sniper: import('./snipers').Sniper): boolean {
@@ -49,26 +51,25 @@ export function processItems(items: FeedItem[]): void {
   const autobuyEnabled = settings.getSetting('autobuyEnabled');
   const simulationMode = settings.getSetting('simulationMode');
 
-  const newItems = items.filter((i) => !seenItemIds.has(i.id));
-  for (const item of newItems) {
-    seenItemIds.add(item.id);
-  }
+  // Do not process anything if both are off
+  if (!autobuyEnabled && !simulationMode) return;
 
-  for (const item of newItems) {
+  // Filter out items we've already initiated a countdown/purchase for
+  const unprocessedItems = items.filter((i) => !processedItemIds.has(i.id));
+
+  for (const item of unprocessedItems) {
     for (const sniper of enabled) {
       if (!matchesSniper(item, sniper)) continue;
+
+      // We found a match for this item. Mark it as processed so we don't buy/simulate it again in future polls.
+      processedItemIds.add(item.id);
 
       const spent = getSniperSpentSafe(sniper.id);
       const limit = sniper.budget_limit || Infinity;
       const price = parseFloat(item.price) || 0;
       if (spent + price > limit) {
         logger.info('sniper:budget-exceeded', { sniperId: sniper.id, itemId: item.id });
-        continue;
-      }
-
-      if (!autobuyEnabled) {
-        logger.info('sniper:match-autobuy-off', { sniperId: sniper.id, itemId: item.id });
-        continue;
+        break; // break to stop trying other snipers for this item
       }
 
       const countdownId = `sniper-${sniper.id}-${item.id}-${Date.now()}`;
@@ -95,6 +96,16 @@ export function processItems(items: FeedItem[]): void {
             title: item.title,
             price: item.price,
           });
+          const hit = sniperHits.insertHit({
+            sniper_id: sniper.id,
+            sniper_name: sniper.name,
+            item_id: item.id,
+            title: item.title,
+            price: item.price,
+            photo_url: item.photo_url ?? null,
+            url: item.url ?? null,
+            simulated: true,
+          });
           for (const win of BrowserWindow.getAllWindows()) {
             if (win.webContents && !win.isDestroyed()) {
               win.webContents.send(CHANNEL_COUNTDOWN_DONE, {
@@ -102,6 +113,7 @@ export function processItems(items: FeedItem[]): void {
                 simulated: true,
                 message: `[Simulation] Would have bought: ${item.title} (£${item.price})`,
               });
+              if (hit) win.webContents.send(CHANNEL_HIT, hit);
             }
           }
           return;
@@ -109,6 +121,23 @@ export function processItems(items: FeedItem[]): void {
 
         const proxy = proxyService.getProxyForCheckout(item);
         checkoutService.runCheckout(item, proxy, sniper.id).then((result) => {
+          if (result.ok) {
+            const hit = sniperHits.insertHit({
+              sniper_id: sniper.id,
+              sniper_name: sniper.name,
+              item_id: item.id,
+              title: item.title,
+              price: item.price,
+              photo_url: item.photo_url ?? null,
+              url: item.url ?? null,
+              simulated: false,
+            });
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (win.webContents && !win.isDestroyed()) {
+                if (hit) win.webContents.send(CHANNEL_HIT, hit);
+              }
+            }
+          }
           for (const win of BrowserWindow.getAllWindows()) {
             if (win.webContents && !win.isDestroyed()) {
               win.webContents.send(CHANNEL_COUNTDOWN_DONE, {
@@ -123,11 +152,12 @@ export function processItems(items: FeedItem[]): void {
       }, COUNTDOWN_SECONDS * 1000);
 
       pendingCountdowns.set(countdownId, timerId);
+      break; // Only trigger one sniper per item
     }
   }
 
-  if (seenItemIds.size > 5000) {
-    seenItemIds = new Set([...seenItemIds].slice(-2000));
+  if (processedItemIds.size > 5000) {
+    processedItemIds = new Set([...processedItemIds].slice(-2000));
   }
 }
 
@@ -136,6 +166,17 @@ export function cancelCountdown(countdownId: string): boolean {
   if (timerId) {
     clearTimeout(timerId);
     pendingCountdowns.delete(countdownId);
+    
+    // Attempt to reset processed state for this item so it can be picked up again
+    // We extract the item ID from the countdownId (sniper-{sniperId}-{itemId}-{timestamp})
+    const parts = countdownId.split('-');
+    if (parts.length >= 3) {
+      const itemId = parseInt(parts[2], 10);
+      if (!isNaN(itemId)) {
+        processedItemIds.delete(itemId);
+      }
+    }
+    
     return true;
   }
   return false;

@@ -64,6 +64,15 @@ console.log('[Vinted HQ] pathname:', window.location.pathname, 'search:', window
             console.log(`[Vinted HQ] 🔑 CSRF token scraped from DOM: ${token.slice(0, 10)}...`);
             chrome.runtime.sendMessage({ type: 'SESSION_CSRF_TOKEN', token });
         }
+
+        // Always trigger a session harvest when any Vinted page loads.
+        // This ensures the extension POSTs cookies to the bridge immediately,
+        // even if tabs.onUpdated didn't fire (e.g., Datadome challenge pages).
+        chrome.runtime.sendMessage({ type: 'HARVEST_SESSION' }, () => {
+            // Callback suppresses "Could not establish connection" errors
+            // when the background service worker is waking up.
+            if (chrome.runtime.lastError) { /* expected during SW wake */ }
+        });
     }, 2000); // Wait 2s for React hydration
 })();
 

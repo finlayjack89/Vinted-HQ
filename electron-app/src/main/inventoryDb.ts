@@ -218,9 +218,13 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
         data.category_id ?? null, data.brand_id ?? null, data.brand_name ?? null,
         data.size_id ?? null, data.size_label ?? null, data.condition ?? null,
         data.status_id ?? null,
-        data.color_ids ?? null, data.photo_urls ?? null, data.local_image_paths ?? null,
-        data.package_size_id ?? null, data.item_attributes ?? null,
-        data.is_unisex ?? null, data.status ?? null, data.extra_metadata ?? null,
+        normalizeValueForDb('color_ids', data.color_ids ?? null),
+        normalizeValueForDb('photo_urls', data.photo_urls ?? null),
+        normalizeValueForDb('local_image_paths', data.local_image_paths ?? null),
+        data.package_size_id ?? null,
+        normalizeValueForDb('item_attributes', data.item_attributes ?? null),
+        data.is_unisex ?? null, data.status ?? null,
+        normalizeValueForDb('extra_metadata', data.extra_metadata ?? null),
         data.list_fingerprint ?? null,
         data.detail_hydrated_at ?? null,
         data.detail_source ?? null,
@@ -228,11 +232,11 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
         data.isbn ?? null,
         data.measurement_length ?? null,
         data.measurement_width ?? null,
-        data.model_metadata ?? null,
+        normalizeValueForDb('model_metadata', data.model_metadata ?? null),
         data.manufacturer ?? null,
         data.manufacturer_labelling ?? null,
         data.video_game_rating_id ?? null,
-        data.shipment_prices ?? null,
+        normalizeValueForDb('shipment_prices', data.shipment_prices ?? null),
         (data as Partial<InventoryMasterRow>).live_snapshot_hash ?? null,
         (data as Partial<InventoryMasterRow>).live_snapshot_fetched_at ?? null,
         data.id
@@ -256,9 +260,13 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
     data.category_id ?? null, data.brand_id ?? null, data.brand_name ?? null,
     data.size_id ?? null, data.size_label ?? null, data.condition ?? null,
     data.status_id ?? null,
-    data.color_ids ?? null, data.photo_urls ?? null, data.local_image_paths ?? null,
-    data.package_size_id ?? null, data.item_attributes ?? null,
-    data.is_unisex ?? 0, data.status ?? 'local_only', data.extra_metadata ?? null,
+    normalizeValueForDb('color_ids', data.color_ids ?? null),
+    normalizeValueForDb('photo_urls', data.photo_urls ?? null),
+    normalizeValueForDb('local_image_paths', data.local_image_paths ?? null),
+    data.package_size_id ?? null,
+    normalizeValueForDb('item_attributes', data.item_attributes ?? null),
+    data.is_unisex ?? 0, data.status ?? 'local_only',
+    normalizeValueForDb('extra_metadata', data.extra_metadata ?? null),
     data.list_fingerprint ?? null,
     data.detail_hydrated_at ?? null,
     data.detail_source ?? null,
@@ -266,11 +274,11 @@ export function upsertInventoryItem(data: Partial<InventoryMasterRow> & { title:
     data.isbn ?? null,
     data.measurement_length ?? null,
     data.measurement_width ?? null,
-    data.model_metadata ?? null,
+    normalizeValueForDb('model_metadata', data.model_metadata ?? null),
     data.manufacturer ?? null,
     data.manufacturer_labelling ?? null,
     data.video_game_rating_id ?? null,
-    data.shipment_prices ?? null,
+    normalizeValueForDb('shipment_prices', data.shipment_prices ?? null),
     (data as Partial<InventoryMasterRow>).live_snapshot_hash ?? null,
     (data as Partial<InventoryMasterRow>).live_snapshot_fetched_at ?? null
   );
@@ -991,6 +999,46 @@ export function upsertAutoMessageConfig(config: Omit<AutoMessageConfig, 'created
 export function deleteAutoMessageConfig(itemId: string): boolean {
   const result = db().prepare('DELETE FROM auto_message_configs WHERE item_id = ?').run(itemId);
   return result.changes > 0;
+}
+
+/**
+ * Transfer an auto-message config from one Vinted item ID to another.
+ * Used during skip-delete relists to migrate rules to the new listing.
+ * Returns true if a config was transferred.
+ */
+export function transferAutoMessageConfig(oldItemId: string, newItemId: string): boolean {
+  const existing = getAutoMessageConfig(oldItemId);
+  if (!existing) return false;
+
+  const d = db();
+  const doTransfer = d.transaction(() => {
+    // Upsert config with new item ID
+    d.prepare(`
+      INSERT INTO auto_message_configs (item_id, message_text, offer_price, delay_min_minutes, delay_max_minutes, send_offer_first, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(item_id) DO UPDATE SET
+        message_text = excluded.message_text,
+        offer_price = excluded.offer_price,
+        delay_min_minutes = excluded.delay_min_minutes,
+        delay_max_minutes = excluded.delay_max_minutes,
+        send_offer_first = excluded.send_offer_first,
+        is_active = excluded.is_active,
+        updated_at = unixepoch()
+    `).run(
+      newItemId,
+      existing.message_text ?? null,
+      existing.offer_price ?? null,
+      existing.delay_min_minutes ?? 2,
+      existing.delay_max_minutes ?? 10,
+      existing.send_offer_first ? 1 : 0,
+      existing.is_active ? 1 : 0,
+    );
+    // Remove old config
+    d.prepare('DELETE FROM auto_message_configs WHERE item_id = ?').run(oldItemId);
+  });
+
+  doTransfer();
+  return true;
 }
 
 // ─── Log CRUD ────────────────────────────────────────────────────────────

@@ -72,6 +72,10 @@ export function clearCookie(): void {
   const database = getDb();
   if (database) {
     database.prepare('DELETE FROM settings WHERE key = ?').run(COOKIE_SETTING_KEY);
+    // Also clear plaintext cookie and sync timestamp written by the Python bridge,
+    // otherwise retrieveCookie() will re-promote the stale plaintext as a "new" session.
+    database.prepare('DELETE FROM settings WHERE key = ?').run('vinted_cookie_plain');
+    database.prepare('DELETE FROM settings WHERE key = ?').run('session_synced_at');
   }
 }
 

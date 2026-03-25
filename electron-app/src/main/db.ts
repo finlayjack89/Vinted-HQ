@@ -61,8 +61,21 @@ function migrate(database: Database.Database): void {
       sniper_id INTEGER,
       created_at INTEGER DEFAULT (unixepoch())
     );
+    CREATE TABLE IF NOT EXISTS sniper_hits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sniper_id INTEGER NOT NULL,
+      sniper_name TEXT NOT NULL,
+      item_id INTEGER NOT NULL,
+      title TEXT,
+      price TEXT,
+      photo_url TEXT,
+      url TEXT,
+      simulated INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
     CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
     CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_sniper_hits_created ON sniper_hits(created_at);
 
     -- Inventory Vault: local "source of truth" for each listing
     CREATE TABLE IF NOT EXISTS inventory_master (
@@ -133,6 +146,16 @@ function migrate(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_inventory_master_status ON inventory_master(status);
     CREATE INDEX IF NOT EXISTS idx_inventory_sync_vinted_id ON inventory_sync(vinted_item_id);
     CREATE INDEX IF NOT EXISTS idx_ontology_type ON vinted_ontology(entity_type);
+
+    -- Persisted relist queue (survives app restarts)
+    CREATE TABLE IF NOT EXISTS relist_queue (
+      local_id INTEGER PRIMARY KEY,
+      status TEXT DEFAULT 'pending',        -- pending|mutating|uploading|done|error|interrupted
+      error TEXT,
+      enqueued_at INTEGER DEFAULT (unixepoch()),
+      started_at INTEGER,
+      completed_at INTEGER
+    );
 
     -- Locally cached sold orders (enriched from conversation API)
     CREATE TABLE IF NOT EXISTS sold_orders (

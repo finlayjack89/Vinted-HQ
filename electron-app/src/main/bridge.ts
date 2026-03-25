@@ -127,6 +127,60 @@ export async function search(url: string, page = 1, proxy?: string): Promise<Bri
 }
 
 /**
+ * Fetch item JSON from Vinted API — lightweight, returns transaction_id etc.
+ */
+export async function fetchItemJson(itemId: number, proxy?: string): Promise<BridgeResult> {
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie. Connect Vinted in settings.' };
+  }
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/item/${itemId}/json?${qs}`, {
+      method: 'GET',
+      headers: authHeaders(),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
+      return { ok: false, code: 'BRIDGE_UNREACHABLE', message: 'Python bridge not running. Restart the app.' };
+    }
+    return { ok: false, code: 'REQUEST_FAILED', message: msg };
+  }
+}
+
+/**
+ * Create a buy conversation to obtain the transaction_id for checkout.
+ * This mirrors Vinted's web flow: POST /api/v2/conversations with initiator=buy.
+ */
+export async function createBuyConversation(itemId: number, sellerId: number, proxy?: string): Promise<BridgeResult> {
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie. Connect Vinted in settings.' };
+  }
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/conversations/buy?${qs}`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: itemId, seller_id: sellerId }),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
+  }
+}
+
+/**
  * Initiate checkout build.
  */
 export async function checkoutBuild(orderId: number, proxy?: string): Promise<BridgeResult> {
@@ -142,7 +196,7 @@ export async function checkoutBuild(orderId: number, proxy?: string): Promise<Br
   try {
     const res = await fetch(`${BRIDGE_BASE}/checkout/build?${qs}`, {
       method: 'POST',
-      headers: { 'X-Vinted-Cookie': cookie, 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ order_id: orderId }),
     });
     return await parseBridgeResult(res);
@@ -175,7 +229,7 @@ export async function checkoutPut(
   try {
     const res = await fetch(`${BRIDGE_BASE}/checkout/${purchaseId}?${qs}`, {
       method: 'PUT',
-      headers: { 'X-Vinted-Cookie': cookie, 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ components }),
     });
     return await parseBridgeResult(res);
@@ -185,6 +239,32 @@ export async function checkoutPut(
       return { ok: false, code: 'BRIDGE_UNREACHABLE', message: 'Python bridge not running. Restart the app.' };
     }
     return { ok: false, code: 'REQUEST_FAILED', message: msg };
+  }
+}
+
+/**
+ * Execute the final payment for a checkout.
+ * POST /checkout/pay with purchase_id and checksum from the PUT response.
+ */
+export async function checkoutPay(purchaseId: string, checksum: string, proxy?: string): Promise<BridgeResult> {
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) {
+    return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie. Connect Vinted in settings.' };
+  }
+
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/checkout/pay?${qs}`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purchase_id: purchaseId, checksum }),
+    });
+    return await parseBridgeResult(res);
+  } catch (err) {
+    return bridgeError(err);
   }
 }
 
@@ -551,6 +631,51 @@ export async function fetchOntologyPackageSizes(catalogId: number, itemId?: numb
 }
 
 /**
+ * Fetch the currently logged-in user profile from Vinted.
+ */
+export async function fetchCurrentUser(proxy?: string): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/users/current?${qs}`, { method: 'GET', headers: authHeaders() });
+    return await parseBridgeResult(res);
+  } catch (err) { return bridgeError(err); }
+}
+
+/**
+ * Fetch user's saved payment methods from Vinted.
+ */
+export async function fetchUserCards(proxy?: string): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/user/payment-cards?${qs}`, { method: 'GET', headers: authHeaders() });
+    return await parseBridgeResult(res);
+  } catch (err) { return bridgeError(err); }
+}
+
+/**
+ * Fetch user's saved shipping addresses from Vinted.
+ */
+export async function fetchUserAddresses(proxy?: string): Promise<BridgeResult> {
+  const cookie = secureStorage.retrieveCookie();
+  if (!cookie) return { ok: false, code: 'MISSING_COOKIE', message: 'No session cookie.' };
+  const params: Record<string, string> = { transport_mode: _transportMode() };
+  if (proxy) params.proxy = proxy;
+  const qs = new URLSearchParams(params).toString();
+  try {
+    const res = await fetch(`${BRIDGE_BASE}/user/addresses?${qs}`, { method: 'GET', headers: authHeaders() });
+    return await parseBridgeResult(res);
+  } catch (err) { return bridgeError(err); }
+}
+
+/**
  * Fetch models for a luxury brand (e.g., Chanel, Louis Vuitton) in a category.
  */
 export async function fetchOntologyModels(catalogId: number, brandId: number, proxy?: string): Promise<BridgeResult> {
@@ -561,7 +686,7 @@ export async function fetchOntologyModels(catalogId: number, brandId: number, pr
   const qs = new URLSearchParams(params).toString();
   try {
     const res = await fetch(`${BRIDGE_BASE}/ontology/models?${qs}`, { method: 'GET', headers: authHeaders() });
-    return (await res.json()) as BridgeResult;
+    return await parseBridgeResult(res);
   } catch (err) { return bridgeError(err); }
 }
 
@@ -821,7 +946,8 @@ export async function relistItemV2(
   itemData: Record<string, unknown>,
   photoUrls: string[],
   relistCount: number,
-  proxy?: string
+  proxy?: string,
+  skipDelete?: boolean,
 ): Promise<BridgeResult> {
   const cookie = secureStorage.retrieveCookie();
   if (!cookie) {
@@ -840,6 +966,7 @@ export async function relistItemV2(
         item_data: itemData,
         photo_urls: photoUrls,
         relist_count: relistCount,
+        skip_delete: skipDelete ?? false,
       }),
     });
     return await parseBridgeResult(res);

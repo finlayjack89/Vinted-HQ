@@ -52,9 +52,9 @@ export const colors = {
 
 export const font = {
   family:
-    "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    "'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   mono:
-    "'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace",
+    "'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   size: {
     xs:   11,
     sm:   12,
@@ -68,8 +68,8 @@ export const font = {
   weight: {
     normal:   400 as const,  // Body copy, table cells.
     medium:   500 as const,  // Metadata, labels.
-    semibold: 600 as const,  // Primary data points, headers.
-    bold:     700 as const,  // App title, hero numbers.
+    semibold: 700 as const,  // Primary data points, headers.
+    bold:     900 as const,  // App title, hero numbers.
   },
 } as const;
 

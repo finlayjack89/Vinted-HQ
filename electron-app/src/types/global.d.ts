@@ -41,6 +41,10 @@ export type AppSettings = {
   browser_proxy_mode: 'DIRECT' | 'ISP_DEDICATED';
   crm_delay_min_minutes: number;
   crm_delay_max_minutes: number;
+  defaultCardId: string;
+  defaultAddressId: string;
+  availableCards: any[];
+  availableAddresses: any[];
 };
 
 export type BridgeResult<T = unknown> =
@@ -180,7 +184,7 @@ export type InventoryItem = {
   package_size_id: number | null;
   item_attributes: { code: string; ids: number[] }[];  // parsed from JSON
   is_unisex: boolean;
-  status: 'live' | 'active' | 'local_only' | 'discrepancy' | 'action_required' | 'sold' | 'hidden' | 'reserved' | 'deleted' | 'removed';
+  status: 'live' | 'active' | 'local_only' | 'discrepancy' | 'action_required' | 'sold' | 'hidden' | 'reserved' | 'deleted' | 'removed' | 'deprecated';
   extra_metadata: Record<string, unknown> | null;
   list_fingerprint: string | null;
   detail_hydrated_at: number | null;
@@ -254,6 +258,7 @@ export type RelistQueueEntry = {
   relistCount: number;
   status: 'pending' | 'mutating' | 'uploading' | 'done' | 'error';
   error?: string;
+  deleteSkipped?: boolean;
   enqueuedAt: number;
 };
 
@@ -295,6 +300,19 @@ export type AutoMessagePreset = {
 
 export type CrmIgnoredUser = {
   username: string;
+  created_at: number;
+};
+
+export type SniperHit = {
+  id: number;
+  sniper_id: number;
+  sniper_name: string;
+  item_id: number;
+  title: string | null;
+  price: string | null;
+  photo_url: string | null;
+  url: string | null;
+  simulated: boolean;
   created_at: number;
 };
 
@@ -341,6 +359,7 @@ declare global {
       isFeedPolling: () => Promise<boolean>;
       onFeedItems: (callback: (items: FeedItem[]) => void) => () => void;
       checkoutBuy: (item: FeedItem, proxy?: string) => Promise<CheckoutResult>;
+      checkOfferPrice: (itemId: number, sellerId: number) => Promise<{ offerPrice: string | null }>;
       onCheckoutProgress: (callback: (step: string) => void) => () => void;
       onCheckout3dsRequired: (callback: (params: { redirectUrl: string; purchaseId: string }) => void) => () => void;
       getSnipers: () => Promise<Sniper[]>;
@@ -351,6 +370,9 @@ declare global {
       cancelSniperCountdown: (countdownId: string) => Promise<boolean>;
       onSniperCountdown: (callback: (params: SniperCountdownParams) => void) => () => void;
       onSniperCountdownDone: (callback: (params: { countdownId: string; simulated?: boolean; ok?: boolean; message: string }) => void) => () => void;
+      getSniperHits: (opts?: { limit?: number; simulated?: boolean }) => Promise<SniperHit[]>;
+      clearSniperHits: () => Promise<{ ok: boolean }>;
+      onSniperHit: (callback: (hit: SniperHit) => void) => () => void;
       onSessionExpired: (callback: () => void) => () => void;
       onSessionReconnected: (callback: () => void) => () => void;
       getLogs: (opts?: { level?: string; event?: string; since?: number; before?: number; limit?: number; offset?: number }) => Promise<LogEntry[]>;
@@ -405,10 +427,15 @@ declare global {
       getRelistQueue: () => Promise<{ queue: RelistQueueEntry[]; countdown: number }>;
       enqueueRelist: (localIds: number[]) => Promise<RelistQueueEntry[]>;
       dequeueRelist: (localId: number) => Promise<boolean>;
+      retryRelistSkipDelete: (localId: number) => Promise<boolean>;
       clearRelistQueue: () => Promise<void>;
       getQueueSettings: () => Promise<WardrobeSettings>;
       setQueueSettings: (minDelay: number, maxDelay: number) => Promise<void>;
-      onQueueUpdate: (callback: (data: { queue: RelistQueueEntry[]; countdown: number; processing: boolean }) => void) => () => void;
+      pauseRelistQueue: () => Promise<void>;
+      resumeRelistQueue: () => Promise<void>;
+      loadPersistedQueue: () => Promise<{ pending: number[]; interrupted: { localId: number; status: string }[] }>;
+      onQueueUpdate: (callback: (data: { queue: RelistQueueEntry[]; countdown: number; processing: boolean; paused: boolean }) => void) => () => void;
+      onDeleteBlocked: (callback: (data: { localId: number; title: string; reason: string }) => void) => () => void;
 
       // Ontology
       refreshOntology: () => Promise<void>;
@@ -423,6 +450,9 @@ declare global {
       deepSync: (vintedItemId: number) => Promise<{ ok: boolean; message?: string; code?: string }>;
       getItemDetail: (itemId: number) => Promise<BridgeResult>;
       onOntologyAlert: (callback: (data: { deletedCategories: unknown[]; affectedItems: unknown[] }) => void) => () => void;
+      fetchCurrentUser: (proxy?: string) => Promise<BridgeResult>;
+      fetchUserCards: (proxy?: string) => Promise<BridgeResult>;
+      fetchUserAddresses: (proxy?: string) => Promise<BridgeResult>;
 
       // Sync Progress
       onSyncProgress: (callback: (data: { direction: string; stage: string; current: number; total: number; message?: string }) => void) => () => void;

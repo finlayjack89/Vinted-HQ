@@ -13,6 +13,7 @@ import PurchasesSuite from './components/PurchasesSuite';
 import SalesSuite from './components/SalesSuite';
 import AutoMessage from './components/AutoMessage';
 import ProxyStatus from './components/ProxyStatus';
+import Sniper from './components/Sniper';
 import {
   colors,
   font,
@@ -31,7 +32,7 @@ import {
 } from './theme';
 import type { SniperCountdownParams } from './types/global';
 
-type Tab = 'feed' | 'wardrobe' | 'sales' | 'automessage' | 'proxies' | 'settings' | 'logs' | 'purchases';
+type Tab = 'feed' | 'sniper' | 'wardrobe' | 'sales' | 'automessage' | 'proxies' | 'settings' | 'logs' | 'purchases';
 
 /* ─── SVG Icons (inline for zero-dep) ───────────────────────── */
 
@@ -98,10 +99,22 @@ const icons: Record<Tab, JSX.Element> = {
       <line x1="9" y1="10" x2="15" y2="10" />
     </svg>
   ),
+  sniper: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+      <line x1="12" y1="2" x2="12" y2="6" />
+      <line x1="12" y1="18" x2="12" y2="22" />
+      <line x1="2" y1="12" x2="6" y2="12" />
+      <line x1="18" y1="12" x2="22" y2="12" />
+    </svg>
+  ),
 };
 
 const tabLabels: Record<Tab, string> = {
   feed: 'Feed',
+  sniper: 'Sniper',
   wardrobe: 'Wardrobe',
   sales: 'Sales',
   automessage: 'Auto-Message',
@@ -305,7 +318,7 @@ export default function App() {
 
         {/* Nav Items */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: `0 ${spacing.sm}px` }}>
-          {(['feed', 'wardrobe', 'sales', 'automessage', 'proxies', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
+          {(['feed', 'sniper', 'wardrobe', 'sales', 'automessage', 'proxies', 'settings', 'logs', 'purchases'] as Tab[]).map((t) => {
             const active = tab === t;
             return (
               <button
@@ -408,6 +421,7 @@ export default function App() {
 
         <div ref={contentRef} style={{ height: '100%' }}>
           {tab === 'feed' && <Feed />}
+          {tab === 'sniper' && <Sniper />}
           {tab === 'wardrobe' && <Wardrobe />}
           {tab === 'sales' && <SalesSuite />}
           {tab === 'automessage' && <AutoMessage />}

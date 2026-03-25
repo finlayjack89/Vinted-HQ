@@ -99,6 +99,10 @@ const defaultSettings: AppSettings = {
   browser_proxy_mode: 'DIRECT',
   crm_delay_min_minutes: 2,
   crm_delay_max_minutes: 5,
+  defaultCardId: '',
+  defaultAddressId: '',
+  availableCards: [],
+  availableAddresses: [],
 };
 
 /* ─── Relist Timing Section ─────────────────────────────────── */
@@ -195,6 +199,8 @@ export default function Settings() {
   const [transportError, setTransportError] = useState<string | null>(null);
   const [isSyncingExtension, setIsSyncingExtension] = useState(false);
   const [extensionSyncStatus, setExtensionSyncStatus] = useState<'idle' | 'checking' | 'synced' | 'polling' | 'failed'>('idle');
+  const [isFetchingVintedSettings, setIsFetchingVintedSettings] = useState(false);
+  const [vintedSettingsStatus, setVintedSettingsStatus] = useState<string | null>(null);
 
   useEffect(() => {
     window.vinted.getSettings().then(setSettings);
@@ -204,6 +210,12 @@ export default function Settings() {
     window.vinted.hasLoginCredentials().then(setHasLoginCredentials);
     window.vinted.getTransportMode().then(setTransportMode);
     window.vinted.isCheckoutActive().then(setCheckoutLocked);
+
+    // Refresh hasCookie when session reconnects (e.g. after extension sync)
+    const unsubReconnected = window.vinted.onSessionReconnected(() => {
+      window.vinted.hasCookie().then(setHasCookie);
+    });
+    return () => { unsubReconnected(); };
   }, []);
 
   const showSaved = () => {
@@ -335,6 +347,80 @@ export default function Settings() {
       showSaved();
     } else {
       setTransportError(result.error ?? 'Failed to change transport mode.');
+    }
+  };
+
+const handleFetchVintedSettings = async () => {
+    if (isFetchingVintedSettings) return;
+    setIsFetchingVintedSettings(true);
+    setVintedSettingsStatus('Fetching cards & addresses...');
+    try {
+      const [cardsRes, addrRes] = await Promise.all([
+        window.vinted.fetchUserCards(),
+        window.vinted.fetchUserAddresses()
+      ]);
+
+      console.log('[VintedSettings] cardsRes:', JSON.stringify(cardsRes));
+      console.log('[VintedSettings] addrRes:', JSON.stringify(addrRes));
+      
+      const errors: string[] = [];
+      if (!cardsRes.ok) {
+        const err = cardsRes as { ok: false; code?: string; message?: string };
+        errors.push(`Cards: ${err.message || err.code || 'unknown error'}`);
+      }
+      if (!addrRes.ok) {
+        const err = addrRes as { ok: false; code?: string; message?: string };
+        errors.push(`Addresses: ${err.message || err.code || 'unknown error'}`);
+      }
+
+      if (errors.length > 0) {
+        setVintedSettingsStatus(`❌ ${errors.join(' | ')}`);
+        // Still process whichever succeeded
+      }
+      
+      if (cardsRes.ok) {
+        // Vinted returns {cards: [{id, brand, last4, default, ...}]}
+        const rawData = cardsRes.data as any;
+        const cards = rawData.cards || rawData.payment_cards || (Array.isArray(rawData) ? rawData : []);
+        if (Array.isArray(cards)) {
+          handleSettingsChange('availableCards', cards);
+          if (!settings.defaultCardId && cards.length > 0) {
+            // Prefer the card marked as default by Vinted
+            const defaultCard = cards.find((c: any) => c.default === true);
+            handleSettingsChange('defaultCardId', String((defaultCard || cards[0]).id));
+          }
+        }
+      }
+
+      if (addrRes.ok) {
+        // Vinted may return {user_address: {...}} (single) or {user_addresses: [...]}
+        const rawAddr = addrRes.data as any;
+        let addresses: any[] = [];
+        if (Array.isArray(rawAddr.user_addresses)) {
+          addresses = rawAddr.user_addresses;
+        } else if (rawAddr.user_address && typeof rawAddr.user_address === 'object') {
+          addresses = [rawAddr.user_address];
+        } else if (Array.isArray(rawAddr)) {
+          addresses = rawAddr;
+        }
+        if (addresses.length > 0) {
+          handleSettingsChange('availableAddresses', addresses);
+          if (!settings.defaultAddressId) {
+            handleSettingsChange('defaultAddressId', String(addresses[0].id));
+          }
+        }
+      }
+
+      if (errors.length === 0) {
+        setVintedSettingsStatus('✅ Settings synced!');
+        showSaved();
+      }
+    } catch (err) {
+      console.error('[VintedSettings] Exception:', err);
+      setVintedSettingsStatus(`❌ Bridge error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsFetchingVintedSettings(false);
+      setTimeout(() => setVintedSettingsStatus(null), 8000);
     }
   };
 
@@ -964,103 +1050,80 @@ export default function Settings() {
         </Section>
       )}
 
+      {/* ─── Vinted Account Settings ──────────────────── */}
+      <Section
+        title="Vinted Account Defaults"
+        description="Fetch your saved payment methods and shipping addresses from Vinted to ensure auto-buy uses the correct profiles."
+      >
+        <div style={{ display: 'flex', gap: spacing.md, alignItems: 'center', marginBottom: spacing.lg }}>
+          <button
+            type="button"
+            onClick={handleFetchVintedSettings}
+            disabled={isFetchingVintedSettings || !hasCookie}
+            style={{
+              ...btnPrimary,
+              ...btnSmall,
+              opacity: (isFetchingVintedSettings || !hasCookie) ? 0.6 : 1,
+            }}
+          >
+            {isFetchingVintedSettings ? '⏳ Syncing...' : 'Fetch Vinted Settings'}
+          </button>
+          {vintedSettingsStatus && (
+            <span style={{ fontSize: font.size.sm, color: colors.textSecondary }}>
+              {vintedSettingsStatus}
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
+            <span style={{ fontSize: font.size.sm, color: colors.textSecondary, fontWeight: font.weight.medium }}>
+              Default Payment Card
+            </span>
+            <select
+              value={settings.defaultCardId}
+              onChange={(e) => handleSettingsChange('defaultCardId', e.target.value)}
+              style={glassSelect}
+              disabled={settings.availableCards.length === 0}
+            >
+              <option value="">-- No card selected --</option>
+              {settings.availableCards.map((card: any) => (
+                <option key={card.id} value={String(card.id)}>
+                  {card.brand} **** {card.last4}{card.default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
+            <span style={{ fontSize: font.size.sm, color: colors.textSecondary, fontWeight: font.weight.medium }}>
+              Default Shipping Address
+            </span>
+            <select
+              value={settings.defaultAddressId}
+              onChange={(e) => handleSettingsChange('defaultAddressId', e.target.value)}
+              style={glassSelect}
+              disabled={settings.availableAddresses.length === 0}
+            >
+              <option value="">-- No address selected --</option>
+              {settings.availableAddresses.map((addr: any) => (
+                <option key={addr.id} value={String(addr.id)}>
+                  {addr.name || addr.full_name}, {addr.line1}, {addr.postal_code} ({addr.city})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </Section>
+
       {/* ─── Relist Timing ─────────────────────────────── */}
       <RelistTimingSection />
 
-      {/* ─── Autobuy ──────────────────────────────────── */}
+      {/* ─── Autobuy — redirects to Sniper tab ────────── */}
       <Section title="Autobuy (Sniper)">
-        <label style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, cursor: 'pointer', marginBottom: spacing.md, fontSize: font.size.base, color: colors.textSecondary }}>
-          <input
-            type="checkbox"
-            checked={settings.autobuyEnabled}
-            onChange={(e) => handleSettingsChange('autobuyEnabled', e.target.checked)}
-          />
-          Enable autobuy (snipers will attempt to purchase matching items)
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, cursor: 'pointer', fontSize: font.size.base, color: colors.textSecondary }}>
-          <input
-            type="checkbox"
-            checked={settings.simulationMode}
-            onChange={(e) => handleSettingsChange('simulationMode', e.target.checked)}
-          />
-          Simulation mode — log "would have bought" only, no real purchases
-        </label>
-      </Section>
-
-      {/* ─── Snipers ──────────────────────────────────── */}
-      <Section
-        title="Snipers"
-        description="Rules that auto-purchase matching items. Enable Autobuy above. Each sniper: price max, keywords, budget limit."
-      >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md }}>
-          <input
-            type="text"
-            placeholder="Name"
-            value={sniperName}
-            onChange={(e) => setSniperName(e.target.value)}
-            style={{ ...glassInput, width: 130 }}
-          />
-          <input
-            type="number"
-            placeholder="Max £"
-            value={sniperPriceMax}
-            onChange={(e) => setSniperPriceMax(e.target.value)}
-            style={{ ...glassInput, width: 90 }}
-          />
-          <input
-            type="text"
-            placeholder="Keywords"
-            value={sniperKeywords}
-            onChange={(e) => setSniperKeywords(e.target.value)}
-            style={{ ...glassInput, width: 130 }}
-          />
-          <input
-            type="number"
-            placeholder="Budget £"
-            value={sniperBudget}
-            onChange={(e) => setSniperBudget(e.target.value)}
-            style={{ ...glassInput, width: 100 }}
-          />
-          <button
-            type="button"
-            onClick={handleAddSniper}
-            style={{ ...btnPrimary, ...btnSmall }}
-          >
-            Add sniper
-          </button>
-        </div>
-        {snipers.length > 0 && (
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-            {snipers.map((s) => (
-              <li key={s.id} style={listRow}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, cursor: 'pointer', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
-                  <input
-                    type="checkbox"
-                    checked={s.enabled}
-                    onChange={(e) => handleToggleSniper(s.id, e.target.checked)}
-                  />
-                  <span style={{ fontWeight: font.weight.medium, color: colors.textPrimary }}>{s.name}</span>
-                  {s.price_max != null && (
-                    <span style={badge(colors.glassBg, colors.textSecondary)}>max £{s.price_max}</span>
-                  )}
-                  {s.keywords && (
-                    <span style={badge(colors.glassBg, colors.textSecondary)}>"{s.keywords}"</span>
-                  )}
-                  {s.budget_limit > 0 && (
-                    <SniperSpentDisplay sniperId={s.id} budgetLimit={s.budget_limit} />
-                  )}
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteSniper(s.id)}
-                  style={dangerText}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <p style={{ ...sectionDesc, margin: 0 }}>
+          Sniper rules, autobuy, and simulation mode have moved to the <strong>Sniper</strong> tab in the sidebar.
+        </p>
       </Section>
 
       {/* ─── Polling ──────────────────────────────────── */}

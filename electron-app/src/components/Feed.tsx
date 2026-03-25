@@ -35,6 +35,8 @@ export default function Feed() {
   const [buyProgress, setBuyProgress] = useState<string | null>(null);
   const [buyResult, setBuyResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
+  const [offerPrice, setOfferPrice] = useState<string | null>(null);
+  const [offerLoading, setOfferLoading] = useState(false);
 
   // ── Scroll-aware update buffering ──
   // Buffer IPC data during active scroll to avoid React re-renders blocking frames
@@ -145,8 +147,24 @@ export default function Feed() {
 
   const handleToggle = useCallback((id: number) => {
     setSelectedItem((prev) => {
-      if (prev?.id === id) return null;
-      return items.find((i) => i.id === id) ?? null;
+      if (prev?.id === id) {
+        setOfferPrice(null);
+        return null;
+      }
+      const item = items.find((i) => i.id === id) ?? null;
+      if (item && item.seller_id) {
+        setOfferPrice(null);
+        setOfferLoading(true);
+        setBuyResult(null);
+        setBuyProgress(null);
+        window.vinted.checkOfferPrice(item.id, item.seller_id)
+          .then(({ offerPrice: op }) => {
+            setOfferPrice(op);
+            setOfferLoading(false);
+          })
+          .catch(() => setOfferLoading(false));
+      }
+      return item;
     });
   }, [items]);
 
@@ -282,87 +300,114 @@ export default function Feed() {
           <div
             style={{
               ...modalContent,
-              maxWidth: 460,
+              width: 600,
+              maxWidth: '90vw',
               maxHeight: '85vh',
               overflow: 'auto',
-              padding: spacing.lg,
+              padding: spacing.xl,
             }}
           >
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: font.size.base, fontWeight: font.weight.bold, color: colors.textPrimary, letterSpacing: '-0.02em' }}>
-                Item Details
-              </h3>
-              <button type="button" onClick={() => setSelectedItem(null)}
-                style={{ background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer', fontSize: 24, padding: 4 }}>✕</button>
-            </div>
-
-            {/* Photo + Details Container */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+            {/* Split Layout Container */}
+            <div style={{ display: 'flex', gap: spacing.lg, alignItems: 'stretch' }}>
+              
+              {/* Left Column: Image */}
               {selectedItem.photo_url && (
-                <div style={{ width: '80%', aspectRatio: '4 / 5', borderRadius: radius.lg, overflow: 'hidden', margin: '0 auto' }}>
+                <div style={{
+                  flexShrink: 0,
+                  width: 240,
+                  borderRadius: radius.lg,
+                  background: colors.bgElevated,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
                   <img src={selectedItem.photo_url} alt={selectedItem.title}
                     loading="lazy" decoding="async"
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
               )}
               
-              <div style={{ flex: 1 }}>
-                <h4 style={{ margin: '0 0 4px', fontSize: font.size.base, color: colors.textPrimary, fontWeight: font.weight.semibold }}>{selectedItem.title}</h4>
+              {/* Right Column: Info */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: font.size.lg, fontWeight: font.weight.bold, color: colors.textPrimary, lineHeight: 1.2 }}>
+                    {selectedItem.title}
+                  </h3>
+                  <button type="button" onClick={() => setSelectedItem(null)}
+                    style={{ background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer', fontSize: 20, padding: 4, marginLeft: spacing.sm, marginTop: -4 }}>
+                    ✕
+                  </button>
+                </div>
+                
                 {selectedItem.seller_login && (
-                  <div style={{ fontSize: font.size.sm, color: colors.textSecondary, marginBottom: spacing.sm }}>Seller: <strong style={{ color: colors.textPrimary }}>@{selectedItem.seller_login}</strong></div>
+                  <div style={{ fontSize: font.size.sm, color: colors.textSecondary, marginBottom: spacing.md }}>
+                    Seller: <strong style={{ color: colors.textPrimary }}>@{selectedItem.seller_login}</strong>
+                  </div>
                 )}
                 
                 {/* Details Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: `${spacing.xs}px ${spacing.sm}px`, background: 'rgba(255, 255, 255, 0.2)', padding: spacing.md, borderRadius: radius.md, border: `1px solid ${colors.glassBorder}` }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: spacing.md, background: 'rgba(255, 255, 255, 0.3)', padding: spacing.md, borderRadius: radius.md, border: `1px solid ${colors.glassBorder}`, flex: 1, alignContent: 'start' }}>
                   <div>
-                    <div style={{ fontSize: font.size.xs, color: colors.textMuted, fontWeight: font.weight.medium, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 2 }}>Price</div>
-                    <div style={{ fontSize: font.size.base, fontWeight: font.weight.bold, color: colors.success }}>£{selectedItem.price} {selectedItem.currency}</div>
+                    <div style={{ fontSize: font.size.xs, color: colors.textMuted, fontWeight: font.weight.medium, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                      {offerPrice ? 'Offer Price' : 'Price'}
+                    </div>
+                    {offerLoading ? (
+                      <div style={{ fontSize: font.size.sm, color: colors.textMuted }}>Checking...</div>
+                    ) : offerPrice ? (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={{ fontSize: font.size.lg, fontWeight: font.weight.bold, color: colors.success }}>£{parseFloat(offerPrice).toFixed(2)}</span>
+                        <span style={{ fontSize: font.size.sm, color: colors.textMuted, textDecoration: 'line-through' }}>£{selectedItem.price}</span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: font.size.base, fontWeight: font.weight.bold, color: colors.success }}>£{selectedItem.price} {selectedItem.currency}</div>
+                    )}
                   </div>
                   {selectedItem.size && (
                     <div>
-                      <div style={{ fontSize: font.size.xs, color: colors.textMuted, fontWeight: font.weight.medium, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 2 }}>Size</div>
+                      <div style={{ fontSize: font.size.xs, color: colors.textMuted, fontWeight: font.weight.medium, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Size</div>
                       <div style={{ fontSize: font.size.base, fontWeight: font.weight.medium, color: colors.textPrimary }}>{selectedItem.size}</div>
                     </div>
                   )}
                   {selectedItem.brand && (
                     <div>
-                      <div style={{ fontSize: font.size.xs, color: colors.textMuted, fontWeight: font.weight.medium, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 2 }}>Brand</div>
+                      <div style={{ fontSize: font.size.xs, color: colors.textMuted, fontWeight: font.weight.medium, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Brand</div>
                       <div style={{ fontSize: font.size.base, fontWeight: font.weight.medium, color: colors.textPrimary }}>{selectedItem.brand}</div>
                     </div>
                   )}
                   {selectedItem.condition && (
                     <div>
-                      <div style={{ fontSize: font.size.xs, color: colors.textMuted, fontWeight: font.weight.medium, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 2 }}>Condition</div>
+                      <div style={{ fontSize: font.size.xs, color: colors.textMuted, fontWeight: font.weight.medium, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Condition</div>
                       <div style={{ fontSize: font.size.base, fontWeight: font.weight.medium, color: colors.textPrimary }}>{selectedItem.condition}</div>
                     </div>
                   )}
                 </div>
+
+                {/* Buy progress / result */}
+                {(buyProgress || buyResult) && (
+                  <div style={{ marginTop: spacing.md, padding: spacing.sm, borderRadius: radius.sm, background: buyResult ? (buyResult.ok ? colors.successBg : colors.errorBg) : colors.infoBg, color: buyResult ? (buyResult.ok ? colors.success : colors.error) : colors.info, fontSize: font.size.sm, fontWeight: font.weight.medium, textAlign: 'center' }}>
+                    {buyProgress && buyingId === selectedItem.id ? buyProgress : buyResult?.message}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Buy progress */}
-            {buyProgress && buyingId === selectedItem.id && (
-              <div style={{ fontSize: font.size.sm, color: colors.primary, fontWeight: font.weight.medium }}>{buyProgress}</div>
-            )}
-            {buyResult && (
-              <div style={{ fontSize: font.size.sm, color: buyResult.ok ? colors.success : colors.error, fontWeight: font.weight.medium }}>{buyResult.message}</div>
-            )}
-
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: spacing.sm, paddingTop: spacing.sm }}>
+            {/* Actions Footer */}
+            <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.xl }}>
               <button
                 type="button"
                 onClick={() => handleBuy(selectedItem)}
                 disabled={buyingId !== null}
                 style={{
                   ...btnPrimary,
-                  ...btnSmall,
-                  display: 'inline-flex',
+                  flex: 1,
+                  display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
-                  opacity: buyingId !== null ? 0.5 : 1,
+                  justifyContent: 'center',
+                  opacity: buyingId !== null ? 0.7 : 1,
                   cursor: buyingId !== null ? 'default' : 'pointer',
+                  padding: '12px 0',
+                  fontSize: font.size.base
                 }}
               >
                 Buy Now
@@ -373,16 +418,17 @@ export default function Feed() {
                 rel="noopener noreferrer"
                 style={{
                   ...btnSecondary,
-                  ...btnSmall,
-                  display: 'inline-flex',
+                  flex: 1,
+                  display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
+                  justifyContent: 'center',
                   textDecoration: 'none',
+                  padding: '12px 0',
+                  fontSize: font.size.base
                 }}
               >
                 Open on Vinted →
               </a>
-              <button type="button" style={{ ...btnSecondary, ...btnSmall }} onClick={() => setSelectedItem(null)}>Close</button>
             </div>
           </div>
         </div>,

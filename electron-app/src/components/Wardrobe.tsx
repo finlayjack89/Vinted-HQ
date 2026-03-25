@@ -28,6 +28,7 @@ import {
   sectionTitle,
 } from '../theme';
 import type { InventoryItem, RelistQueueEntry, OntologyEntity } from '../types/global';
+import { DualRangeSlider } from './DualRangeSlider';
 
 type SubTab = 'all' | 'live' | 'local' | 'discrepancy' | 'queue';
 
@@ -39,6 +40,7 @@ export default function Wardrobe() {
   const [queue, setQueue] = useState<RelistQueueEntry[]>([]);
   const [countdown, setCountdown] = useState(0);
   const [processing, setProcessing] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; message?: string } | null>(null);
@@ -52,6 +54,7 @@ export default function Wardrobe() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkActionProgress, setBulkActionProgress] = useState<{ kind: 'push' | 'pull'; current: number; total: number; failed: number } | null>(null);
+  const [deleteBlockedInfo, setDeleteBlockedInfo] = useState<{ localId: number; title: string; reason: string } | null>(null);
 
   // ── Data loading ──
   const loadItems = useCallback(async () => {
@@ -92,6 +95,7 @@ export default function Wardrobe() {
       setQueue(data.queue as RelistQueueEntry[]);
       setCountdown(data.countdown);
       setProcessing(data.processing);
+      setPaused(data.paused);
     });
     const unsubOntology = window.vinted.onOntologyAlert((data) => {
       setOntologyAlert(data as { deletedCategories: unknown[]; affectedItems: unknown[] });
@@ -115,10 +119,15 @@ export default function Wardrobe() {
       }
     });
 
+    const unsubDeleteBlocked = window.vinted.onDeleteBlocked((data) => {
+      setDeleteBlockedInfo(data);
+    });
+
     return () => {
       unsubQueue();
       unsubOntology();
       unsubSync();
+      unsubDeleteBlocked();
     };
   }, [loadItems]);
 
@@ -378,6 +387,18 @@ export default function Wardrobe() {
         document.body
       )}
 
+      {deleteBlockedInfo && ReactDOM.createPortal(
+        <DeleteBlockedModal
+          info={deleteBlockedInfo}
+          onRelistAnyway={() => {
+            window.vinted.retryRelistSkipDelete(deleteBlockedInfo.localId);
+            setDeleteBlockedInfo(null);
+          }}
+          onSkip={() => setDeleteBlockedInfo(null)}
+        />,
+        document.body
+      )}
+
       {/* ── Toolbar ── */}
       <div style={{ marginBottom: spacing.xl }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -600,6 +621,20 @@ export default function Wardrobe() {
             onClick={() => { setSelectedIds(new Set()); setSelectMode(false); }}
             style={{ ...btnSecondary, ...btnSmall }}
           >Cancel</button>
+          <button
+            type="button"
+            onClick={async () => {
+              const ids = [...selectedIds];
+              await window.vinted.enqueueRelist(ids);
+              setSelectedIds(new Set());
+              setSelectMode(false);
+              setSubTab('queue');
+            }}
+            disabled={!!bulkActionProgress}
+            style={{ ...btnSecondary, ...btnSmall, color: colors.primary, borderColor: 'rgba(99,102,241,0.3)' }}
+          >
+            ⟳ Add to Relist Queue ({selectedIds.size})
+          </button>
         </div>
       )}
 
@@ -664,8 +699,11 @@ export default function Wardrobe() {
                 queue={queue}
                 countdown={countdown}
                 processing={processing}
+                paused={paused}
                 onRemove={(localId) => window.vinted.dequeueRelist(localId)}
                 onClear={() => window.vinted.clearRelistQueue()}
+                onPause={() => window.vinted.pauseRelistQueue()}
+                onResume={() => window.vinted.resumeRelistQueue()}
               />
             )}
           </>
@@ -931,6 +969,16 @@ function ItemRow({
         <span style={{ color: colors.textSecondary, fontVariantNumeric: 'tabular-nums' }}>
           {item.relist_count}
         </span>
+        {item.last_relist_at && item.last_relist_at > 0 && (
+          <div style={{ fontSize: font.size.xs, color: colors.textMuted, marginTop: 2, lineHeight: 1.3 }}>
+            {new Date(item.last_relist_at * 1000).toLocaleString('en-GB', {
+              day: '2-digit', month: 'short', year: 'numeric',
+              hour: '2-digit', minute: '2-digit',
+            })}
+            <br />
+            <span style={{ opacity: 0.6 }}>({item.last_relist_at})</span>
+          </div>
+        )}
       </td>
       <td style={{ ...tableCell, textAlign: 'right' as const }}>
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
@@ -1026,7 +1074,86 @@ function StatusBadge({ status, showDiscrepancy }: { status: string; showDiscrepa
   if (status === 'hidden') return <span style={badge('rgba(245,158,11,0.15)', 'rgb(245,158,11)')}>Hidden</span>;
   if (status === 'reserved') return <span style={badge('rgba(236,72,153,0.15)', 'rgb(236,72,153)')}>Reserved</span>;
   if (status === 'local_only') return <span style={badge(colors.glassBg, colors.textMuted)}>Local</span>;
+  if (status === 'deprecated') return <span style={badge('rgba(245,158,11,0.15)', 'rgb(245,158,11)')}>Deprecated</span>;
   return <span style={badge(colors.glassBg, colors.textMuted)}>{status}</span>;
+}
+
+/* ─── Delete-Blocked Confirmation Modal ──────────────────────────────── */
+
+function DeleteBlockedModal({
+  info,
+  onRelistAnyway,
+  onSkip,
+}: {
+  info: { localId: number; title: string; reason: string };
+  onRelistAnyway: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 10000,
+      backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        ...glassPanel, maxWidth: 480, width: '90%', padding: spacing['2xl'],
+        display: 'flex', flexDirection: 'column', gap: spacing.lg,
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
+          <span style={{ fontSize: 28 }}>⚠️</span>
+          <h3 style={{ margin: 0, color: colors.textPrimary, fontSize: 16, fontWeight: 600 }}>
+            Listing Under Review
+          </h3>
+        </div>
+
+        {/* Body */}
+        <p style={{ margin: 0, color: colors.textSecondary, fontSize: 13, lineHeight: 1.6 }}>
+          <strong style={{ color: colors.textPrimary }}>"{info.title}"</strong> is currently under
+          Vinted's "check in progress" review and cannot be deleted.
+        </p>
+        <p style={{ margin: 0, color: colors.textSecondary, fontSize: 13, lineHeight: 1.6 }}>
+          You can <strong>relist anyway</strong> — a new listing will be created while the old one
+          stays on Vinted. Your auto-message rules and relist history will be transferred to the new listing.
+        </p>
+        <div style={{
+          padding: spacing.md, borderRadius: radius.md,
+          backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+        }}>
+          <p style={{ margin: 0, color: 'rgb(245,158,11)', fontSize: 12, lineHeight: 1.5 }}>
+            ⚡ <strong>Remember:</strong> once the original listing exits review, delete it manually
+            on Vinted to avoid having two copies.
+          </p>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', gap: spacing.md, marginTop: spacing.sm }}>
+          <button
+            onClick={onSkip}
+            style={{
+              flex: 1, padding: `${spacing.sm}px ${spacing.md}px`,
+              borderRadius: radius.md, border: `1px solid ${colors.glassBorder}`,
+              backgroundColor: 'transparent', color: colors.textSecondary,
+              cursor: 'pointer', fontSize: 13, fontWeight: 500,
+            }}
+          >
+            Skip Item
+          </button>
+          <button
+            onClick={onRelistAnyway}
+            style={{
+              flex: 1, padding: `${spacing.sm}px ${spacing.md}px`,
+              borderRadius: radius.md, border: 'none',
+              background: 'linear-gradient(135deg, rgb(245,158,11), rgb(234,88,12))',
+              color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+            }}
+          >
+            Relist Anyway
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Discrepancy View ───────────────────────────────────────────────────────
@@ -1094,18 +1221,55 @@ function WaitingRoom({
   queue,
   countdown,
   processing,
+  paused,
   onRemove,
   onClear,
+  onPause,
+  onResume,
 }: {
   queue: RelistQueueEntry[];
   countdown: number;
   processing: boolean;
+  paused: boolean;
   onRemove: (localId: number) => void;
   onClear: () => void;
+  onPause: () => void;
+  onResume: () => void;
 }) {
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [minDelay, setMinDelay] = useState(1);
+  const [maxDelay, setMaxDelay] = useState(5);
+
+  // Load saved delay settings
+  useEffect(() => {
+    window.vinted.getQueueSettings().then((s) => {
+      setMinDelay(Math.round(s.minDelay / 60));
+      setMaxDelay(Math.round(s.maxDelay / 60));
+    });
+  }, []);
+
+  const handleDelayChange = (min: number, max: number) => {
+    const clampedMin = Math.max(1, Math.min(10, min));
+    const clampedMax = Math.max(clampedMin, Math.min(10, max));
+    setMinDelay(clampedMin);
+    setMaxDelay(clampedMax);
+    window.vinted.setQueueSettings(clampedMin * 60, clampedMax * 60);
+  };
+
+  const pendingCount = queue.filter((e) => e.status === 'pending').length;
+  const doneCount = queue.filter((e) => e.status === 'done').length;
+  const errorCount = queue.filter((e) => e.status === 'error').length;
+  const activeCount = queue.filter((e) => e.status === 'mutating' || e.status === 'uploading').length;
+
+  const formatCountdown = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg }}>
-      {/* Countdown + Controls */}
+      {/* ── Top Controls Row ── */}
       <div style={{ display: 'flex', gap: spacing.lg }}>
         {/* Countdown Timer */}
         <div style={{
@@ -1113,7 +1277,7 @@ function WaitingRoom({
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           minHeight: 120,
         }}>
-          {processing && countdown > 0 ? (
+          {processing && !paused && countdown > 0 ? (
             <>
               <div style={{ fontSize: font.size.xs, color: colors.textMuted, textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: spacing.sm }}>
                 Next relist in
@@ -1123,49 +1287,111 @@ function WaitingRoom({
                 fontFamily: font.mono, fontVariantNumeric: 'tabular-nums',
                 lineHeight: 1,
               }}>
-                {countdown}s
+                {formatCountdown(countdown)}
               </div>
             </>
-          ) : processing ? (
+          ) : processing && !paused ? (
             <div style={{ fontSize: font.size.lg, color: colors.primary }}>
               Processing...
             </div>
+          ) : paused ? (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: font.size.xs, color: colors.warning, textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: spacing.sm }}>
+                Queue Paused
+              </div>
+              <div style={{ fontSize: font.size.lg, color: colors.warning, fontWeight: font.weight.semibold }}>
+                ⏸ {pendingCount} item{pendingCount !== 1 ? 's' : ''} remaining
+              </div>
+            </div>
           ) : (
             <div style={{ color: colors.textMuted, fontSize: font.size.base }}>
-              {queue.length === 0 ? 'No items queued' : `${queue.filter((e) => e.status === 'pending').length} item(s) ready`}
+              {queue.length === 0 ? 'No items queued' : `${pendingCount} item(s) ready`}
             </div>
           )}
         </div>
 
-        {/* Queue Controls */}
-        <div style={{ ...glassPanel, padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.sm, minWidth: 160 }}>
+        {/* Controls Panel */}
+        <div style={{ ...glassPanel, padding: spacing.xl, display: 'flex', flexDirection: 'column', gap: spacing.sm, minWidth: 260 }}>
           <div style={{ fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colors.textSecondary, marginBottom: spacing.xs }}>
             Controls
           </div>
+
+          {/* Delay Settings */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.xs, marginBottom: spacing.xs }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: font.size.xs }}>
+              <span style={{ color: colors.textMuted }}>Delay (min):</span>
+              <span style={{ color: colors.textPrimary, fontWeight: font.weight.semibold }}>
+                {minDelay} – {maxDelay}
+              </span>
+            </div>
+            <DualRangeSlider
+              min={1} max={10}
+              valueMin={minDelay}
+              valueMax={maxDelay}
+              onChange={(low, high) => handleDelayChange(low, high)}
+            />
+          </div>
+
+          {/* Pause / Resume */}
+          {processing || paused ? (
+            <button
+              type="button"
+              onClick={paused ? onResume : onPause}
+              style={{
+                ...btnSecondary, ...btnSmall,
+                color: paused ? colors.success : colors.warning,
+                borderColor: paused ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)',
+              }}
+            >
+              {paused ? '▶ Resume' : '⏸ Pause'}
+            </button>
+          ) : null}
+
+          {/* Clear Queue */}
           <button
             type="button"
-            onClick={onClear}
+            onClick={() => {
+              if (pendingCount === 0) { onClear(); return; }
+              setShowClearConfirm(true);
+            }}
             disabled={queue.length === 0}
             style={{
-              ...btnDanger,
-              ...btnSmall,
+              ...btnDanger, ...btnSmall,
               opacity: queue.length === 0 ? 0.4 : 1,
               cursor: queue.length === 0 ? 'default' : 'pointer',
             }}
           >
             Clear Queue
           </button>
-          <div style={{ fontSize: font.size.xs, color: colors.textMuted }}>
-            Done: {queue.filter((e) => e.status === 'done').length} |{' '}
-            Errors: {queue.filter((e) => e.status === 'error').length}
+
+          {/* Stats */}
+          <div style={{ fontSize: font.size.xs, color: colors.textMuted, marginTop: 4 }}>
+            Done: {doneCount} | Errors: {errorCount} | Active: {activeCount}
           </div>
         </div>
       </div>
 
-      {/* Queue Table */}
+      {/* ── Progress Bar ── */}
+      {queue.length > 0 && (
+        <div style={{ ...glassPanel, padding: `${spacing.sm} ${spacing.lg}`, display: 'flex', alignItems: 'center', gap: spacing.md }}>
+          <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 3,
+              background: `linear-gradient(90deg, ${colors.success}, ${colors.primary})`,
+              width: `${queue.length > 0 ? ((doneCount + errorCount) / queue.length) * 100 : 0}%`,
+              transition: 'width 0.5s ease',
+            }} />
+          </div>
+          <span style={{ fontSize: font.size.xs, color: colors.textSecondary, whiteSpace: 'nowrap' }}>
+            {doneCount + errorCount} / {queue.length}
+          </span>
+        </div>
+      )}
+
+      {/* ── Queue Table ── */}
       {queue.length === 0 ? (
         <div style={{ ...glassPanel, padding: spacing['4xl'], textAlign: 'center', color: colors.textMuted }}>
-          No items queued for relisting. Select items from the Live tab and click "Relist".
+          No items queued for relisting. Select items from the Live tab, enable bulk select, and click "⟳ Add to Relist Queue".
         </div>
       ) : (
         <div style={{ ...glassPanel, overflow: 'hidden', padding: 0 }}>
@@ -1188,6 +1414,46 @@ function WaitingRoom({
           </table>
         </div>
       )}
+
+      {/* ── Clear Confirmation Modal ── */}
+      {showClearConfirm && ReactDOM.createPortal(
+        <div className="modal-overlay" style={modalOverlay} onClick={() => setShowClearConfirm(false)}>
+          <div style={{ ...modalContent, maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: spacing.lg }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: radius.md,
+                background: colors.errorBg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={colors.error} strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
+                  Clear Relist Queue?
+                </h3>
+                <p style={{ margin: 0, fontSize: font.size.sm, color: colors.textSecondary }}>
+                  {pendingCount} remaining item{pendingCount !== 1 ? 's' : ''} will not be relisted.
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: spacing.sm }}>
+              <button
+                type="button"
+                onClick={() => { setShowClearConfirm(false); onClear(); }}
+                style={{ ...btnDanger, ...btnSmall, flex: 1 }}
+              >
+                Yes, Clear Queue
+              </button>
+              <button type="button" onClick={() => setShowClearConfirm(false)} style={{ ...btnSecondary, ...btnSmall }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1204,7 +1470,9 @@ function QueueRow({ entry, onRemove }: { entry: RelistQueueEntry; onRemove: (loc
       case 'pending': return <span style={badge(colors.glassBg, colors.textMuted)}>Pending</span>;
       case 'mutating': return <span style={badge(colors.warningBg, colors.warning)}>Mutating</span>;
       case 'uploading': return <span style={badge(colors.infoBg, colors.info)}>Uploading</span>;
-      case 'done': return <span style={badge(colors.successBg, colors.success)}>Done</span>;
+      case 'done': return entry.deleteSkipped
+        ? <span style={badge(colors.warningBg, colors.warning)} title="Old listing could not be deleted — remember to delete it manually once it exits review">Done (old kept)</span>
+        : <span style={badge(colors.successBg, colors.success)}>Done</span>;
       case 'error': return <span style={badge(colors.errorBg, colors.error)} title={entry.error}>Error</span>;
     }
   };
@@ -1643,7 +1911,7 @@ function EditItemModal({
 }) {
   const isCreateMode = item === null;
   type PhotoPlanItem =
-    | { type: 'existing'; id: number; url: string }
+    | { type: 'existing'; url: string }
     | { type: 'new'; path: string };
 
   // ── State: basic fields ──
@@ -1735,7 +2003,7 @@ function EditItemModal({
     const remoteUrls = Array.isArray(item.photo_urls) ? item.photo_urls : [];
 
     if (remoteUrls.length > 0) {
-      return remoteUrls.map((u: string) => ({ type: 'existing', id: 0, url: u }));
+      return remoteUrls.map((u: string) => ({ type: 'existing' as const, url: u }));
     } else if (localPaths.length > 0) {
       return localPaths.map((p: string) => ({ type: 'new', path: p }));
     }
@@ -1785,7 +2053,7 @@ function EditItemModal({
         const freshPaths = Array.isArray(freshItem.local_image_paths) ? freshItem.local_image_paths : [];
         const freshUrls = Array.isArray(freshItem.photo_urls) ? freshItem.photo_urls : [];
         if (freshUrls.length > 0) {
-          setPhotoPlanItems(freshUrls.map((u: string) => ({ type: 'existing', id: 0, url: u })));
+          setPhotoPlanItems(freshUrls.map((u: string) => ({ type: 'existing' as const, url: u })));
         } else if (freshPaths.length > 0) {
           setPhotoPlanItems(freshPaths.map((p: string) => ({ type: 'new', path: p })));
         }
@@ -1796,8 +2064,8 @@ function EditItemModal({
     }
     return null;
   };
-  const [photoPlanOriginalExistingIds, setPhotoPlanOriginalExistingIds] = useState<number[]>([]);
-  const hasUnresolvedExistingPhotoIds = photoPlanItems.some((p) => p.type === 'existing' && p.id <= 0);
+  // ── Photo lightbox state ──
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -1828,6 +2096,18 @@ function EditItemModal({
       }
     };
   }, []);
+
+  // ── Lightbox keyboard navigation ──
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxIndex(null);
+      else if (e.key === 'ArrowLeft') setLightboxIndex((prev) => prev !== null && prev > 0 ? prev - 1 : prev);
+      else if (e.key === 'ArrowRight') setLightboxIndex((prev) => prev !== null && prev < photoPlanItems.length - 1 ? prev + 1 : prev);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightboxIndex, photoPlanItems.length]);
 
   const openPhotoPicker = () => {
     fileInputRef.current?.click();
@@ -2249,14 +2529,9 @@ function EditItemModal({
       condition: conditionStr,
       // Pass the fully computed/reordered photo paths/URIs for the bridge to diff
       photo_urls: photoPlanItems.map((p) => p.type === 'existing' ? p.url : p.path),
-      // NEW: track which existing photo IDs the user intends to keep (by explicitly selecting them)
-      retained_photo_ids: photoPlanItems
-        .filter((p) => p.type === 'existing' && p.id > 0)
-        .map((p) => p.id as number),
       local_image_paths: JSON.stringify(newPaths), // Still needed for local-only items
       status: item!.vinted_item_id ? 'discrepancy' : item!.status,
       __photo_plan: {
-        original_existing_ids: photoPlanOriginalExistingIds,
         items: photoPlanItems,
       },
       ...(Object.keys(modelMetadata).length > 0 ? { model_metadata: JSON.stringify(modelMetadata) } : {}),
@@ -2297,7 +2572,7 @@ function EditItemModal({
   return ReactDOM.createPortal(
     <div className="modal-overlay" style={modalOverlay} onClick={onClose}>
       <div
-        style={{ ...modalContent, maxWidth: 640, maxHeight: '90vh', overflow: 'auto', padding: spacing['2xl'], position: 'relative' }}
+        style={{ ...modalContent, maxWidth: 780, maxHeight: '90vh', overflow: 'auto', padding: spacing['2xl'], position: 'relative' }}
         onClick={(e) => e.stopPropagation()}
 
       >
@@ -2476,40 +2751,41 @@ function EditItemModal({
                 type="button"
                 onClick={openPhotoPicker}
                 style={{ ...btnSecondary, ...btnSmall }}
-                disabled={saving || hasUnresolvedExistingPhotoIds}
-                title={hasUnresolvedExistingPhotoIds ? 'Photo IDs not loaded — cannot edit photos yet' : undefined}
+                disabled={saving}
               >
                 Add photos
               </button>
               <div style={{ color: colors.textMuted, fontSize: font.size.xs, alignSelf: 'center' }}>
                 {saving
                   ? `Saving...${photoPlanItems.some((p) => p.type === 'new') ? ' Uploading photos and saving listing.' : ' Updating listing.'}`
-                  : hasUnresolvedExistingPhotoIds
-                    ? 'Photo editing is disabled because live photo IDs could not be loaded. Retry opening the modal and wait for details to load.'
-                    : 'Drag-and-drop not supported yet; use Add photos. You can reorder/remove before saving.'}
+                  : 'Click a photo to enlarge. You can reorder/remove before saving.'}
               </div>
             </div>
 
             {photoPlanItems.length > 0 ? (
-              <div style={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: spacing.md, flexWrap: 'wrap' }}>
                 {photoPlanItems.map((p, i) => {
                   const src =
                     p.type === 'new'
                       ? `local-image://${encodeURI(p.path)}`
                       : p.url;
-                  const hasId = p.type === 'existing' ? p.id > 0 : true;
 
                   return (
-                    <div key={`${p.type}-${p.type === 'existing' ? p.id : p.path}-${i}`} style={{ width: 112 }}>
-                      <div style={{
-                        width: 112,
-                        height: 112,
-                        borderRadius: radius.md,
-                        overflow: 'hidden',
-                        background: colors.glassBg,
-                        border: `1px solid ${colors.glassBorder}`,
-                        position: 'relative',
-                      }}>
+                    <div key={`${p.type}-${i}`} style={{ width: 140 }}>
+                      <div
+                        style={{
+                          width: 140,
+                          height: 140,
+                          borderRadius: radius.md,
+                          overflow: 'hidden',
+                          background: colors.glassBg,
+                          border: `1px solid ${colors.glassBorder}`,
+                          position: 'relative',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => setLightboxIndex(i)}
+                        title="Click to enlarge"
+                      >
                         <img
                           src={src}
                           alt=""
@@ -2518,46 +2794,32 @@ function EditItemModal({
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                         />
-                        {!hasId && (
-                          <div style={{
-                            position: 'absolute',
-                            left: 6,
-                            bottom: 6,
-                            background: 'rgba(0,0,0,0.6)',
-                            color: '#fff',
-                            fontSize: 10,
-                            padding: '2px 6px',
-                            borderRadius: 999,
-                          }}>
-                            no-id
-                          </div>
-                        )}
                       </div>
-                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                      <div style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'center' }}>
                         <button
                           type="button"
                           onClick={() => movePhoto(i, -1)}
-                          style={{ ...btnSecondary, ...btnSmall, flex: 1 }}
+                          style={{ ...btnSecondary, ...btnSmall, padding: '4px 10px', fontSize: font.size.sm }}
                           title="Move left"
-                          disabled={saving || hasUnresolvedExistingPhotoIds}
+                          disabled={saving}
                         >
                           ←
                         </button>
                         <button
                           type="button"
                           onClick={() => movePhoto(i, 1)}
-                          style={{ ...btnSecondary, ...btnSmall, flex: 1 }}
+                          style={{ ...btnSecondary, ...btnSmall, padding: '4px 10px', fontSize: font.size.sm }}
                           title="Move right"
-                          disabled={saving || hasUnresolvedExistingPhotoIds}
+                          disabled={saving}
                         >
                           →
                         </button>
                         <button
                           type="button"
                           onClick={() => removePhotoAt(i)}
-                          style={{ ...btnDanger, ...btnSmall }}
+                          style={{ ...btnDanger, ...btnSmall, padding: '4px 10px', fontSize: font.size.sm }}
                           title="Remove"
-                          disabled={saving || hasUnresolvedExistingPhotoIds}
+                          disabled={saving}
                         >
                           ✕
                         </button>
@@ -2572,6 +2834,132 @@ function EditItemModal({
               </div>
             )}
           </div>
+
+          {/* ── Photo Lightbox Overlay ── */}
+          {lightboxIndex !== null && photoPlanItems.length > 0 && (() => {
+            const idx = lightboxIndex;
+            const p = photoPlanItems[idx];
+            if (!p) return null;
+            const lbSrc = p.type === 'new' ? `local-image://${encodeURI(p.path)}` : p.url;
+            const hasPrev = idx > 0;
+            const hasNext = idx < photoPlanItems.length - 1;
+
+            const arrowBtnStyle: React.CSSProperties = {
+              position: 'absolute',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'rgba(255,255,255,0.12)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              color: '#fff',
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              fontSize: 24,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'background 0.2s',
+              backdropFilter: 'blur(8px)',
+              zIndex: 10002,
+            };
+
+            return (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0,0,0,0.88)',
+                  zIndex: 10000,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onClick={() => setLightboxIndex(null)}
+              >
+
+                {/* Counter */}
+                <div style={{
+                  position: 'absolute',
+                  top: 20,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  color: 'rgba(255,255,255,0.6)',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  zIndex: 10002,
+                  pointerEvents: 'none',
+                }}>
+                  {idx + 1} / {photoPlanItems.length}
+                </div>
+
+                {/* Close button */}
+                <button
+                  onClick={() => setLightboxIndex(null)}
+                  style={{
+                    position: 'absolute',
+                    top: 16,
+                    right: 20,
+                    background: 'rgba(255,255,255,0.12)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    fontSize: 20,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10002,
+                    backdropFilter: 'blur(8px)',
+                  }}
+                  title="Close (Esc)"
+                >✕</button>
+
+                {/* Left arrow */}
+                {hasPrev && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setLightboxIndex(idx - 1); }}
+                    style={{ ...arrowBtnStyle, left: 24 }}
+                    onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.25)'; }}
+                    onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.12)'; }}
+                    title="Previous (←)"
+                  >‹</button>
+                )}
+
+                {/* Image */}
+                <img
+                  src={lbSrc}
+                  alt=""
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    maxWidth: '85vw',
+                    maxHeight: '85vh',
+                    objectFit: 'contain',
+                    borderRadius: 8,
+                    boxShadow: '0 8px 48px rgba(0,0,0,0.5)',
+                    zIndex: 10001,
+                    userSelect: 'none',
+                  }}
+                />
+
+                {/* Right arrow */}
+                {hasNext && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setLightboxIndex(idx + 1); }}
+                    style={{ ...arrowBtnStyle, right: 24 }}
+                    onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.25)'; }}
+                    onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.12)'; }}
+                    title="Next (→)"
+                  >›</button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Title ── */}
           <div>

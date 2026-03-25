@@ -2,7 +2,7 @@
  * IPC handlers — bridge between renderer and main process
  */
 
-import { ipcMain, shell } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { execFile } from 'child_process';
 import { getDb } from './db';
 import * as secureStorage from './secureStorage';
@@ -14,6 +14,7 @@ import * as checkoutService from './checkoutService';
 import * as proxyService from './proxyService';
 import * as snipers from './snipers';
 import * as sniperService from './sniperService';
+import * as sniperHits from './sniperHits';
 import * as sessionService from './sessionService';
 import * as authCapture from './authCapture';
 import * as credentialStore from './credentialStore';
@@ -51,57 +52,53 @@ export function registerIpcHandlers(): void {
   // 1-Click Extension Sync: pull session data harvested by the Chrome Extension
   ipcMain.handle('session:syncFromExtension', async () => {
     try {
-      const db = getDb();
-      if (!db) return { ok: false, reason: 'NO_DB' };
+      // The user is pressing this because the session IS expired — any existing
+      // cookie in storage is stale. Clear it so we don't get false positives.
+      secureStorage.clearCookie();
+      // Reset the sync baseline so sessionService detects the NEXT extension harvest
+      sessionService.resetSyncBaseline();
+      // Suppress emitSessionExpired() from feedService while sync is in progress
+      sessionService.setSyncInProgress(true);
+      logger.info('session:sync-cleared-stale', { message: 'Cleared stale cookie, waiting for fresh extension harvest' });
 
-      // Helper: check DB for a plaintext cookie written by the extension → bridge pipeline
-      const checkForCookie = () => {
-        return db.prepare('SELECT value FROM settings WHERE key = ?').get('vinted_cookie_plain') as { value: string } | undefined;
-      };
+      // Switch sessionService to fast polling (1s) so it detects bridge writes quickly
+      sessionService.setFastPolling(true);
 
-      const promoteCookie = (cookie: string, meta: Record<string, unknown>) => {
-        secureStorage.storeCookie(cookie);
-        db.prepare('DELETE FROM settings WHERE key = ?').run('vinted_cookie_plain');
-        sessionService.emitSessionReconnected();
-        logger.info('session:synced-from-extension', meta);
-      };
-
-      // 1. Instant check — cookie may already be cached from a recent extension harvest
-      const cached = checkForCookie();
-      if (cached?.value) {
-        promoteCookie(cached.value, { immediate: true });
-        return { ok: true, source: 'cached' };
-      }
-
-      // 2. Brief poll (3s) — if Vinted is already open in Chrome, the extension
-      //    may just need a moment to harvest and POST to the bridge
-      for (let i = 0; i < 3; i++) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const row = checkForCookie();
-        if (row?.value) {
-          promoteCookie(row.value, { waited_seconds: i + 1, phase: 'pre-open' });
-          return { ok: true, source: 'polled', waited: i + 1 };
+      try {
+        // ── Phase 1: Brief wait (5s) ──
+        // If Vinted is already open in Chrome, the extension just needs a moment.
+        // waitForReconnect resolves when sessionService detects + promotes the cookie.
+        const quickSync = await sessionService.waitForReconnect(5_000);
+        if (quickSync) {
+          logger.info('session:synced-from-extension', { phase: 'pre-open', source: 'session-service' });
+          BrowserWindow.getAllWindows().forEach(w => { if (!w.isDestroyed()) { w.show(); w.focus(); } });
+          return { ok: true, source: 'polled' };
         }
-      }
 
-      // 3. Fallback — Vinted probably isn't open in Chrome; open it specifically in Chrome
-      //    (not default browser, which could be Safari — the extension is Chrome-only)
-      execFile('open', ['-a', 'Google Chrome', 'https://www.vinted.co.uk/']);
-      logger.info('session:sync-opened-chrome', { url: 'https://www.vinted.co.uk/' });
+        // ── Phase 2: Open Chrome ──
+        // No cookie found — open Vinted in Chrome to trigger the extension harvest.
+        execFile('open', ['-a', 'Google Chrome', 'https://www.vinted.co.uk/']);
+        logger.info('session:sync-opened-chrome', { url: 'https://www.vinted.co.uk/' });
 
-      // 4. Continue polling (45s more) for the extension to harvest after the page loads.
-      //    Cold-starting Chrome, loading the page, and bypassing Datadome can easily take 10-20s.
-      for (let i = 0; i < 45; i++) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const row = checkForCookie();
-        if (row?.value) {
-          promoteCookie(row.value, { waited_seconds: i + 4, phase: 'post-open' });
-          return { ok: true, source: 'polled', waited: i + 4 };
+        // ── Phase 3: Wait for sessionService ──
+        // sessionService is polling at 1s and will detect the bridge write,
+        // store the cookie directly from HTTP, and call emitSessionReconnected().
+        const synced = await sessionService.waitForReconnect(50_000);
+        if (synced) {
+          logger.info('session:synced-from-extension', { phase: 'post-open', source: 'session-service' });
+          BrowserWindow.getAllWindows().forEach(w => { if (!w.isDestroyed()) { w.show(); w.focus(); } });
+          return { ok: true, source: 'polled' };
         }
-      }
 
-      return { ok: false, reason: 'EXTENSION_NOT_SYNCED', message: 'Chrome Extension did not sync within 45s. Make sure Vinted HQ extension is installed and Vinted is signed in on Chrome.' };
+        return { ok: false, reason: 'EXTENSION_NOT_SYNCED', message: 'Chrome Extension did not sync within 50s. Make sure Vinted HQ extension is installed and Vinted is signed in on Chrome.' };
+      } finally {
+        // Always restore normal state
+        sessionService.setFastPolling(false);
+        sessionService.setSyncInProgress(false);
+      }
     } catch (err) {
+      sessionService.setFastPolling(false);
+      sessionService.setSyncInProgress(false);
       logger.error('session:syncFromExtension:error', { error: String(err), stack: err instanceof Error ? err.stack : undefined });
       return { ok: false, reason: 'INTERNAL_ERROR', message: String(err) };
     }
@@ -191,6 +188,15 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('snipers:getSpent', (_event, id: number) => snipers.getSniperSpent(id));
   ipcMain.handle('sniper:cancelCountdown', (_event, countdownId: string) => sniperService.cancelCountdown(countdownId));
 
+  // Sniper Hits
+  ipcMain.handle('sniperHits:getAll', (_event, opts?: { limit?: number; simulated?: boolean }) =>
+    sniperHits.getAllHits(opts)
+  );
+  ipcMain.handle('sniperHits:clear', () => {
+    sniperHits.clearHits();
+    return { ok: true };
+  });
+
   // Logs (Phase 6)
   ipcMain.handle('logs:getAll', (_event, opts?: Parameters<typeof logs.getLogs>[0]) => logs.getLogs(opts ?? {}));
 
@@ -257,6 +263,49 @@ export function registerIpcHandlers(): void {
       const resolvedProxy = proxy ?? proxyService.getProxyForCheckout(feedItem);
       const result = await checkoutService.runCheckout(feedItem, resolvedProxy);
       return result;
+    }
+  );
+
+  // Check if there's an accepted offer price for an item
+  ipcMain.handle(
+    'feed:checkOfferPrice',
+    async (_event, itemId: number, sellerId: number) => {
+      try {
+        const convResult = await bridge.createBuyConversation(itemId, sellerId, undefined);
+        if (!convResult.ok) return { offerPrice: null };
+        
+        const data = convResult.data as Record<string, unknown>;
+        const conv = (data.conversation ?? data) as Record<string, unknown>;
+        const messages = (conv.messages ?? []) as Array<Record<string, unknown>>;
+        
+        // Look for the latest accepted offer (offer_message from seller or accepted offer_request)
+        // The checkout build will show final_price — but we can get it from conversation messages
+        let latestOfferPrice: string | null = null;
+        
+        for (const msg of messages) {
+          const entity = msg.entity as Record<string, unknown> | undefined;
+          if (!entity) continue;
+          
+          const entityType = msg.entity_type as string;
+          const price = entity.price as Record<string, unknown> | undefined;
+          const priceAmount = price?.amount as string | undefined;
+          
+          if (entityType === 'offer_message' && priceAmount) {
+            // Seller-initiated offer
+            latestOfferPrice = priceAmount;
+          } else if (entityType === 'offer_request_message' && priceAmount) {
+            const status = entity.status as number;
+            // status 20 = accepted by seller
+            if (status === 20) {
+              latestOfferPrice = priceAmount;
+            }
+          }
+        }
+        
+        return { offerPrice: latestOfferPrice };
+      } catch {
+        return { offerPrice: null };
+      }
     }
   );
 
@@ -343,6 +392,10 @@ export function registerIpcHandlers(): void {
     inventoryService.dequeueRelist(localId)
   );
 
+  ipcMain.handle('wardrobe:retryRelistSkipDelete', (_event, localId: number) =>
+    inventoryService.retryRelistSkipDelete(localId)
+  );
+
   ipcMain.handle('wardrobe:clearQueue', () =>
     inventoryService.clearQueue()
   );
@@ -353,6 +406,18 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('wardrobe:setQueueSettings', (_event, minDelay: number, maxDelay: number) =>
     inventoryService.setQueueSettings(minDelay, maxDelay)
+  );
+
+  ipcMain.handle('wardrobe:pauseRelistQueue', () =>
+    inventoryService.pauseQueue()
+  );
+
+  ipcMain.handle('wardrobe:resumeRelistQueue', () =>
+    inventoryService.resumeQueue()
+  );
+
+  ipcMain.handle('wardrobe:loadPersistedQueue', () =>
+    inventoryService.loadPersistedQueue()
   );
 
   // ─── Ontology ───────────────────────────────────────────────────────────
@@ -467,4 +532,16 @@ export function registerIpcHandlers(): void {
     const count = await crmService.backfillItem(itemId, backfillHours, config);
     return { ok: true, count };
   });
+
+  // ─── Vinted User Settings ──────────────────────────────────────────────────
+
+  ipcMain.handle('bridge:fetchCurrentUser', (_event, proxy?: string) =>
+    bridge.fetchCurrentUser(proxy)
+  );
+  ipcMain.handle('bridge:fetchUserCards', (_event, proxy?: string) =>
+    bridge.fetchUserCards(proxy)
+  );
+  ipcMain.handle('bridge:fetchUserAddresses', (_event, proxy?: string) =>
+    bridge.fetchUserAddresses(proxy)
+  );
 }
