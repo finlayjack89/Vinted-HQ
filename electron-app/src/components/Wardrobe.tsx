@@ -29,6 +29,7 @@ import {
 } from '../theme';
 import type { InventoryItem, RelistQueueEntry, OntologyEntity } from '../types/global';
 import { DualRangeSlider } from './DualRangeSlider';
+import ItemIntelligence from './ItemIntelligence';
 
 type SubTab = 'all' | 'live' | 'local' | 'discrepancy' | 'queue';
 
@@ -55,6 +56,7 @@ export default function Wardrobe() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkActionProgress, setBulkActionProgress] = useState<{ kind: 'push' | 'pull'; current: number; total: number; failed: number } | null>(null);
   const [deleteBlockedInfo, setDeleteBlockedInfo] = useState<{ localId: number; title: string; reason: string } | null>(null);
+  const [analyzingItem, setAnalyzingItem] = useState<InventoryItem | null>(null);
 
   // ── Data loading ──
   const loadItems = useCallback(async () => {
@@ -652,6 +654,7 @@ export default function Wardrobe() {
                 onRelist={(id) => handleRelist([id])}
                 onEdit={(item) => setEditingItem(item)}
                 onDelete={handleDelete}
+                onAnalyze={(item) => setAnalyzingItem(item)}
                 showDiscrepancyBadge
                 emptyMessage="No items in your wardrobe. Sync from Vinted or create new listings."
                 selectMode={selectMode}
@@ -664,6 +667,7 @@ export default function Wardrobe() {
                 items={liveItems}
                 onRelist={(id) => handleRelist([id])}
                 onEdit={(item) => setEditingItem(item)}
+                onAnalyze={(item) => setAnalyzingItem(item)}
                 showDiscrepancyBadge
                 emptyMessage="No live listings. Sync from Vinted to import your wardrobe."
                 selectMode={selectMode}
@@ -777,6 +781,26 @@ export default function Wardrobe() {
           document.body
         )
       }
+
+      {/* ── Intelligence Modal ── */}
+      {analyzingItem && (
+        <ItemIntelligence
+          open={!!analyzingItem}
+          onClose={() => setAnalyzingItem(null)}
+          listing={{
+            title: analyzingItem.title,
+            description: analyzingItem.description || undefined,
+            price: typeof analyzingItem.price === 'number' ? analyzingItem.price : parseFloat(String(analyzingItem.price)) || 0,
+            url: analyzingItem.vinted_item_id ? `https://www.vinted.co.uk/items/${analyzingItem.vinted_item_id}` : undefined,
+            photo_urls: Array.isArray(analyzingItem.photo_urls) ? analyzingItem.photo_urls : [],
+            brand_hint: analyzingItem.brand_name || undefined,
+            category_hint: analyzingItem.category_id ? String(analyzingItem.category_id) : undefined,
+            condition_hint: analyzingItem.condition || undefined,
+            local_id: analyzingItem.id,
+            vinted_item_id: analyzingItem.vinted_item_id || undefined,
+          }}
+        />
+      )}
     </div >
   );
 }
@@ -790,6 +814,7 @@ function ItemTable({
   onPull,
   onEdit,
   onDelete,
+  onAnalyze,
   showDiscrepancyBadge,
   emptyMessage,
   selectMode,
@@ -802,6 +827,7 @@ function ItemTable({
   onPull?: (localId: number) => void;
   onEdit?: (item: InventoryItem) => void;
   onDelete?: (localId: number) => void;
+  onAnalyze?: (item: InventoryItem) => void;
   showDiscrepancyBadge?: boolean;
   emptyMessage: string;
   selectMode?: boolean;
@@ -857,6 +883,7 @@ function ItemTable({
               onPull={onPull}
               onEdit={onEdit}
               onDelete={onDelete}
+              onAnalyze={onAnalyze}
               showDiscrepancyBadge={showDiscrepancyBadge}
               selectMode={selectMode}
               selected={selectedIds?.has(item.id)}
@@ -876,6 +903,7 @@ function ItemRow({
   onPull,
   onEdit,
   onDelete,
+  onAnalyze,
   showDiscrepancyBadge,
   selectMode,
   selected,
@@ -887,6 +915,7 @@ function ItemRow({
   onPull?: (localId: number) => void;
   onEdit?: (item: InventoryItem) => void;
   onDelete?: (localId: number) => void;
+  onAnalyze?: (item: InventoryItem) => void;
   showDiscrepancyBadge?: boolean;
   selectMode?: boolean;
   selected?: boolean;
@@ -981,7 +1010,16 @@ function ItemRow({
         )}
       </td>
       <td style={{ ...tableCell, textAlign: 'right' as const }}>
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {onAnalyze && (
+            <button
+              type="button"
+              onClick={() => onAnalyze(item)}
+              style={{ ...actionBtn, color: '#8B5CF6', background: 'rgba(139,92,246,0.08)', borderColor: 'rgba(139,92,246,0.2)' }}
+            >
+              🧠 Analyze
+            </button>
+          )}
           {onEdit && (
             <button type="button" onClick={() => onEdit(item)} style={actionBtn}>
               Edit

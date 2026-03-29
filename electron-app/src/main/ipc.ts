@@ -24,6 +24,7 @@ import * as inventoryDb from './inventoryDb';
 import * as inventoryService from './inventoryService';
 import * as ontologyService from './ontologyService';
 import * as crmService from './crmService';
+import * as intelligenceService from './intelligenceService';
 import type { AppSettings } from './settings';
 import { logger } from './logger';
 
@@ -90,7 +91,7 @@ export function registerIpcHandlers(): void {
           return { ok: true, source: 'polled' };
         }
 
-        return { ok: false, reason: 'EXTENSION_NOT_SYNCED', message: 'Chrome Extension did not sync within 50s. Make sure Vinted HQ extension is installed and Vinted is signed in on Chrome.' };
+        return { ok: false, reason: 'EXTENSION_NOT_SYNCED', message: 'Chrome Extension did not sync within 50s. Make sure Seller HQ extension is installed and Vinted is signed in on Chrome.' };
       } finally {
         // Always restore normal state
         sessionService.setFastPolling(false);
@@ -126,7 +127,7 @@ export function registerIpcHandlers(): void {
     logger.info('settings:updated', { keys: Object.keys(partial) });
   });
 
-  // System — force Chrome so the Vinted HQ extension is available
+  // System — force Chrome so the Seller HQ extension is available
   ipcMain.handle('openExternal', (_event, url: string, options?: { background?: boolean }) => {
     const args: string[] = [];
     if (options?.background) args.push('-g');
@@ -544,4 +545,54 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('bridge:fetchUserAddresses', (_event, proxy?: string) =>
     bridge.fetchUserAddresses(proxy)
   );
+
+  // ─── Item Intelligence ──────────────────────────────────────────────────────
+
+  ipcMain.handle('intelligence:analyze', async (_event, params: {
+    mode: 'auth_only' | 'market_only' | 'full';
+    listing_title: string;
+    listing_description?: string;
+    listing_price_gbp: number;
+    listing_url?: string;
+    photo_urls: string[];
+    brand_hint?: string;
+    category_hint?: string;
+    condition_hint?: string;
+    local_id?: number;
+    vinted_item_id?: number;
+  }) => {
+    const win = BrowserWindow.getFocusedWindow();
+    try {
+      const report = await intelligenceService.runAnalysis(params, win);
+      return { ok: true, report };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle('intelligence:getReport', (_event, localId: number) =>
+    intelligenceService.getReport(localId)
+  );
+
+  ipcMain.handle('intelligence:getReportByVintedId', (_event, vintedItemId: number) =>
+    intelligenceService.getReportByVintedId(vintedItemId)
+  );
+
+  ipcMain.handle('intelligence:getReports', (_event, limit?: number) =>
+    intelligenceService.getReports(limit ?? 50)
+  );
+
+  ipcMain.handle('intelligence:getApiKeys', () =>
+    secureStorage.listApiKeys()
+  );
+
+  ipcMain.handle('intelligence:setApiKey', (_event, name: 'gemini' | 'anthropic' | 'perplexity' | 'serpapi', value: string) => {
+    secureStorage.storeApiKey(name, value);
+    return { ok: true };
+  });
+
+  ipcMain.handle('intelligence:clearApiKey', (_event, name: 'gemini' | 'anthropic' | 'perplexity' | 'serpapi') => {
+    secureStorage.clearApiKey(name);
+    return { ok: true };
+  });
 }

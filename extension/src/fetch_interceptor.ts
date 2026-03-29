@@ -1,5 +1,5 @@
 /**
- * Vinted HQ — Main World Fetch Interceptor
+ * Seller HQ — Main World Fetch Interceptor
  * 
  * This script runs in Vinted's MAIN WORLD at document_start, BEFORE any
  * Vinted/Datadome JavaScript executes. It wraps window.fetch to intercept
@@ -23,13 +23,13 @@
             try {
                 const clone = response.clone();
                 const data = await clone.json();
-                console.log('[Vinted HQ Interceptor] 🎯 Captured attributes response:', data);
+                console.log('[Seller HQ Interceptor] 🎯 Captured attributes response:', data);
                 window.postMessage({
-                    type: 'VINTED_HQ_ATTRIBUTES_CAPTURED',
+                    type: 'SELLER_HQ_ATTRIBUTES_CAPTURED',
                     payload: data,
                 }, '*');
             } catch (e) {
-                console.error('[Vinted HQ Interceptor] Failed to parse intercepted attributes:', e);
+                console.error('[Seller HQ Interceptor] Failed to parse intercepted attributes:', e);
             }
         }
 
@@ -38,18 +38,18 @@
             try {
                 const clone = response.clone();
                 const data = await clone.json();
-                console.log('[Vinted HQ Interceptor] 🎯 Captured sizes response:', data);
+                console.log('[Seller HQ Interceptor] 🎯 Captured sizes response:', data);
                 window.postMessage({
-                    type: 'VINTED_HQ_SIZES_CAPTURED',
+                    type: 'SELLER_HQ_SIZES_CAPTURED',
                     payload: data,
                 }, '*');
             } catch (e) {
-                console.error('[Vinted HQ Interceptor] Failed to parse intercepted sizes:', e);
+                console.error('[Seller HQ Interceptor] Failed to parse intercepted sizes:', e);
             }
         }
 
         return response;
     };
 
-    console.log('[Vinted HQ Interceptor] ✅ Fetch interceptor installed at document_start');
+    console.log('[Seller HQ Interceptor] ✅ Fetch interceptor installed at document_start');
 })();

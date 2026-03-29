@@ -134,3 +134,86 @@ export function getVintedUserId(): number | null {
 
   return null;
 }
+
+// ─── Item Intelligence: API Key Storage ──────────────────────────────────────
+
+const VALID_API_KEY_NAMES = ['gemini', 'anthropic', 'perplexity', 'serpapi'] as const;
+export type ApiKeyName = typeof VALID_API_KEY_NAMES[number];
+
+/**
+ * Store an API key encrypted in the intelligence_api_keys table.
+ */
+export function storeApiKey(name: ApiKeyName, value: string): void {
+  if (!VALID_API_KEY_NAMES.includes(name)) {
+    throw new Error(`Invalid API key name: ${name}. Must be one of: ${VALID_API_KEY_NAMES.join(', ')}`);
+  }
+  const encrypted = safeStorage.encryptString(value);
+  const encoded = encrypted.toString('base64');
+  const database = getDb();
+  if (database) {
+    database.prepare(
+      'INSERT OR REPLACE INTO intelligence_api_keys (key_name, encrypted_value, updated_at) VALUES (?, ?, unixepoch())'
+    ).run(name, encoded);
+  }
+}
+
+/**
+ * Retrieve a decrypted API key by name.
+ */
+export function retrieveApiKey(name: ApiKeyName): string | null {
+  const database = getDb();
+  if (!database) return null;
+
+  const row = database.prepare(
+    'SELECT encrypted_value FROM intelligence_api_keys WHERE key_name = ?'
+  ).get(name) as { encrypted_value: string } | undefined;
+  if (!row) return null;
+
+  try {
+    const buffer = Buffer.from(row.encrypted_value, 'base64');
+    return safeStorage.decryptString(buffer);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remove a stored API key.
+ */
+export function clearApiKey(name: ApiKeyName): void {
+  const database = getDb();
+  if (database) {
+    database.prepare('DELETE FROM intelligence_api_keys WHERE key_name = ?').run(name);
+  }
+}
+
+/**
+ * List which API keys are stored (returns names only, never values).
+ */
+export function listApiKeys(): { name: string; hasKey: boolean }[] {
+  const database = getDb();
+  const stored: Set<string> = new Set();
+  if (database) {
+    const rows = database.prepare('SELECT key_name FROM intelligence_api_keys').all() as { key_name: string }[];
+    for (const row of rows) {
+      stored.add(row.key_name);
+    }
+  }
+  return VALID_API_KEY_NAMES.map((name) => ({
+    name,
+    hasKey: stored.has(name),
+  }));
+}
+
+/**
+ * Retrieve all configured API keys as a record.
+ * Used internally to pass keys to the Python bridge.
+ */
+export function getAllApiKeys(): Record<string, string> {
+  const keys: Record<string, string> = {};
+  for (const name of VALID_API_KEY_NAMES) {
+    const value = retrieveApiKey(name);
+    if (value) keys[name] = value;
+  }
+  return keys;
+}

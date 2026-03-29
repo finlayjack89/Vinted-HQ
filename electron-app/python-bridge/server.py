@@ -981,6 +981,7 @@ def update_listing(
         )
         return {"ok": True, "data": data}
     except VintedError as e:
+        print(f"[edit_listing] ❌ VintedError: code={e.code} message={e.message} status={e.status_code}")
         return _error_response(e.code, e.message, e.status_code or 500)
 
 
@@ -1707,6 +1708,58 @@ async def ingest_single_item(request: Request):
     except Exception as e:
         return _error_response("DEEP_SYNC_ERROR", str(e), 500)
 
+@app.post("/ingest/photo-ids")
+async def ingest_photo_ids(request: Request):
+    """
+    Receive just the missing photo IDs from the extension (hq_photo_fetch=true mode).
+    Upserts into inventory_photos to unblock edits.
+    """
+    db_path = os.environ.get("VINTED_DB_PATH")
+    if not db_path:
+        return _error_response("NO_DB", "VINTED_DB_PATH env var not set", 500)
+
+    try:
+        body = await request.json()
+        item_id = body.get("item_id")
+        photos = body.get("photos", [])
+
+        if not item_id or not isinstance(photos, list):
+            return _error_response("INVALID_BODY", "item_id and photos array required", 400)
+
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            cursor = conn.cursor()
+            
+            # Find local mapping
+            cursor.execute("SELECT local_id FROM inventory_sync WHERE vinted_item_id = ?", (item_id,))
+            row = cursor.fetchone()
+
+            if not row:
+                return _error_response("NOT_FOUND", f"Vinted item {item_id} not linked to any local item", 404)
+
+            local_id = row[0]
+            count = 0
+
+            # Upsert into inventory_photos
+            # We first clear out any previous 'fast-fetched' photos for this item to prevent duplicates
+            cursor.execute("DELETE FROM inventory_photos WHERE item_id = ? AND original_url IS NULL", (str(local_id),))
+
+            import uuid
+            for photo in photos:
+                pid = photo.get("id")
+                if pid:
+                    internal_id = str(uuid.uuid4())
+                    cursor.execute('''
+                        INSERT INTO inventory_photos (internal_photo_id, item_id, vinted_photo_id, generation)
+                        VALUES (?, ?, ?, 0)
+                    ''', (internal_id, str(local_id), str(pid)))
+                    count += 1
+            
+            conn.commit()
+
+        return {"ok": True, "count": count, "message": f"Ingested {count} photo IDs for item {item_id}"}
+    except Exception as e:
+        return _error_response("PHOTO_INGEST_ERROR", str(e), 500)
+
 @app.get("/items/{item_id}")
 def get_local_item(item_id: int):
     """Fetch local item data from inventory_master acting as the source of truth for the extension."""
@@ -1930,6 +1983,64 @@ def checkout_pay_endpoint(
         return {"ok": True, "data": data}
     except VintedError as e:
         return _error_response(e.code, e.message, e.status_code or 500)
+
+# ─── Item Intelligence Endpoint ─────────────────────────────────────────────────
+
+@app.post("/intelligence/analyze")
+async def intelligence_analyze(
+    request: Request,
+):
+    """Run the Item Intelligence pipeline. Returns Server-Sent Events."""
+    from starlette.responses import StreamingResponse
+    from item_intelligence.schemas import AnalyzeRequest
+    from item_intelligence.orchestrator import run_analysis
+
+    body = await request.json()
+
+    try:
+        analyze_request = AnalyzeRequest(**body)
+    except Exception as e:
+        return _error_response("INVALID_REQUEST", f"Invalid request body: {str(e)}", 400)
+
+    # Collect API keys from headers — read raw headers directly for reliability
+    # (FastAPI's Header() alias matching can silently fail with hyphenated names)
+    api_keys: dict[str, str] = {}
+    raw_headers = dict(request.headers)
+
+    for header_name, key_name in [
+        ("x-gemini-key", "gemini"),
+        ("x-anthropic-key", "anthropic"),
+        ("x-perplexity-key", "perplexity"),
+        ("x-serpapi-key", "serpapi"),
+    ]:
+        value = raw_headers.get(header_name)
+        if value:
+            api_keys[key_name] = value
+
+    # Debug: log which keys were received (first 8 chars only for safety)
+    received_keys = {k: v[:8] + "..." for k, v in api_keys.items()}
+    print(f"[Intelligence] API keys received: {received_keys}")
+    print(f"[Intelligence] All request headers: {list(raw_headers.keys())}")
+
+    if not api_keys.get("gemini"):
+        return _error_response(
+            "MISSING_KEY",
+            "Gemini API key not received. Check Settings → API Keys.",
+            400
+        )
+
+    # Use a SQLite cache DB alongside the main bridge
+    import os
+    cache_db_path = os.path.join(os.path.dirname(__file__), "intelligence_cache.db")
+
+    return StreamingResponse(
+        run_analysis(analyze_request, api_keys, cache_db_path),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 if __name__ == "__main__":

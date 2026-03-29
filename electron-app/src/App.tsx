@@ -1,5 +1,5 @@
 /**
- * Root React component — Vinted HQ
+ * Root React component — Seller HQ
  * Revolut-inspired sidebar layout with liquid glass UI
  */
 
@@ -299,7 +299,7 @@ export default function App() {
               letterSpacing: '-0.02em',
             }}
           >
-            Vinted HQ
+            Seller HQ
           </h1>
           <span
             style={{

@@ -60,16 +60,16 @@ The edit modal's fields are populated from **three distinct data sources**:
 |--------|--------|
 | **State** | `selectedCategoryId: number`, `allCategories: OntologyEntity[]` |
 | **Source** | Categories from `getOntology('category')` → SQLite `vinted_ontology` table (entity_type='category'); item's category from `item.category_id` (Deep Sync: `itemEditModel.catalogId`) |
-| **UI** | [HierarchicalCategorySelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#1076-1147) — breadcrumb drill-down component |
+| **UI** | [HierarchicalCategorySelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#1076-1147) — breadcrumb drill-down component |
 | **Cascade** | Changing category re-triggers fetches for: sizes, materials, package sizes, conditions, brands |
 
 ### 5. Brand
 | Aspect | Detail |
 |--------|--------|
 | **State** | `selectedBrandId`, `selectedBrandName`, `brandResults: SelectOption[]` |
-| **Source** | `item.brand_id` / `item.brand_name`; popular brands fetched via [searchBrands('', categoryId)](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/bridge.ts#474-490) |
-| **UI** | [SearchableSelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#901-1073) with live search via `wardrobe:searchBrands` → Python bridge → `POST /api/v2/brands` |
-| **Cascade** | Changing brand triggers model fetch if category has [model](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/python-bridge/server.py#506-534) field, and material re-fetch |
+| **Source** | `item.brand_id` / `item.brand_name`; popular brands fetched via [searchBrands('', categoryId)](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/bridge.ts#474-490) |
+| **UI** | [SearchableSelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#901-1073) with live search via `wardrobe:searchBrands` → Python bridge → `POST /api/v2/brands` |
+| **Cascade** | Changing brand triggers model fetch if category has [model](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/python-bridge/server.py#506-534) field, and material re-fetch |
 
 ### 6. Condition
 | Aspect | Detail |
@@ -91,7 +91,7 @@ The edit modal's fields are populated from **three distinct data sources**:
 |--------|--------|
 | **State** | `selectedColorIds: number[]`, `allColors: OntologyEntity[]` |
 | **Source** | `item.color_ids` (array); full colour list from `getOntology('color')` → SQLite ontology table |
-| **UI** | [SearchableSelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#901-1073) multi-select (max 2) with colour hex swatch |
+| **UI** | [SearchableSelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#901-1073) multi-select (max 2) with colour hex swatch |
 | **Save guard** | If `selectedColorIds` is empty, falls back to `item.color_ids` to prevent accidental clearing |
 
 ### 9. Materials
@@ -99,8 +99,8 @@ The edit modal's fields are populated from **three distinct data sources**:
 |--------|--------|
 | **State** | `selectedMaterialIds: number[]`, `materialOptions: {id, title}[]` |
 | **Source** | Item's current materials from `item.item_attributes[code='material'].ids`; full options from `getMaterials(categoryId)` → Python bridge → SQLite cache (populated by Deep Sync `FETCH_ATTRIBUTES_MAIN_WORLD`) |
-| **UI** | [SearchableSelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#901-1073) multi-select (max 3); conditionally hidden when no options AND no pre-selected materials |
-| **Parser** | [extractFromAttributes()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#1191-1266) handles nested `configuration.options` with grouped and flat structures |
+| **UI** | [SearchableSelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#901-1073) multi-select (max 3); conditionally hidden when no options AND no pre-selected materials |
+| **Parser** | [extractFromAttributes()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#1191-1266) handles nested `configuration.options` with grouped and flat structures |
 | **Reverse lookup** | If `domMaterials` exists (scraped text), reverse-matches names against fetched options |
 
 ### 10. Model / Collection (Luxury brands)
@@ -130,7 +130,7 @@ The edit modal's fields are populated from **three distinct data sources**:
 |--------|--------|
 | **State** | `nicheAttributes: NicheAttribute[]`, `nicheValues: Record<string, number\|number[]\|string>` |
 | **Source** | Extracted from `getMaterials()` response — any attribute code NOT in `coreFields` set with a non-null `configuration` |
-| **UI** | Dynamically rendered: single-select `<select>` or multi-select [SearchableSelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#901-1073) depending on `selectionType`; text input if no options |
+| **UI** | Dynamically rendered: single-select `<select>` or multi-select [SearchableSelect](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#901-1073) depending on `selectionType`; text input if no options |
 | **Examples** | `video_game_platform`, `video_game_rating`, custom category-specific fields |
 
 ### 14. Price
@@ -209,7 +209,7 @@ The edit modal's fields are populated from **three distinct data sources**:
 
 | Gap | Impact | Notes |
 |-----|--------|-------|
-| **First-open cache miss** | Materials/sizes empty on first modal open before Deep Sync completes | The 4-second timeout is fragile. Could be fixed by having the Deep Sync send a completion event that triggers [reloadItem()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#1356-1396) instead of a fixed delay. |
+| **First-open cache miss** | Materials/sizes empty on first modal open before Deep Sync completes | The 4-second timeout is fragile. Could be fixed by having the Deep Sync send a completion event that triggers [reloadItem()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#1356-1396) instead of a fixed delay. |
 | **Photo ID resolution** | Cannot reorder/add photos until existing photo IDs are loaded from Vinted | Currently requires `getItemDetail()` to fetch photo IDs from Vinted's API, which is Datadome-gated. When this fails, photo editing is completely locked. |
 | **Save to Vinted API** | The save payload is assembled but the actual `POST /items/{id}` to Vinted's API may fail due to Datadome | Currently relies on the Python bridge, which faces the same Datadome truncation as the materials endpoint. The assisted edit puppeteering workaround handles condition/size/packageSize but not materials, photos, or description changes. |
 
@@ -217,7 +217,7 @@ The edit modal's fields are populated from **three distinct data sources**:
 
 | Gap | Impact | Notes |
 |-----|--------|-------|
-| **Assisted edit doesn't puppeteer materials** | When editing on Vinted directly, materials are not set via the dropdown puppeteering | [selectCondition()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#216-223), [selectSize()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#182-189), [selectPackageSize()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#190-197) exist but no `selectMaterial()` |
+| **Assisted edit doesn't puppeteer materials** | When editing on Vinted directly, materials are not set via the dropdown puppeteering | [selectCondition()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#216-223), [selectSize()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#182-189), [selectPackageSize()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#190-197) exist but no `selectMaterial()` |
 | **No drag-and-drop photos** | UI explicitly says "Drag-and-drop not supported yet" | Would need Electron IPC for file drop handling |
 | **Category change doesn't clear incompatible fields** | Changing from Shoes → Video Games still shows stale size options until re-fetch completes | Small UX issue — could flash loading state during transition |
 | **Niche attribute values not pre-populated** | Dynamic niche attributes (e.g. `video_game_platform`) show as empty even when the item has existing values | The `nicheValues` record is initialized empty; existing values from `item_attributes` are not seeded |

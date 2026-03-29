@@ -2,7 +2,7 @@
 
 ## Problem
 
-The edit modal's Materials and Sizes dropdowns were empty for the Sandals category (catalog 2949). The [extractFromAttributes()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#1191-1266) function expects `materialAttr.configuration.options` but received only `{ids:[43,457], code:"material"}`.
+The edit modal's Materials and Sizes dropdowns were empty for the Sandals category (catalog 2949). The [extractFromAttributes()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#1191-1266) function expects `materialAttr.configuration.options` but received only `{ids:[43,457], code:"material"}`.
 
 ## Root Cause
 
@@ -10,7 +10,7 @@ The Python bridge calls `POST /api/v2/item_upload/attributes` server-side, but D
 
 ## Solution
 
-Use `chrome.scripting.executeScript` in the page's **MAIN WORLD** to call Vinted's API using its own Datadome-patched [fetch()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/fetch_interceptor.ts#16-53). The background service worker orchestrates this:
+Use `chrome.scripting.executeScript` in the page's **MAIN WORLD** to call Vinted's API using its own Datadome-patched [fetch()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/fetch_interceptor.ts#16-53). The background service worker orchestrates this:
 
 ```
 Content Script → FETCH_ATTRIBUTES_MAIN_WORLD → Background SW → executeScript(MAIN WORLD)
@@ -26,9 +26,9 @@ Content Script → FETCH_ATTRIBUTES_MAIN_WORLD → Background SW → executeScri
 
 | File | Change |
 |------|--------|
-| [background.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/background.ts) | Added `FETCH_SIZES_MAIN_WORLD` handler |
-| [content.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts) | Replaced diagnostic `extractStaticOntologies()` with Main World fetch calls |
-| [fetch_interceptor.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/fetch_interceptor.ts) | Reverted to clean passive state |
+| [background.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/background.ts) | Added `FETCH_SIZES_MAIN_WORLD` handler |
+| [content.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts) | Replaced diagnostic `extractStaticOntologies()` with Main World fetch calls |
+| [fetch_interceptor.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/fetch_interceptor.ts) | Reverted to clean passive state |
 
 ## Verification Results
 

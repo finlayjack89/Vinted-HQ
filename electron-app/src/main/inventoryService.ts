@@ -918,6 +918,21 @@ export async function pullFromVinted(userId: number): Promise<{
           inventoryDb.updateLocalImagePaths(localId, JSON.stringify(localPaths));
         }
 
+        // Store Vinted photo IDs so the edit flow can use them for assigned_photos
+        for (let i = 0; i < photos.length; i++) {
+          const vintedPhotoId = photos[i]?.id;
+          if (vintedPhotoId && Number(vintedPhotoId) > 0) {
+            const internalId = `sync_${String(localId)}_${i}`;
+            inventoryDb.upsertInventoryPhoto(
+              internalId,
+              String(localId),
+              String(vintedPhotoId),
+              0,
+              photoUrls[i] || null,
+            );
+          }
+        }
+
       } catch (err) {
         errors.push(`Item ${vintedItem.id}: ${String(err)}`);
         logger.error('wardrobe-pull-item-error', { vintedId: String(vintedItem.id ?? ''), error: String(err) }, requestId);
@@ -1396,7 +1411,7 @@ export async function pushToVinted(localId: number, proxy?: string): Promise<{
     return { ok: true, vintedItemId: item.vinted_item_id };
   }
 
-  const itemData = buildVintedItemData(item);
+  const itemData = buildVintedItemData(item, { isEdit: false });
   const uploadSessionId = crypto.randomUUID();
   itemData.temp_uuid = uploadSessionId;
 
@@ -1709,7 +1724,7 @@ export async function editLiveItem(
   }
 
   // 5. Build Vinted API payload from the updated local record
-  const itemData = buildVintedItemData(item, { requiresSize: completeness.requires_size });
+  const itemData = buildVintedItemData(item, { requiresSize: completeness.requires_size, isEdit: true });
 
   // 6. Photo handling (add/remove/reorder)
   // The renderer can send a transient `__photo_plan` payload (not persisted in DB)
@@ -1719,10 +1734,101 @@ export async function editLiveItem(
     | undefined;
 
   const uploadSessionId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now());
+  // We attach temp_uuid here by default in case photos are uploaded later, 
+  // but we will delete it at the end if no valid new uploads occurred.
   itemData.temp_uuid = uploadSessionId;
+
+  // Track if we actually uploaded anything to the Vinted session
+  let didUploadNewPhotosToSession = false;
 
   // If we apply photos successfully, we update local DB ONLY after the PUT succeeds.
   let postPushPhotoUpdate: { photo_urls: string[]; local_image_paths: string[] } | null = null;
+
+  // ── Extract existing photo IDs locally ──
+  // Vinted's PUT edit API REQUIRES `assigned_photos` to always be present.
+  // Extract photo IDs from locally stored CDN URLs (no network calls needed).
+  let existingPhotoIds: { id: number; orientation: number }[] = [];
+
+  // Strategy 1: Check inventory_photos table (populated during relists)
+  try {
+    const photoRows = inventoryDb.getInventoryPhotos(String(localId));
+    const dbIds = photoRows
+      .filter((r) => r.vinted_photo_id && Number(r.vinted_photo_id) > 0)
+      .map((r) => ({ id: Number(r.vinted_photo_id), orientation: 0 }));
+    if (dbIds.length > 0) {
+      existingPhotoIds = dbIds;
+      logger.debug(
+        'wardrobe-edit-photo-ids-from-db',
+        { localId, vintedItemId: item.vinted_item_id, photoIds: dbIds.map((p) => p.id) },
+        requestId,
+      );
+    }
+  } catch { /* non-fatal */ }
+
+  // Strategy 2: Regex-extract from CDN URLs (for deep-synced items without relist history)
+  if (existingPhotoIds.length === 0 && beforePhotoUrls.length > 0) {
+    existingPhotoIds = extractPhotoIdsFromUrls(beforePhotoUrls);
+    if (existingPhotoIds.length > 0) {
+      logger.debug(
+        'wardrobe-edit-photo-ids-from-regex',
+        { localId, vintedItemId: item.vinted_item_id, photoIds: existingPhotoIds.map((p) => p.id), urlCount: beforePhotoUrls.length },
+        requestId,
+      );
+    } else {
+      logger.warn(
+        'wardrobe-edit-photo-ids-extraction-failed',
+        { localId, vintedItemId: item.vinted_item_id, urlCount: beforePhotoUrls.length, sampleUrl: beforePhotoUrls[0]?.slice(0, 120) },
+        requestId,
+      );
+    }
+  }
+
+  // Strategy 3: Fetch photo IDs via Chrome Extension Main World Fetch (Datadome bypass)
+  if (existingPhotoIds.length === 0 && item.vinted_item_id) {
+    try {
+      logger.info('wardrobe-edit-photo-ids-fetching-extension', { localId, vintedItemId: item.vinted_item_id }, requestId);
+      
+      // Use the /edit page instead of the naked /items/{id} page to prevent Vinted's 
+      // frontend router from 301 redirecting to the slug URL and stripping exactly this query param.
+      const syncUrl = `https://www.vinted.co.uk/items/${item.vinted_item_id}/edit?hq_photo_fetch=true`;
+      
+      const { execFile } = await import('child_process');
+      execFile('open', ['-a', 'Google Chrome', syncUrl]);
+
+      const POLL_INTERVAL_MS = 500;
+      const POLL_TIMEOUT_MS = 10000;
+      const pollStartMs = Date.now();
+      
+      while (Date.now() - pollStartMs < POLL_TIMEOUT_MS) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        
+        try {
+          // Fresh read from SQLite (inserted by server.py /ingest/photo-ids)
+          const photoRows = inventoryDb.getInventoryPhotos(String(localId));
+          const dbIds = photoRows
+            .filter((r) => r.vinted_photo_id && Number(r.vinted_photo_id) > 0)
+            .map((r) => ({ id: Number(r.vinted_photo_id), orientation: 0 }));
+            
+          if (dbIds.length > 0) {
+            existingPhotoIds = dbIds;
+            logger.info(
+              'wardrobe-edit-photo-ids-fetched-extension',
+              { localId, photosFound: dbIds.length, timeMs: Date.now() - pollStartMs },
+              requestId
+            );
+            break;
+          }
+        } catch { /* ignore */ }
+      }
+
+      if (existingPhotoIds.length === 0) {
+        logger.warn('wardrobe-edit-photo-ids-extension-timeout', { localId, vintedItemId: item.vinted_item_id }, requestId);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('wardrobe-edit-photo-ids-extension-error', { localId, error: msg }, requestId);
+    }
+  }
 
 
 
@@ -1762,7 +1868,10 @@ export async function editLiveItem(
         { localId, vintedItemId: item.vinted_item_id, existingCount: plannedExistingUrls.length },
         requestId,
       );
-      delete itemData.assigned_photos;
+      // Photo plan is a no-op: keep existing photos in-place.
+      if (existingPhotoIds.length > 0) {
+        itemData.assigned_photos = existingPhotoIds;
+      }
     } else if (hasUnknownExistingIds) {
       // We can't safely alter photos without IDs. Vinted will preserve existing photos
       // if we omit assigned_photos, so ensure local doesn't claim a change either.
@@ -1786,7 +1895,10 @@ export async function editLiveItem(
         } as Parameters<typeof inventoryDb.upsertInventoryItem>[0]);
       }
 
-      delete itemData.assigned_photos;
+      // Can't alter photos without IDs; keep existing photos in-place.
+      if (existingPhotoIds.length > 0) {
+        itemData.assigned_photos = existingPhotoIds;
+      }
     } else {
       const assigned: { id: number; orientation: number }[] = [];
       const finalRemoteUrls: string[] = [];
@@ -1855,7 +1967,7 @@ export async function editLiveItem(
 
             assigned.push({ id: photoId, orientation: 0 });
             if (photoUrl) finalRemoteUrls.push(photoUrl);
-          } catch (err) {
+          } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
             logger.error('edit-photo-upload-failed', { localId, error: msg }, requestId);
             return { ok: false, error: `Photo upload failed: ${msg}` };
@@ -1869,12 +1981,25 @@ export async function editLiveItem(
         itemData.assigned_photos = assigned;
         postPushPhotoUpdate = { photo_urls: finalRemoteUrls, local_image_paths: [] };
       } else {
-        delete itemData.assigned_photos;
+        // No valid assigned entries; fall back to existing photo IDs.
+        if (existingPhotoIds.length > 0) {
+          itemData.assigned_photos = existingPhotoIds;
+        }
       }
     }
   } else {
-    // No explicit photo plan; do not touch photos.
-    delete itemData.assigned_photos;
+    // No explicit photo plan; keep existing photos.
+    if (existingPhotoIds.length > 0) {
+      itemData.assigned_photos = existingPhotoIds;
+    }
+  }
+
+  // ── IMPORTANT: Vinted API Validation Fix ── 
+  // If we send a `temp_uuid`, Vinted expects ALL attached `assigned_photos` 
+  // to exist within that upload session. If we only sent existing photos,
+  // it throws "Error uploading photo". So if we didn't upload, strip it.
+  if (!didUploadNewPhotosToSession) {
+    delete itemData.temp_uuid;
   }
 
   // 7. Push edit to Vinted via the Python bridge.
@@ -1933,10 +2058,34 @@ export async function editLiveItem(
 }
 
 /**
+ * Extract Vinted photo IDs from CDN URLs.
+ * Vinted CDN URLs embed the numeric photo ID in the path, e.g.:
+ *   https://images1.vinted.net/t/03_00e90_XXXXX/1234567890/f800/...
+ * The ID is typically the longest numeric segment (8+ digits).
+ */
+function extractPhotoIdsFromUrls(urls: string[]): { id: number; orientation: number }[] {
+  const result: { id: number; orientation: number }[] = [];
+  for (const url of urls) {
+    // Match all numeric segments of 6+ digits in the URL path
+    const matches = url.match(/\/([0-9]{6,})(?:\/|$|\?)/g);
+    if (matches && matches.length > 0) {
+      // Take the first long numeric segment — that's the photo ID
+      const idStr = matches[0].replace(/\//g, '');
+      const id = Number(idStr);
+      if (id > 0) {
+        result.push({ id, orientation: 0 });
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * Build Vinted API item_data payload from a local inventory record.
  * Includes ALL fields to ensure relist/edit preserves every detail of the listing.
  */
-function buildVintedItemData(item: inventoryDb.InventoryItemJoined, opts?: { requiresSize?: boolean }): Record<string, unknown> {
+function buildVintedItemData(item: inventoryDb.InventoryItemJoined, opts?: { requiresSize?: boolean; isEdit?: boolean }): Record<string, unknown> {
+  const isEdit = opts?.isEdit ?? false;
   const coerceJsonArray = (value: unknown, label: string): unknown[] => {
     // Inventory DB returns these fields already parsed; accept arrays directly.
     if (Array.isArray(value)) return value;
@@ -1977,11 +2126,26 @@ function buildVintedItemData(item: inventoryDb.InventoryItemJoined, opts?: { req
     'shipment_prices'
   ) as { domestic?: unknown; international?: unknown };
 
+  // ── Condition attribute (HAR-verified: must be in item_attributes) ──
+  const conditionMap: Record<string, number> = {
+    'New with tags': 6, 'New without tags': 1, 'Very good': 2, 'Good': 3, 'Satisfactory': 4, 'Not fully functional': 5,
+  };
+  let conditionId: number | undefined;
+  // Derive from status_id first, then from condition string
+  if (isPositiveInt(item.status_id)) {
+    conditionId = item.status_id as number;
+  } else if (item.condition && conditionMap[item.condition]) {
+    conditionId = conditionMap[item.condition];
+  }
+  // Ensure condition attribute is included in item_attributes
+  const attrs = [...normalizedAttributes] as Array<{ code: string; ids: number[] }>;
+  if (conditionId && !attrs.some((a) => a.code === 'condition')) {
+    attrs.push({ code: 'condition', ids: [conditionId] });
+  }
+
+  // Build status_id for relist (edit does NOT send it — HAR-verified)
   let statusId = item.status_id;
   if (!isPositiveInt(statusId) && item.condition) {
-    const conditionMap: Record<string, number> = {
-      'New with tags': 6, 'New without tags': 1, 'Very good': 2, 'Good': 3, 'Satisfactory': 4, 'Not fully functional': 5,
-    };
     statusId = conditionMap[item.condition] ?? statusId;
   }
 
@@ -1994,23 +2158,28 @@ function buildVintedItemData(item: inventoryDb.InventoryItemJoined, opts?: { req
     brand: item.brand_name || '',
     size_id: item.size_id,
     catalog_id: item.category_id,
-    isbn: item.isbn || null,
-    is_unisex: Boolean(item.is_unisex),
-    status_id: statusId || 2,
-    video_game_rating_id: item.video_game_rating_id || null,
-    price: item.price,
+    // HAR-verified (edit): is_unisex=boolean, price=number, no status_id
+    // Relist keeps original format for compatibility
+    is_unisex: isEdit ? Boolean(item.is_unisex) : (item.is_unisex ? 1 : 0),
+    ...(isEdit ? {} : { status_id: statusId || 2 }),
+    price: isEdit ? Number(item.price || 0) : String(Number(item.price || 0).toFixed(2)),
     package_size_id: item.package_size_id || 3,
+    color_ids: normalizedColorIds,
+    item_attributes: attrs,
+    // HAR-verified (edit): null fields must be sent explicitly
+    // Relist also sends them for safety
+    isbn: item.isbn || null,
+    measurement_length: item.measurement_length || null,
+    measurement_width: item.measurement_width || null,
+    manufacturer: item.manufacturer || null,
+    manufacturer_labelling: item.manufacturer_labelling || null,
     shipment_prices: {
       domestic: normalizedShipmentPrices.domestic ?? null,
       international: normalizedShipmentPrices.international ?? null,
     },
-    color_ids: normalizedColorIds,
-    measurement_length: item.measurement_length || null,
-    measurement_width: item.measurement_width || null,
-    item_attributes: normalizedAttributes,
-    manufacturer: item.manufacturer || null,
-    manufacturer_labelling: item.manufacturer_labelling || null,
   };
+
+  if (isPositiveInt(item.video_game_rating_id)) data.video_game_rating_id = item.video_game_rating_id;
 
   // Include model metadata if present (for luxury brands)
   if (item.model_metadata) {
@@ -2454,7 +2623,7 @@ async function processQueue(): Promise<void> {
         );
       }
 
-      const itemData = buildVintedItemData(item, { requiresSize: comp.requires_size && isPositiveInt(item.size_id) });
+      const itemData = buildVintedItemData(item, { requiresSize: comp.requires_size && isPositiveInt(item.size_id), isEdit: false });
 
       // Extract photo URLs from local vault (Vinted CDN URLs)
       const photoUrls: string[] = [];

@@ -5,7 +5,7 @@
 ### `requirements.txt`
 Added `imagehash>=4.3.0` and `numpy>=1.24.0` for dHash verification loop.
 
-### [image_mutator.py](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/python-bridge/image_mutator.py)
+### [image_mutator.py](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/python-bridge/image_mutator.py)
 
 **Phase 6 — `apply_fallback_mutation(img, attempt, generation)`**
 Cumulative, generation-seeded escalating mutations:
@@ -22,7 +22,7 @@ After Phase 2 clockface mutation, `mutate_image_for_relist()` now:
 3. If insufficient, applies fallback tiers 1→2→3 cumulatively
 4. Only then exports JPEG + injects EXIF `Kiro-{gen}` tag
 
-### [vinted_client.py](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/python-bridge/vinted_client.py)
+### [vinted_client.py](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/python-bridge/vinted_client.py)
 
 **Datadome Circuit Breaker** in `orchestrate_relist()`:
 - **Upload-time interception**: If any `upload_photo()` raises `DATADOME_CHALLENGE` or `FORBIDDEN`, the entire relist aborts *before* DELETE

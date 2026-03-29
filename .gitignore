@@ -4,3 +4,44 @@
 # Performance traces (too large for GitHub)
 electron-app/docs/Performance Diagnostics/*.json
 electron-app/docs/Performance Diagnostics/*.json.gz
+
+# ─── Node / Electron ────────────────────────────────────────────────────────
+node_modules/
+dist/
+out/
+*.tsbuildinfo
+
+# ─── Python Bridge ──────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# ─── Databases ──────────────────────────────────────────────────────────────
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+intelligence_cache.db
+
+# ─── API Keys & Secrets ────────────────────────────────────────────────────
+# Keys are stored in macOS Keychain via Electron safeStorage.
+# These patterns catch any accidental file-based key exports.
+.env
+.env.*
+*.key
+*.pem
+api_keys.json
+secrets.json
+
+# ─── Debug Artifacts ────────────────────────────────────────────────────────
+/tmp/vinted_edit_debug.json
+
+# ─── IDE ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db

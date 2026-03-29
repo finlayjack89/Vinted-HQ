@@ -3,7 +3,7 @@
 **Feature:** Phase D.1 Deep Sync — Universal Ontology Extraction ("The Sandals Bug")  
 **Period:** March 4–7, 2026  
 **Status:** ✅ Resolved  
-**Predecessor:** [Post_Mortem_Edit_Modal_Datadome_Bypass.md](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/docs/Post-Mortems/Post_Mortem_Edit_Modal_Datadome_Bypass.md)
+**Predecessor:** [Post_Mortem_Edit_Modal_Datadome_Bypass.md](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/docs/Post-Mortems/Post_Mortem_Edit_Modal_Datadome_Bypass.md)
 
 ---
 
@@ -11,7 +11,7 @@
 
 When performing an automated "Deep Sync" on a Sandals listing (catalog 2949), the Electron edit modal displayed zero material options and zero sizes. The root cause was a two-layer failure: **(1)** Vinted's SSR HTML only embeds raw material IDs (e.g., `[43, 457]`) — never the human-readable labels (e.g., "Leather", "Metal") — to save bandwidth; **(2)** the Python bridge's fallback call to `POST /api/v2/item_upload/attributes` was silently truncated by Datadome, returning `{ids:[43,457], code:"material"}` with `configuration` stripped entirely.
 
-The "Passive Interceptor" architecture from the [predecessor Post-Mortem](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/docs/Post-Mortems/Post_Mortem_Edit_Modal_Datadome_Bypass.md) — which successfully captured Handbags attributes by eavesdropping on Vinted's own React fetch — failed because for Sandals (and most categories), **Vinted never makes the fetch call on page load**. The material options are lazy-loaded only when the user physically clicks the dropdown. No click → no fetch → nothing to intercept.
+The "Passive Interceptor" architecture from the [predecessor Post-Mortem](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/docs/Post-Mortems/Post_Mortem_Edit_Modal_Datadome_Bypass.md) — which successfully captured Handbags attributes by eavesdropping on Vinted's own React fetch — failed because for Sandals (and most categories), **Vinted never makes the fetch call on page load**. The material options are lazy-loaded only when the user physically clicks the dropdown. No click → no fetch → nothing to intercept.
 
 The solution evolved the architecture from **Passive Eavesdropping** to **Active Main-World Fetching**: the Chrome Extension's background service worker uses `chrome.scripting.executeScript` to inject a `window.fetch()` call directly into Vinted's Main World context. Because the call originates from the page's own JavaScript realm — using the user's TLS fingerprint, session cookies, and Datadome's own monkey-patched `fetch()` — the WAF accepts it as legitimate. The full schema (55 materials with labels, 27 sizes) is returned, relayed to the Python bridge, and cached in SQLite with idempotent `ON CONFLICT DO UPDATE`.
 
@@ -85,7 +85,7 @@ The error is fundamentally structural: React compares the server-rendered HTML a
 fetch_interceptor.js → wraps window.fetch → waits for attributes call → captures 0 responses
 ```
 
-This was the proven architecture from the [Handbags Post-Mortem](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/docs/Post-Mortems/Post_Mortem_Edit_Modal_Datadome_Bypass.md). The interceptor successfully installs and wraps `window.fetch` before Datadome. But for Sandals, Vinted's React **never calls** the attributes endpoint on page load. The deferred data pattern means zero fetches occur until human interaction. The interceptor is inert.
+This was the proven architecture from the [Handbags Post-Mortem](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/docs/Post-Mortems/Post_Mortem_Edit_Modal_Datadome_Bypass.md). The interceptor successfully installs and wraps `window.fetch` before Datadome. But for Sandals, Vinted's React **never calls** the attributes endpoint on page load. The deferred data pattern means zero fetches occur until human interaction. The interceptor is inert.
 
 **Diagnostic verification:** Enhanced interceptor logging confirmed zero matching URL patterns intercepted across full page lifecycle. Additionally, Chrome DevTools Network tab showed zero XHR/fetch calls to `/attributes` or `/size_groups` during page load.
 
@@ -143,7 +143,7 @@ sequenceDiagram
 
 ### 4.3 The Background Service Worker Handler
 
-[background.ts:84-136](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/background.ts#L84)
+[background.ts:84-136](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/background.ts#L84)
 
 ```typescript
 if (message.type === 'FETCH_ATTRIBUTES_MAIN_WORLD') {
@@ -187,7 +187,7 @@ if (message.type === 'FETCH_ATTRIBUTES_MAIN_WORLD') {
 
 Vinted's Next.js App Router fires navigation events that cause the content script to trigger deep sync twice. The Python bridge handles this via SQL upsert:
 
-[server.py:967-973](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/python-bridge/server.py#L967)
+[server.py:967-973](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/python-bridge/server.py#L967)
 
 ```sql
 INSERT INTO vinted_ontology (entity_type, entity_id, name, extra, fetched_at)
@@ -235,17 +235,17 @@ A universal architecture must handle every cell in this matrix without crashing.
 
 ### 5.2 Extension-Side Hardening
 
-**404 Handling for Sizeless Categories** — [background.ts:162-164](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/background.ts#L162)
+**404 Handling for Sizeless Categories** — [background.ts:162-164](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/background.ts#L162)
 
 Vinted's `GET /api/v2/item_upload/size_groups` returns HTTP 404 with an HTML body for categories that have no sizes (e.g., Handbags). The original `.json()` call would throw a parse error. The hardened handler checks `res.status === 404` and returns `{size_groups:[], code:0}` — a valid empty response that propagates cleanly through the entire pipeline.
 
-**Empty Sizes Guard** — [content.ts:618-624](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#L618)
+**Empty Sizes Guard** — [content.ts:618-624](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#L618)
 
 When size groups exist but contain zero individual sizes, `allSizes` becomes `[]`. The Python bridge's `/ingest/sizes` endpoint validates `if not sizes` and returns 400 for empty arrays. The guard skips the POST entirely and logs `ℹ️ Category has no sizes — skipping cache`.
 
 ### 5.3 Frontend Graceful Degradation
 
-[Wardrobe.tsx:1195-1265](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#L1195) — `extractFromAttributes()`
+[Wardrobe.tsx:1195-1265](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#L1195) — `extractFromAttributes()`
 
 ```typescript
 // If no 'material' code exists in the response, materialAttr is undefined
@@ -289,7 +289,7 @@ If Vinted starts embedding `configuration.options` in the SSR HTML (reversing th
 
 ### 6.4 Relationship to the Passive Interceptor
 
-The [fetch_interceptor.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/fetch_interceptor.ts) passive interceptor remains active and running. It successfully captures data for categories where Vinted eagerly fetches (like Handbags). The Main World fetch is additive — it ensures data is available even when the passive interceptor captures nothing. The two architectures coexist:
+The [fetch_interceptor.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/fetch_interceptor.ts) passive interceptor remains active and running. It successfully captures data for categories where Vinted eagerly fetches (like Handbags). The Main World fetch is additive — it ensures data is available even when the passive interceptor captures nothing. The two architectures coexist:
 
 | Scenario | Passive Interceptor | Active Main World Fetch |
 |----------|--------------------|-----------------------|

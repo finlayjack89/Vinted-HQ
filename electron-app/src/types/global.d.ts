@@ -475,6 +475,33 @@ declare global {
       addCrmIgnoredUser: (username: string) => Promise<{ ok: boolean }>;
       removeCrmIgnoredUser: (username: string) => Promise<{ ok: boolean }>;
       backfillCrmItem: (itemId: string, backfillHours: number) => Promise<{ ok: boolean; count: number }>;
+
+      // Item Intelligence
+      analyzeItem: (params: {
+        mode: 'auth_only' | 'market_only' | 'full';
+        tier?: 'essential' | 'pro' | 'ultra';
+        deep_research?: boolean;
+        listing_title: string;
+        listing_description?: string;
+        listing_price_gbp: number;
+        listing_url?: string;
+        photo_urls: string[];
+        brand_hint?: string;
+        category_hint?: string;
+        condition_hint?: string;
+        local_id?: number;
+        vinted_item_id?: number;
+      }) => Promise<{ ok: boolean; report?: unknown; error?: string }>;
+      getIntelligenceReport: (localId: number) => Promise<unknown>;
+      getIntelligenceReportByVintedId: (vintedItemId: number) => Promise<unknown>;
+      getIntelligenceReports: (limit?: number) => Promise<unknown[]>;
+      onIntelligenceProgress: (callback: (data: {
+        step: string; status: string; message: string;
+        progress_pct?: number; data?: Record<string, unknown>;
+      }) => void) => () => void;
+      getApiKeys: () => Promise<{ name: string; hasKey: boolean }[]>;
+      setApiKey: (name: 'gemini' | 'anthropic' | 'perplexity' | 'serpapi', value: string) => Promise<{ ok: boolean }>;
+      clearApiKey: (name: 'gemini' | 'anthropic' | 'perplexity' | 'serpapi') => Promise<{ ok: boolean }>;
     };
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Vinted HQ Background Service Worker
+ * Seller HQ Background Service Worker
  * Proxies fetch requests from the content script to the local Python bridge.
  * In Manifest V3, the service worker has full cross-origin access via host_permissions,
  * while content scripts may be blocked by CORS or CSP on the host page.
@@ -19,7 +19,7 @@ let cachedUserAgent: string | null = null;
 // to the local Python bridge. Leverages the high trust-score of the user's
 // primary Chrome browser (already logged into Vinted).
 
-const SESSION_ALARM_NAME = 'vinted-hq-session-harvest';
+const SESSION_ALARM_NAME = 'seller-hq-session-harvest';
 const SESSION_HARVEST_INTERVAL_MINUTES = 5;
 
 /** Target cookies we need for a complete session. */
@@ -31,13 +31,13 @@ const REQUIRED_COOKIES = ['access_token_web'];
  * compiles a JSON payload, and POSTs to the Python bridge.
  */
 async function harvestSession(): Promise<void> {
-    console.log('[Vinted HQ BG] 🔑 Starting session harvest...');
+    console.log('[Seller HQ BG] 🔑 Starting session harvest...');
 
     try {
         // 1. Extract all Vinted cookies
         const allCookies = await chrome.cookies.getAll({ domain: '.vinted.co.uk' });
         if (!allCookies || allCookies.length === 0) {
-            console.log('[Vinted HQ BG] 🔑 No Vinted cookies found — user may not have visited Vinted.');
+            console.log('[Seller HQ BG] 🔑 No Vinted cookies found — user may not have visited Vinted.');
             return;
         }
 
@@ -50,7 +50,7 @@ async function harvestSession(): Promise<void> {
         // 3. Abort if access_token_web is missing (user is logged out)
         const missingRequired = REQUIRED_COOKIES.filter(name => !cookieMap[name]);
         if (missingRequired.length > 0) {
-            console.log(`[Vinted HQ BG] 🔑 Session harvest aborted — user not logged in. Missing: ${missingRequired.join(', ')}`);
+            console.log(`[Seller HQ BG] 🔑 Session harvest aborted — user not logged in. Missing: ${missingRequired.join(', ')}`);
             return;
         }
 
@@ -72,7 +72,7 @@ async function harvestSession(): Promise<void> {
             source: 'chrome_extension',
         };
 
-        console.log(`[Vinted HQ BG] 🔑 Session compiled: ${allCookies.length} cookies, CSRF=${!!cachedCsrfToken}, UA=${!!cachedUserAgent}`);
+        console.log(`[Seller HQ BG] 🔑 Session compiled: ${allCookies.length} cookies, CSRF=${!!cachedCsrfToken}, UA=${!!cachedUserAgent}`);
 
         // 6. POST to Python bridge
         const res = await fetch(`${BRIDGE_BASE}/ingest/session`, {
@@ -83,25 +83,25 @@ async function harvestSession(): Promise<void> {
 
         const data = await res.json();
         if (data.ok) {
-            console.log('[Vinted HQ BG] 🔑 ✅ Session harvested and synced to bridge successfully.');
+            console.log('[Seller HQ BG] 🔑 ✅ Session harvested and synced to bridge successfully.');
         } else {
-            console.warn('[Vinted HQ BG] 🔑 ⚠️ Bridge rejected session:', data.message || data.error);
+            console.warn('[Seller HQ BG] 🔑 ⚠️ Bridge rejected session:', data.message || data.error);
         }
     } catch (err) {
         // Bridge may not be running — this is expected during development
-        console.warn('[Vinted HQ BG] 🔑 Session harvest failed (bridge may be offline):', String(err));
+        console.warn('[Seller HQ BG] 🔑 Session harvest failed (bridge may be offline):', String(err));
     }
 }
 
 // Trigger session harvest on extension startup and install
 chrome.runtime.onStartup.addListener(() => {
-    console.log('[Vinted HQ BG] 🔑 Browser startup — scheduling session harvest.');
+    console.log('[Seller HQ BG] 🔑 Browser startup — scheduling session harvest.');
     // Small delay to allow cookies to settle after browser launch
     setTimeout(harvestSession, 3000);
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-    console.log('[Vinted HQ BG] 🔑 Extension installed/updated — scheduling session harvest.');
+    console.log('[Seller HQ BG] 🔑 Extension installed/updated — scheduling session harvest.');
     setTimeout(harvestSession, 2000);
 
     // Set up periodic harvest alarm
@@ -131,7 +131,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
     try {
         const tab = await chrome.tabs.get(activeInfo.tabId);
         if (tab.url && tab.url.includes('vinted.co.uk')) {
-            console.log('[Vinted HQ BG] 🔑 Vinted tab activated — triggering harvest.');
+            console.log('[Seller HQ BG] 🔑 Vinted tab activated — triggering harvest.');
             harvestSession();
         }
     } catch {
@@ -150,13 +150,13 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
                 if (lowerName === 'x-csrf-token') {
                     if (header.value && header.value !== cachedCsrfToken) {
                         cachedCsrfToken = header.value;
-                        console.log(`[Vinted HQ BG] 🛡️ Sniffed new CSRF token from network: ${cachedCsrfToken}`);
+                        console.log(`[Seller HQ BG] 🛡️ Sniffed new CSRF token from network: ${cachedCsrfToken}`);
                     }
                 }
                 if (lowerName === 'x-anon-id') {
                     if (header.value && header.value !== cachedAnonId) {
                         cachedAnonId = header.value;
-                        console.log(`[Vinted HQ BG] 🛡️ Sniffed new Anon ID from network: ${cachedAnonId}`);
+                        console.log(`[Seller HQ BG] 🛡️ Sniffed new Anon ID from network: ${cachedAnonId}`);
                     }
                 }
                 if (lowerName === 'user-agent') {
@@ -181,12 +181,12 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.url && changeInfo.url.includes('hq_sync=true')) {
         chrome.tabs.update(tabId, { active: false });
-        console.log(`[Vinted HQ BG] 🔇 Deactivated sync tab ${tabId} — running in background`);
+        console.log(`[Seller HQ BG] 🔇 Deactivated sync tab ${tabId} — running in background`);
     }
 });
 
 chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.MessageSender, sendResponse: any) => {
-    console.log('[Vinted HQ BG] Received message:', message);
+    console.log('[Seller HQ BG] Received message:', message);
 
     if (message.type === 'GET_SNIFFED_TOKENS') {
         sendResponse({ ok: true, csrfToken: cachedCsrfToken, anonId: cachedAnonId });
@@ -200,7 +200,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
         const token = message.token;
         if (token && typeof token === 'string' && token !== cachedCsrfToken) {
             cachedCsrfToken = token;
-            console.log(`[Vinted HQ BG] 🔑 CSRF token received from content script: ${token.slice(0, 10)}...`);
+            console.log(`[Seller HQ BG] 🔑 CSRF token received from content script: ${token.slice(0, 10)}...`);
             // Re-harvest session with the fresh CSRF token
             harvestSession();
         }
@@ -218,7 +218,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
         const { method, path, body } = message;
         const url = `${BRIDGE_BASE}${path}`;
 
-        console.log(`[Vinted HQ BG] Fetching ${method || 'GET'} ${url}`);
+        console.log(`[Seller HQ BG] Fetching ${method || 'GET'} ${url}`);
 
         const options: RequestInit = {
             method: method || 'GET',
@@ -230,13 +230,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
 
         fetch(url, options)
             .then(async (res) => {
-                console.log(`[Vinted HQ BG] Fetch response status: ${res.status}`);
+                console.log(`[Seller HQ BG] Fetch response status: ${res.status}`);
                 const data = await res.json();
-                console.log('[Vinted HQ BG] Sending response back to content script:', data);
+                console.log('[Seller HQ BG] Sending response back to content script:', data);
                 sendResponse({ ok: true, data });
             })
             .catch((err) => {
-                console.error('[Vinted HQ BG] Fetch error:', err);
+                console.error('[Seller HQ BG] Fetch error:', err);
                 sendResponse({ ok: false, error: String(err) });
             });
 
@@ -245,7 +245,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
 
     if (message.type === 'GET_VINTED_COOKIES') {
         chrome.cookies.getAll({ domain: '.vinted.co.uk' }, (cookies) => {
-            console.log(`[Vinted HQ BG] Fetched ${cookies.length} cookies for vinted.co.uk`);
+            console.log(`[Seller HQ BG] Fetched ${cookies.length} cookies for vinted.co.uk`);
             sendResponse({ ok: true, cookies });
         });
         return true;
@@ -259,7 +259,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
         }
 
         const { catalogId, brandId, statusId } = message;
-        console.log(`[Vinted HQ BG] Executing Main World attributes fetch on tab ${tabId} for category ${catalogId}...`);
+        console.log(`[Seller HQ BG] Executing Main World attributes fetch on tab ${tabId} for category ${catalogId}...`);
 
         chrome.scripting.executeScript({
             target: { tabId },
@@ -291,15 +291,15 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
             .then((injectionResults: any[]) => {
                 const result = injectionResults?.[0]?.result;
                 if (result && !result.error) {
-                    console.log('[Vinted HQ BG] ✅ Main World attributes fetch succeeded:', result);
+                    console.log('[Seller HQ BG] ✅ Main World attributes fetch succeeded:', result);
                     sendResponse({ ok: true, data: result });
                 } else {
-                    console.warn('[Vinted HQ BG] ⚠️ Main World attributes fetch returned error:', result);
+                    console.warn('[Seller HQ BG] ⚠️ Main World attributes fetch returned error:', result);
                     sendResponse({ ok: false, error: result?.error || 'Empty result' });
                 }
             })
             .catch((err: Error) => {
-                console.error('[Vinted HQ BG] Main World executeScript failed:', err);
+                console.error('[Seller HQ BG] Main World executeScript failed:', err);
                 sendResponse({ ok: false, error: String(err) });
             });
 
@@ -314,7 +314,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
         }
 
         const { catalogId } = message;
-        console.log(`[Vinted HQ BG] Executing Main World sizes fetch on tab ${tabId} for category ${catalogId}...`);
+        console.log(`[Seller HQ BG] Executing Main World sizes fetch on tab ${tabId} for category ${catalogId}...`);
 
         chrome.scripting.executeScript({
             target: { tabId },
@@ -343,15 +343,61 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
             .then((injectionResults: any[]) => {
                 const result = injectionResults?.[0]?.result;
                 if (result && !result.error) {
-                    console.log('[Vinted HQ BG] ✅ Main World sizes fetch succeeded:', result);
+                    console.log('[Seller HQ BG] ✅ Main World sizes fetch succeeded:', result);
                     sendResponse({ ok: true, data: result });
                 } else {
-                    console.warn('[Vinted HQ BG] ⚠️ Main World sizes fetch returned error:', result);
+                    console.warn('[Seller HQ BG] ⚠️ Main World sizes fetch returned error:', result);
                     sendResponse({ ok: false, error: result?.error || 'Empty result' });
                 }
             })
             .catch((err: Error) => {
-                console.error('[Vinted HQ BG] Main World sizes executeScript failed:', err);
+                console.error('[Seller HQ BG] Main World sizes executeScript failed:', err);
+                sendResponse({ ok: false, error: String(err) });
+            });
+
+        return true;
+    }
+
+    if (message.type === 'FETCH_ITEM_MAIN_WORLD') {
+        const tabId = sender.tab?.id;
+        if (!tabId) {
+            sendResponse({ ok: false, error: 'No active tab ID' });
+            return true;
+        }
+
+        const { itemId } = message;
+        console.log(`[Seller HQ BG] Executing Main World item fetch on tab ${tabId} for item ${itemId}...`);
+
+        chrome.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: (id: string | number, csrfToken: string, anonId: string) => {
+                return fetch(`/api/v2/items/${id}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*',
+                        'locale': 'en-GB',
+                        'x-csrf-token': csrfToken,
+                        'x-anon-id': anonId,
+                    },
+                })
+                    .then((res: Response) => res.json())
+                    .catch((err: Error) => ({ error: String(err) }));
+            },
+            args: [itemId, cachedCsrfToken || '', cachedAnonId || ''],
+        })
+            .then((injectionResults: any[]) => {
+                const result = injectionResults?.[0]?.result;
+                if (result && !result.error) {
+                    console.log('[Seller HQ BG] ✅ Main World item fetch succeeded');
+                    sendResponse({ ok: true, data: result });
+                } else {
+                    console.warn('[Seller HQ BG] ⚠️ Main World item fetch returned error:', result);
+                    sendResponse({ ok: false, error: result?.error || 'Empty result' });
+                }
+            })
+            .catch((err: Error) => {
+                console.error('[Seller HQ BG] Main World executeScript failed:', err);
                 sendResponse({ ok: false, error: String(err) });
             });
 
@@ -364,7 +410,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
             return false;
         }
 
-        console.log(`[Vinted HQ BG] Executing Main World script on tab ${sender.tab.id}...`);
+        console.log(`[Seller HQ BG] Executing Main World script on tab ${sender.tab.id}...`);
 
         chrome.scripting.executeScript({
             target: { tabId: sender.tab.id },
@@ -398,7 +444,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
             .then((injectionResults) => {
                 for (const frameResult of injectionResults) {
                     if (frameResult.result) {
-                        console.log(`[Vinted HQ BG] Successfully extracted token from Main World:`, frameResult.result);
+                        console.log(`[Seller HQ BG] Successfully extracted token from Main World:`, frameResult.result);
                         sendResponse({ ok: true, token: frameResult.result });
                         return;
                     }
@@ -406,7 +452,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
                 sendResponse({ ok: false, error: 'Token not found in Main World evaluation.' });
             })
             .catch((err) => {
-                console.error('[Vinted HQ BG] ExecuteScript failed:', err);
+                console.error('[Seller HQ BG] ExecuteScript failed:', err);
                 sendResponse({ ok: false, error: String(err) });
             });
 

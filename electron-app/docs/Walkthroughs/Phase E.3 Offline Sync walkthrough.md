@@ -3,10 +3,10 @@
 ## Audit Results (No Code Changes Needed)
 
 ### Task A: Safe Shallow Merge ✅
-The DB layer already uses `COALESCE(?, existing_value)` for every column in [upsertInventoryItem](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryDb.ts#L173-L241), and [upsertFromVintedItem](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryService.ts#L891-L1099) only passes non-null values. Deep sync fields are never overwritten by shallow refreshes.
+The DB layer already uses `COALESCE(?, existing_value)` for every column in [upsertInventoryItem](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryDb.ts#L173-L241), and [upsertFromVintedItem](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryService.ts#L891-L1099) only passes non-null values. Deep sync fields are never overwritten by shallow refreshes.
 
 ### Task B: Offline-First Boot ✅
-[Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx) loads from local SQLite on mount via [getWardrobe()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/preload.ts#155-157). API sync is user-triggered only. No network dependency on boot.
+[Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx) loads from local SQLite on mount via [getWardrobe()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/preload.ts#155-157). API sync is user-triggered only. No network dependency on boot.
 
 ## Changes Made
 

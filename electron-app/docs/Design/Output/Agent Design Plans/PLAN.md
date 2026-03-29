@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Status:** DRAFT — Awaiting Architect Approval
-**Reference:** [SPEC.md](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/docs/Design/SPEC.md) is the single source of truth for all values referenced herein.
+**Reference:** [SPEC.md](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/docs/Design/SPEC.md) is the single source of truth for all values referenced herein.
 
 ---
 
@@ -23,7 +23,7 @@ This roadmap is organized into **4 sequential phases**. Each phase is assigned t
 
 ### Step 1.1 — Inject SVG Filter into DOM Root
 
-**File:** [App.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/App.tsx)
+**File:** [App.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/App.tsx)
 
 1. At the **very top** of the root `<div>` returned by `App()` (line 198), insert the SVG filter block defined in SPEC.md §5.
 2. The SVG element must be the **first child** of the root flex container `<div>`.
@@ -32,7 +32,7 @@ This roadmap is organized into **4 sequential phases**. Each phase is assigned t
 
 ### Step 1.2 — Rewrite `src/theme.ts`
 
-**File:** [theme.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/theme.ts)
+**File:** [theme.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/theme.ts)
 
 1. **Replace** the entire `colors` object with the schema from SPEC.md §1.
 2. **Keep** the `font` object structure but verify values match SPEC.md §2 (no changes expected).
@@ -46,7 +46,7 @@ This roadmap is organized into **4 sequential phases**. Each phase is assigned t
 
 ### Step 1.3 — Rewrite `src/index.css`
 
-**File:** [index.css](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/index.css)
+**File:** [index.css](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/index.css)
 
 1. **Replace** the base reset rules with the global reset from SPEC.md §9.
 2. Set `background-color: #FAF9F6` on `html, body, #root`.

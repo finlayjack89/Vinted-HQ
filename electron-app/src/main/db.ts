@@ -241,6 +241,33 @@ function migrate(database: Database.Database): void {
       username TEXT PRIMARY KEY,
       created_at INTEGER DEFAULT (unixepoch())
     );
+
+    -- Item Intelligence: completed analysis reports
+    CREATE TABLE IF NOT EXISTS intelligence_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      local_id INTEGER,                     -- FK to inventory_master (nullable for feed items)
+      vinted_item_id INTEGER,               -- Vinted item ID
+      mode TEXT NOT NULL,                    -- 'auth_only', 'market_only', 'full'
+      report_json TEXT NOT NULL,             -- Full IntelligenceReport as JSON
+      verdict TEXT,                          -- Auth verdict string (for quick filtering)
+      confidence REAL,                       -- Top-level confidence (for quick filtering)
+      listing_title TEXT,
+      listing_price REAL,
+      duration_seconds REAL,
+      cost_usd REAL,
+      created_at INTEGER DEFAULT (unixepoch()),
+      updated_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_intel_reports_local ON intelligence_reports(local_id);
+    CREATE INDEX IF NOT EXISTS idx_intel_reports_vinted ON intelligence_reports(vinted_item_id);
+    CREATE INDEX IF NOT EXISTS idx_intel_reports_created ON intelligence_reports(created_at);
+
+    -- Item Intelligence: encrypted API key storage
+    CREATE TABLE IF NOT EXISTS intelligence_api_keys (
+      key_name TEXT PRIMARY KEY,             -- 'gemini', 'anthropic', 'perplexity', 'serpapi'
+      encrypted_value TEXT NOT NULL,         -- Base64-encoded safeStorage encrypted blob
+      updated_at INTEGER DEFAULT (unixepoch())
+    );
   `);
   // Migration: add sniper_id to purchases if missing
   const cols = database.prepare("PRAGMA table_info(purchases)").all() as { name: string }[];

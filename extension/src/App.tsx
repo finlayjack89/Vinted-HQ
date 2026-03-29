@@ -26,7 +26,7 @@ function App() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', textAlign: 'center' }}>
-      <h2>Vinted HQ</h2>
+      <h2>Seller HQ</h2>
       <p style={{ fontSize: '18px', fontWeight: 'bold' }}>
         Connection: {isConnected === null ? '⏳' : isConnected ? '🟢 Connected' : '🔴 Disconnected'}
       </p>

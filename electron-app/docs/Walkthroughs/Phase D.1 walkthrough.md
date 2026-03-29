@@ -2,26 +2,26 @@
 
 ## Changes Made
 
-### 1. [simulateReactClick()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#108-138) — Hardware Event Simulation
-Added to [content.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#L108-L138) after [setReactInputValue](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#85-107).
+### 1. [simulateReactClick()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#108-138) — Hardware Event Simulation
+Added to [content.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#L108-L138) after [setReactInputValue](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#85-107).
 
 Dispatches the full `pointerdown → mousedown → pointerup → mouseup → click` chain with realistic coordinates from `getBoundingClientRect()`. This is required because React Headless UI / Radix components validate that pointer events precede mouse events before updating internal state.
 
-### 2. [selectDropdownOption()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#141-173) — Generic Dropdown Puppeteer
-[Lines 142-174](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#L142-L174). Shared logic for all three dropdowns:
+### 2. [selectDropdownOption()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#141-173) — Generic Dropdown Puppeteer
+[Lines 142-174](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#L142-L174). Shared logic for all three dropdowns:
 1. Finds the trigger element by selector
-2. Clicks it with [simulateReactClick](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#108-138)
+2. Clicks it with [simulateReactClick](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#108-138)
 3. Waits 200ms for React portal render
 4. Clicks the option by `data-testid`
 5. Falls back to `document.body.click()` to close the menu if option isn't found
 
 ### 3. Three Dropdown Functions
-- [selectCondition](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#L176-L182) — targets `condition-{statusId}`
-- [selectSize](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#L184-L190) — targets `size-{sizeId}`
-- [selectPackageSize](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#L192-L198) — targets `package_size-{packageSizeId}`
+- [selectCondition](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#L176-L182) — targets `condition-{statusId}`
+- [selectSize](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#L184-L190) — targets `size-{sizeId}`
+- [selectPackageSize](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#L192-L198) — targets `package_size-{packageSizeId}`
 
-### 4. Orchestration in [runAssistedEdit()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#199-277)
-[Lines 359-384](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#L359-L384). Runs **sequentially** after text field fills to prevent React modal focus conflicts. Each wrapped in try/catch for resilience.
+### 4. Orchestration in [runAssistedEdit()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#199-277)
+[Lines 359-384](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#L359-L384). Runs **sequentially** after text field fills to prevent React modal focus conflicts. Each wrapped in try/catch for resilience.
 
 ### 5. Python Bridge SQL Fix
 ```diff:server.py

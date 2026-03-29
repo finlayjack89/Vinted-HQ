@@ -180,6 +180,7 @@ def _build_write_headers(
     """Build headers for write operations (POST/PUT/DELETE) that require CSRF."""
     headers = _build_headers(cookie, referer, transport_mode=transport_mode, user_agent=user_agent)
     headers["Content-Type"] = "application/json"
+    headers["locale"] = "en-GB"
     # Prefer the explicitly supplied token; fall back to deriving from access_token_web.
     effective_csrf = csrf_token or _extract_csrf_from_cookie(cookie)
     if effective_csrf:
@@ -1885,10 +1886,86 @@ def edit_listing(
     headers = _build_write_headers(
         cookie, csrf_token, anon_id,
         referer=f"{BASE_URL}/items/{item_id}/edit",
-        upload_form=True,
+        upload_form=False,  # HAR-verified: successful edits do NOT send x-upload-form
         transport_mode=transport_mode,
         user_agent=user_agent,
     )
+
+    # ── Auto-fetch photo IDs if not provided ──
+    # HAR-verified: assigned_photos is REQUIRED. Use the same authenticated session
+    # to fetch the item's photo IDs from Vinted's API before the PUT.
+    if "assigned_photos" not in item_data:
+        import json as _json
+        photo_debug = {"item_id": item_id, "status": "starting"}
+        try:
+            # Use a SEPARATE session for photo fetch to avoid contaminating the edit session
+            # (redirects to vinted.fr corrupt cookie jar)
+            from curl_cffi import requests as cf_requests
+            photo_session = cf_requests.Session(impersonate="chrome")
+            
+            photo_api_url = f"{BASE_URL}/api/v2/items/{item_id}"
+            photo_api_headers = {
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-GB,en;q=0.9",
+                "Cookie": cookie,  # Pass cookie directly in header
+                "Referer": f"{BASE_URL}/items/{item_id}/edit",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+                "locale": "en-GB",
+            }
+            if user_agent:
+                photo_api_headers["User-Agent"] = user_agent
+            
+            api_resp = photo_session.get(photo_api_url, headers=photo_api_headers, timeout=15, allow_redirects=False)
+            photo_debug["api_status"] = api_resp.status_code
+            
+            assigned = []
+            if api_resp.status_code == 200:
+                try:
+                    api_data = api_resp.json()
+                    photo_debug["api_resp_keys"] = list(api_data.keys()) if isinstance(api_data, dict) else "not_dict"
+                    
+                    item_obj = api_data.get("item", api_data) if isinstance(api_data, dict) else {}
+                    photo_debug["item_obj_keys"] = list(item_obj.keys())[:10] if isinstance(item_obj, dict) else "not_dict"
+                    photos = item_obj.get("photos", []) if isinstance(item_obj, dict) else []
+                    photo_debug["photos_count"] = len(photos)
+                    
+                    if photos and isinstance(photos[0], dict):
+                        photo_debug["first_photo_keys"] = list(photos[0].keys())
+                    
+                    for p in photos:
+                        if isinstance(p, dict) and p.get("id"):
+                            pid = int(p["id"])
+                            if pid > 1000000:
+                                assigned.append({"id": pid, "orientation": 0})
+                except Exception as parse_err:
+                    photo_debug["api_parse_error"] = str(parse_err)
+                    photo_debug["api_resp_text_sample"] = api_resp.text[:500]
+            else:
+                photo_debug["api_resp_text_sample"] = api_resp.text[:300]
+            
+            photo_session.close()
+            
+            if assigned:
+                item_data["assigned_photos"] = assigned
+                photo_debug["status"] = f"success_{len(assigned)}_photos"
+                photo_debug["photo_ids"] = [a["id"] for a in assigned]
+                print(f"[edit_listing] ✅ Auto-fetched {len(assigned)} photo IDs via API: {[a['id'] for a in assigned]}")
+            else:
+                photo_debug["status"] = f"no_ids_from_api_status_{api_resp.status_code}"
+                print(f"[edit_listing] ⚠️ No photo IDs found via API (status {api_resp.status_code})")
+                
+        except Exception as e:
+            photo_debug["status"] = "exception"
+            photo_debug["error"] = str(e)
+            photo_debug["error_type"] = type(e).__name__
+            print(f"[edit_listing] ⚠️ Photo ID auto-fetch failed: {e}")
+        try:
+            with open("/tmp/vinted_photo_fetch_debug.json", "w") as f:
+                _json.dump(photo_debug, f, indent=2, default=str)
+        except Exception:
+            pass
 
     payload = {
         "item": {
@@ -1916,6 +1993,25 @@ def edit_listing(
         raise VintedError("REQUEST_FAILED", str(e))
     except Exception as e:
         raise VintedError("UNKNOWN", str(e))
+
+    if resp.status_code != 200:
+        import json as _json
+        debug_data = {
+            "status_code": resp.status_code,
+            "response_text": resp.text[:3000],
+            "request_url": api_url,
+            "request_headers": {k: (v[:50] + '...' if len(str(v)) > 50 else v) for k, v in headers.items()},
+            "has_csrf": "x-csrf-token" in headers,
+            "payload_keys": list(payload.get('item', {}).keys()),
+            "full_payload": payload,
+        }
+        try:
+            with open("/tmp/vinted_edit_debug.json", "w") as f:
+                _json.dump(debug_data, f, indent=2, default=str)
+        except Exception:
+            pass
+        print(f"[edit_listing] ❌ Response {resp.status_code}: {resp.text[:2000]}")
+        print(f"[edit_listing] 📦 Debug written to /tmp/vinted_edit_debug.json")
 
     return _handle_response(resp, allow_statuses=(200,), proxy=proxy)
 

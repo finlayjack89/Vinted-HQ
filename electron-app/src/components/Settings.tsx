@@ -296,7 +296,7 @@ export default function Settings() {
     checking: '🔍 Checking for extension session data...',
     synced: '✅ Session synced from Chrome Extension!',
     polling: '🌐 Opened Vinted in Chrome — waiting for extension (up to 45s)...',
-    failed: '⚠️ Extension sync failed. Make sure Vinted HQ extension is installed and Chrome is signed in.',
+    failed: '⚠️ Extension sync failed. Make sure Seller HQ extension is installed and Chrome is signed in.',
   };
 
   const handleSyncFromExtension = async () => {
@@ -1239,6 +1239,122 @@ const handleFetchVintedSettings = async () => {
           <option value="cheapest">Cheapest</option>
         </select>
       </Section>
+
+      {/* ─── Item Intelligence API Keys ─────────────────── */}
+      <ApiKeysSection showSaved={showSaved} />
     </div>
+  );
+}
+
+/* ─── API Keys Section ──────────────────────────────────────── */
+
+type ApiKeyEntry = { name: 'gemini' | 'anthropic' | 'perplexity' | 'serpapi'; label: string; placeholder: string };
+
+const API_KEY_ENTRIES: ApiKeyEntry[] = [
+  { name: 'gemini', label: 'Google Gemini', placeholder: 'AIzaSy...' },
+  { name: 'anthropic', label: 'Anthropic Claude', placeholder: 'sk-ant-...' },
+  { name: 'perplexity', label: 'Perplexity', placeholder: 'pplx-...' },
+  { name: 'serpapi', label: 'SerpAPI', placeholder: '0bd4...' },
+];
+
+function ApiKeysSection({ showSaved }: { showSaved: () => void }) {
+  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({});
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.vinted.getApiKeys().then((keys) => {
+      const status: Record<string, boolean> = {};
+      for (const k of keys) status[k.name] = k.hasKey;
+      setKeyStatus(status);
+    });
+  }, []);
+
+  const handleSave = async (entry: ApiKeyEntry) => {
+    const value = inputs[entry.name]?.trim();
+    if (!value) return;
+    setSaving(entry.name);
+    await window.vinted.setApiKey(entry.name, value);
+    setKeyStatus((prev) => ({ ...prev, [entry.name]: true }));
+    setInputs((prev) => ({ ...prev, [entry.name]: '' }));
+    setSaving(null);
+    showSaved();
+  };
+
+  const handleClear = async (entry: ApiKeyEntry) => {
+    await window.vinted.clearApiKey(entry.name);
+    setKeyStatus((prev) => ({ ...prev, [entry.name]: false }));
+    showSaved();
+  };
+
+  return (
+    <section
+      style={{
+        ...glassPanel,
+        padding: spacing['2xl'],
+        marginBottom: spacing['3xl'],
+      }}
+    >
+      <h3 style={sectionTitle}>🧠 Item Intelligence — API Keys</h3>
+      <p style={{ ...sectionDesc, marginBottom: spacing.lg }}>
+        Keys are encrypted via macOS Keychain and never stored in plain text. Required for item analysis.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+        {API_KEY_ENTRIES.map((entry) => (
+          <div
+            key={entry.name}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: spacing.sm,
+              padding: spacing.md,
+              borderRadius: radius.md,
+              background: keyStatus[entry.name] ? 'rgba(5,150,105,0.04)' : 'rgba(0,0,0,0.02)',
+              border: `1px solid ${keyStatus[entry.name] ? 'rgba(5,150,105,0.15)' : colors.separator}`,
+            }}
+          >
+            <div style={{ minWidth: 120, fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colors.textPrimary }}>
+              {entry.label}
+            </div>
+            {keyStatus[entry.name] ? (
+              <>
+                <span style={badge(colors.successBg, colors.success)}>✓ Configured</span>
+                <div style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  onClick={() => handleClear(entry)}
+                  style={{ ...btnSmall, ...dangerText, padding: '4px 10px' }}
+                >
+                  Remove
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  type="password"
+                  placeholder={entry.placeholder}
+                  value={inputs[entry.name] || ''}
+                  onChange={(e) => setInputs((prev) => ({ ...prev, [entry.name]: e.target.value }))}
+                  style={{ ...recessedInput, flex: 1, padding: '8px 12px', fontSize: font.size.sm }}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSave(entry)}
+                  disabled={!inputs[entry.name]?.trim() || saving === entry.name}
+                  style={{
+                    ...btnPrimary,
+                    ...btnSmall,
+                    opacity: inputs[entry.name]?.trim() ? 1 : 0.4,
+                    cursor: inputs[entry.name]?.trim() ? 'pointer' : 'default',
+                  }}
+                >
+                  {saving === entry.name ? '...' : 'Save'}
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "Vinted HQ Extension",
+    "name": "Seller HQ Extension",
     "version": "1.0.0",
-    "description": "Companion extension for Vinted HQ Desktop App",
+    "description": "Companion extension for Seller HQ Desktop App",
     "action": {
         "default_popup": "index.html"
     },

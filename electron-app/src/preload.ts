@@ -344,4 +344,47 @@ contextBridge.exposeInMainWorld('vinted', {
     ipcRenderer.invoke('bridge:fetchUserCards', proxy),
   fetchUserAddresses: (proxy?: string) =>
     ipcRenderer.invoke('bridge:fetchUserAddresses', proxy),
+
+  // ─── Item Intelligence ──────────────────────────────────────────────────────
+
+  analyzeItem: (params: {
+    mode: 'auth_only' | 'market_only' | 'full';
+    tier?: 'essential' | 'pro' | 'ultra';
+    deep_research?: boolean;
+    listing_title: string;
+    listing_description?: string;
+    listing_price_gbp: number;
+    listing_url?: string;
+    photo_urls: string[];
+    brand_hint?: string;
+    category_hint?: string;
+    condition_hint?: string;
+    local_id?: number;
+    vinted_item_id?: number;
+  }) => ipcRenderer.invoke('intelligence:analyze', params) as Promise<{
+    ok: boolean; report?: unknown; error?: string;
+  }>,
+  getIntelligenceReport: (localId: number) =>
+    ipcRenderer.invoke('intelligence:getReport', localId),
+  getIntelligenceReportByVintedId: (vintedItemId: number) =>
+    ipcRenderer.invoke('intelligence:getReportByVintedId', vintedItemId),
+  getIntelligenceReports: (limit?: number) =>
+    ipcRenderer.invoke('intelligence:getReports', limit ?? 50),
+  onIntelligenceProgress: (callback: (data: {
+    step: string; status: string; message: string;
+    progress_pct?: number; data?: Record<string, unknown>;
+  }) => void) => {
+    const handler = (_: unknown, data: {
+      step: string; status: string; message: string;
+      progress_pct?: number; data?: Record<string, unknown>;
+    }) => callback(data);
+    ipcRenderer.on('intelligence:progress', handler);
+    return () => ipcRenderer.removeListener('intelligence:progress', handler);
+  },
+  getApiKeys: () =>
+    ipcRenderer.invoke('intelligence:getApiKeys') as Promise<{ name: string; hasKey: boolean }[]>,
+  setApiKey: (name: 'gemini' | 'anthropic' | 'perplexity' | 'serpapi', value: string) =>
+    ipcRenderer.invoke('intelligence:setApiKey', name, value),
+  clearApiKey: (name: 'gemini' | 'anthropic' | 'perplexity' | 'serpapi') =>
+    ipcRenderer.invoke('intelligence:clearApiKey', name),
 });

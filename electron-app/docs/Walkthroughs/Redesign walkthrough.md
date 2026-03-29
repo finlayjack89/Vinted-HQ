@@ -8,9 +8,9 @@ Implemented the full motion system and Liquid Glass rendering pipeline as specif
 ### New Files
 | File | Purpose |
 |---|---|
-| [useMousePosition.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/hooks/useMousePosition.ts) | Tracks mouse → local coords → injects `--mouse-x`/`--mouse-y` via `style.setProperty()` (bypasses VDOM) |
-| [useScrollDegradation.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/hooks/useScrollDegradation.ts) | Detects fast scrolling → disables SVG filter → re-engages after scroll stops |
-| [GlassSkeleton.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/GlassSkeleton.tsx) | Frosted glass skeleton loader with specular shimmer animation |
+| [useMousePosition.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/hooks/useMousePosition.ts) | Tracks mouse → local coords → injects `--mouse-x`/`--mouse-y` via `style.setProperty()` (bypasses VDOM) |
+| [useScrollDegradation.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/hooks/useScrollDegradation.ts) | Detects fast scrolling → disables SVG filter → re-engages after scroll stops |
+| [GlassSkeleton.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/GlassSkeleton.tsx) | Frosted glass skeleton loader with specular shimmer animation |
 
 ### Modified Files
 
@@ -5887,8 +5887,8 @@ graph TD
 
 ## Verification
 
-- **TypeScript `tsc --noEmit`**: All errors are pre-existing in untouched files ([Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx), `checkoutService.ts`, `bridge.ts`, `searchUrls.ts`). Zero new errors introduced by motion changes.
-- **Legacy CSS**: `@keyframes` and `.animate-*` classes retained in [index.css](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/index.css) since out-of-scope components ([Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx), [Purchases.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Purchases.tsx), [ProxyStatus.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/ProxyStatus.tsx)) still reference them.
+- **TypeScript `tsc --noEmit`**: All errors are pre-existing in untouched files ([Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx), `checkoutService.ts`, `bridge.ts`, `searchUrls.ts`). Zero new errors introduced by motion changes.
+- **Legacy CSS**: `@keyframes` and `.animate-*` classes retained in [index.css](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/index.css) since out-of-scope components ([Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx), [Purchases.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Purchases.tsx), [ProxyStatus.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/ProxyStatus.tsx)) still reference them.
 
 > [!NOTE]
 > Feed virtualization (`react-window`) and scroll degradation integration are structurally ready via the installed deps and hooks but require layout restructuring to wire into the CSS Grid. These are documented in the implementation plan as T4.4–T4.5.

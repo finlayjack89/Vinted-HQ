@@ -16,7 +16,7 @@ The Electron edit modal's Materials and Sizes dropdowns were empty for the Sanda
 
 ## Solution
 
-Use the Chrome Extension's **background service worker** to execute [fetch()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/fetch_interceptor.ts#16-53) in Vinted's **Main World** context via `chrome.scripting.executeScript`. This uses Vinted's own Datadome-patched [fetch()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/fetch_interceptor.ts#16-53), which passes WAF fingerprinting because the call originates from the page's JavaScript context.
+Use the Chrome Extension's **background service worker** to execute [fetch()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/fetch_interceptor.ts#16-53) in Vinted's **Main World** context via `chrome.scripting.executeScript`. This uses Vinted's own Datadome-patched [fetch()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/fetch_interceptor.ts#16-53), which passes WAF fingerprinting because the call originates from the page's JavaScript context.
 
 ```
 Content Script → FETCH_ATTRIBUTES_MAIN_WORLD → Background SW → executeScript(MAIN WORLD)
@@ -34,8 +34,8 @@ Content Script → FETCH_ATTRIBUTES_MAIN_WORLD → Background SW → executeScri
 
 | File | Change |
 |------|--------|
-| [background.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/background.ts) | Added `FETCH_SIZES_MAIN_WORLD` handler + 404 hardening |
-| [content.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts) | Replaced `extractStaticOntologies()` with Main World fetch calls + empty-sizes guard |
+| [background.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/background.ts) | Added `FETCH_SIZES_MAIN_WORLD` handler + 404 hardening |
+| [content.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts) | Replaced `extractStaticOntologies()` with Main World fetch calls + empty-sizes guard |
 
 ```diff:background.ts
 /**
@@ -1814,15 +1814,15 @@ if (window.location.pathname.startsWith('/member/items')) {
 
 ### Hardening Changes Applied
 
-**1. Sizes 404 Handling** — [background.ts:162-164](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/background.ts#L162)
+**1. Sizes 404 Handling** — [background.ts:162-164](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/background.ts#L162)
 
 - **Problem:** Vinted returns HTTP 404 with an HTML body for categories that have no sizes (e.g. Handbags, Jewelry). The original code called `.json()` unconditionally, which would throw a parse error on the HTML body, crashing the sizes fetch entirely.
 - **Fix:** Added `res.status === 404` check before `.json()`. Returns `{size_groups:[], code:0}` — a valid empty response that propagates cleanly through the entire pipeline.
 - **Impact:** Without this, any sizeless category would log `FETCH_SIZES_MAIN_WORLD error` and leave the content script in a partially-failed state. Now it's a clean no-op.
 
-**2. Empty Sizes Guard** — [content.ts:618-624](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/extension/src/content.ts#L618)
+**2. Empty Sizes Guard** — [content.ts:618-624](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/extension/src/content.ts#L618)
 
-- **Problem:** When `size_groups` exists but contains groups with no [sizes](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/python-bridge/server.py#981-1015) array (or 404 returns `{size_groups:[]}`), `allSizes` becomes `[]`. The Python bridge's `/ingest/sizes` validates `if not sizes` and returns 400 for empty arrays.
+- **Problem:** When `size_groups` exists but contains groups with no [sizes](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/python-bridge/server.py#981-1015) array (or 404 returns `{size_groups:[]}`), `allSizes` becomes `[]`. The Python bridge's `/ingest/sizes` validates `if not sizes` and returns 400 for empty arrays.
 - **Fix:** Added `allSizes.length > 0` guard before calling `/ingest/sizes`. Logs `ℹ️ Category has no sizes — skipping cache` instead.
 - **Impact:** Without this, every sizeless category would produce a warning-level error in the console. Now it's silent and intentional.
 
@@ -1831,7 +1831,7 @@ if (window.location.pathname.startsWith('/member/items')) {
 | Criteria | Status | Evidence |
 |----------|--------|----------|
 | **Dynamic Parameters** | ✅ | `catalogId` extracted from each item's `itemEditModel`, passed to both API calls. No hardcoded IDs. |
-| **Graceful Degradation** | ✅ | [extractFromAttributes](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx#1191-1266) defaults to `{materials:[], availableFields:[], nicheAttributes:[]}`. UI conditionally hides Size/Material sections when empty. 404s handled. |
+| **Graceful Degradation** | ✅ | [extractFromAttributes](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx#1191-1266) defaults to `{materials:[], availableFields:[], nicheAttributes:[]}`. UI conditionally hides Size/Material sections when empty. 404s handled. |
 | **Idempotent Caching** | ✅ | Both `/ingest/materials` and `/ingest/sizes` use `ON CONFLICT(entity_type, entity_id) DO UPDATE SET`. Duplicate syncs are harmless overwrites. |
 
 ### Category Scenario Matrix

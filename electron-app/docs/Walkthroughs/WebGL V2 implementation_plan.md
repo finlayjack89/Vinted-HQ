@@ -41,7 +41,7 @@ graph TD
 
 ### Phase 1 — ANGLE Fix + Global Canvas Promotion
 
-#### [MODIFY] [main.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main.ts)
+#### [MODIFY] [main.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main.ts)
 
 Add before the `if (started)` guard (line 19):
 ```ts
@@ -50,7 +50,7 @@ Add before the `if (started)` guard (line 19):
 app.commandLine.appendSwitch('use-angle', 'gl');
 ```
 
-#### [MODIFY] [App.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/App.tsx)
+#### [MODIFY] [App.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/App.tsx)
 
 - **Remove** `useReducedMotion` import and `showWebGLCanvas` conditional
 - **Remove** `{showWebGLCanvas && <GlassCanvas />}` branch
@@ -67,7 +67,7 @@ app.commandLine.appendSwitch('use-angle', 'gl');
 
 ### Phase 2 — Live DOM Texture via `context.drawElement`
 
-#### [MODIFY] [GlassCanvas.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/GlassCanvas.tsx)
+#### [MODIFY] [GlassCanvas.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/GlassCanvas.tsx)
 
 Complete rewrite of the rendering pipeline:
 
@@ -80,7 +80,7 @@ Complete rewrite of the rendering pipeline:
 4. **`frameloop="always"`** — switch from demand-based to continuous rendering at 160fps (the DOM capture requires continuous frames)
 5. **Remove** static `warmGradient()` sampling from the fragment shader
 
-#### [MODIFY] [glassRefraction.glsl](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/shaders/glassRefraction.glsl)
+#### [MODIFY] [glassRefraction.glsl](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/shaders/glassRefraction.glsl)
 
 Replace the static gradient with live DOM texture sampling:
 ```glsl
@@ -98,7 +98,7 @@ vec3 bg = texture2D(uDOMTexture, refractedWorldUv).rgb;
 
 ### Phase 3 — Sidebar & Modal Tracking
 
-#### [MODIFY] [App.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/App.tsx) (continued)
+#### [MODIFY] [App.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/App.tsx) (continued)
 
 - Import `useTrackCard` 
 - Attach `useTrackCard('sidebar')` to `<motion.aside>` via a merged ref
@@ -106,7 +106,7 @@ vec3 bg = texture2D(uDOMTexture, refractedWorldUv).rgb;
 - Attach `useTrackCard('modal-session')` to the session expired modal content div
 - All tracked elements get `background: transparent` and no CSS `backdrop-filter`
 
-#### [MODIFY] [PurchasesSuite.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/PurchasesSuite.tsx)
+#### [MODIFY] [PurchasesSuite.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/PurchasesSuite.tsx)
 
 - Remove `className="modal-overlay"` from the detail modal overlay
 - Remove `useMousePosition` hook import/usage from the modal (specular is now in the shader)
@@ -117,7 +117,7 @@ vec3 bg = texture2D(uDOMTexture, refractedWorldUv).rgb;
 
 ### Phase 4 — CSS Cleanup
 
-#### [MODIFY] [index.css](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/index.css)
+#### [MODIFY] [index.css](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/index.css)
 
 - **Remove** `.modal-overlay::before` (blur backdrop — WebGL handles this)
 - **Remove** `.modal-overlay > *::after` (specular rim light — shader handles this)
@@ -126,12 +126,12 @@ vec3 bg = texture2D(uDOMTexture, refractedWorldUv).rgb;
 - **Keep** `.liquid-glass-panel::before` / `::after` for non-tracked panels on other tabs (Wardrobe, Settings etc.) as a graceful baseline
 - **Remove** `.liquid-glass-skeleton` `backdrop-filter` (skeleton can remain shimmer-only)
 
-#### [MODIFY] [Feed.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Feed.tsx)
+#### [MODIFY] [Feed.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Feed.tsx)
 
 - Remove `isDegraded` prop entirely from `FeedItemCard` (no fallback mode exists)
 - Remove all conditional `backdrop-filter` logic
 
-#### [DELETE] [useReducedMotion.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/hooks/useReducedMotion.ts)
+#### [DELETE] [useReducedMotion.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/hooks/useReducedMotion.ts)
 
 No longer needed — there is no CSS fallback. If motion reduction is desired, the canvas simply reduces opacity/refraction strength rather than switching renderer.
 

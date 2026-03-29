@@ -1,5 +1,5 @@
 /**
- * Vinted HQ Content Script
+ * Seller HQ Content Script
  * Runs on https://www.vinted.co.uk/*
  *
  * Two modes:
@@ -11,8 +11,8 @@
  */
 
 // Top-level diagnostic — fires immediately when Chrome injects this script
-console.log('[Vinted HQ] Content script injected on:', window.location.href);
-console.log('[Vinted HQ] pathname:', window.location.pathname, 'search:', window.location.search);
+console.log('[Seller HQ] Content script injected on:', window.location.href);
+console.log('[Seller HQ] pathname:', window.location.pathname, 'search:', window.location.search);
 
 // ─── Proactive CSRF Token Scraping ──────────────────────────────────────────
 // On every Vinted page load, scrape the CSRF token from the DOM and push
@@ -52,7 +52,7 @@ console.log('[Vinted HQ] pathname:', window.location.pathname, 'search:', window
                         let t = null;
                         if (window.vinted && window.vinted.csrfToken) t = window.vinted.csrfToken;
                         if (!t && window.CSRFProtection && typeof window.CSRFProtection.token === 'function') t = window.CSRFProtection.token();
-                        if (t) window.postMessage({ type: 'VINTED_HQ_CSRF_SCRAPED', token: t }, '*');
+                        if (t) window.postMessage({ type: 'SELLER_HQ_CSRF_SCRAPED', token: t }, '*');
                     })();
                 `;
                 (document.head || document.documentElement).appendChild(probe);
@@ -61,7 +61,7 @@ console.log('[Vinted HQ] pathname:', window.location.pathname, 'search:', window
         }
 
         if (token) {
-            console.log(`[Vinted HQ] 🔑 CSRF token scraped from DOM: ${token.slice(0, 10)}...`);
+            console.log(`[Seller HQ] 🔑 CSRF token scraped from DOM: ${token.slice(0, 10)}...`);
             chrome.runtime.sendMessage({ type: 'SESSION_CSRF_TOKEN', token });
         }
 
@@ -79,8 +79,8 @@ console.log('[Vinted HQ] pathname:', window.location.pathname, 'search:', window
 // Listen for CSRF token scraped via Main World injection
 window.addEventListener('message', (event) => {
     if (event.source !== window) return;
-    if (event.data?.type === 'VINTED_HQ_CSRF_SCRAPED' && event.data.token) {
-        console.log(`[Vinted HQ] 🔑 CSRF token received from Main World probe: ${event.data.token.slice(0, 10)}...`);
+    if (event.data?.type === 'SELLER_HQ_CSRF_SCRAPED' && event.data.token) {
+        console.log(`[Seller HQ] 🔑 CSRF token received from Main World probe: ${event.data.token.slice(0, 10)}...`);
         chrome.runtime.sendMessage({ type: 'SESSION_CSRF_TOKEN', token: event.data.token });
     }
 });
@@ -92,10 +92,10 @@ let capturedSizes: any = null;
 window.addEventListener('message', (event) => {
     if (event.source !== window) return;
 
-    if (event.data?.type === 'VINTED_HQ_ATTRIBUTES_CAPTURED') {
+    if (event.data?.type === 'SELLER_HQ_ATTRIBUTES_CAPTURED') {
         capturedAttributes = event.data.payload;
         const catalogId = event.data.catalogId;
-        console.log(`[Vinted HQ] 🎯 Received intercepted attributes (catalog ${catalogId}):`, capturedAttributes);
+        console.log(`[Seller HQ] 🎯 Received intercepted attributes (catalog ${catalogId}):`, capturedAttributes);
 
         // POST to backend cache immediately
         if (capturedAttributes?.attributes && catalogId) {
@@ -103,16 +103,16 @@ window.addEventListener('message', (event) => {
                 catalog_id: Number(catalogId),
                 attributes: capturedAttributes.attributes
             }).then(r => {
-                if (r.ok) console.log('[Vinted HQ] ✅ Attributes cached in backend.');
-                else console.warn('[Vinted HQ] ⚠️ Attributes cache response:', r.error);
-            }).catch(err => console.error('[Vinted HQ] Failed to cache attributes:', err));
+                if (r.ok) console.log('[Seller HQ] ✅ Attributes cached in backend.');
+                else console.warn('[Seller HQ] ⚠️ Attributes cache response:', r.error);
+            }).catch(err => console.error('[Seller HQ] Failed to cache attributes:', err));
         }
     }
 
-    if (event.data?.type === 'VINTED_HQ_SIZES_CAPTURED') {
+    if (event.data?.type === 'SELLER_HQ_SIZES_CAPTURED') {
         capturedSizes = event.data.payload;
         const catalogId = event.data.catalogId;
-        console.log(`[Vinted HQ] 🎯 Received intercepted sizes (catalog ${catalogId}):`, capturedSizes);
+        console.log(`[Seller HQ] 🎯 Received intercepted sizes (catalog ${catalogId}):`, capturedSizes);
 
         // POST to backend cache immediately
         if (capturedSizes?.size_groups && catalogId) {
@@ -130,9 +130,9 @@ window.addEventListener('message', (event) => {
                     catalog_id: Number(catalogId),
                     sizes: allSizes
                 }).then(r => {
-                    if (r.ok) console.log('[Vinted HQ] ✅ Sizes cached in backend.');
-                    else console.warn('[Vinted HQ] ⚠️ Sizes cache response:', r.error);
-                }).catch(err => console.error('[Vinted HQ] Failed to cache sizes:', err));
+                    if (r.ok) console.log('[Seller HQ] ✅ Sizes cached in backend.');
+                    else console.warn('[Seller HQ] ⚠️ Sizes cache response:', r.error);
+                }).catch(err => console.error('[Seller HQ] Failed to cache sizes:', err));
             }
         }
     }
@@ -162,13 +162,13 @@ function bridgeFetch(path: string, method = 'GET', body?: unknown): Promise<{ ok
 window.addEventListener('message', async (event) => {
     if (event.source !== window) return;
 
-    if (event.data?.type === 'VINTED_HQ_WARDROBE_SYNC') {
-        console.log('[Vinted HQ] Intercepted wardrobe Next.js state!', event.data.payload);
+    if (event.data?.type === 'SELLER_HQ_WARDROBE_SYNC') {
+        console.log('[Seller HQ] Intercepted wardrobe Next.js state!', event.data.payload);
         const result = await bridgeFetch('/ingest/wardrobe', 'POST', event.data.payload);
         if (result.ok) {
-            console.log('[Vinted HQ] Successfully synced wardrobe data to python bridge.');
+            console.log('[Seller HQ] Successfully synced wardrobe data to python bridge.');
         } else {
-            console.error('[Vinted HQ] Failed to sync wardrobe data:', result.error);
+            console.error('[Seller HQ] Failed to sync wardrobe data:', result.error);
         }
     }
 });
@@ -180,7 +180,7 @@ function injectScript() {
       if (window.__NEXT_DATA__ && window.__NEXT_DATA__.props && window.__NEXT_DATA__.props.pageProps) {
         const items = window.__NEXT_DATA__.props.pageProps.items || [];
         window.postMessage({
-          type: 'VINTED_HQ_WARDROBE_SYNC',
+          type: 'SELLER_HQ_WARDROBE_SYNC',
           payload: {
             items: items,
             timestamp: Date.now(),
@@ -263,7 +263,7 @@ async function selectDropdownOption(
 ): Promise<boolean> {
     const trigger = document.querySelector(triggerSelector);
     if (!trigger) {
-        console.warn(`[Vinted HQ] ⚠️ ${label} trigger not found: ${triggerSelector}`);
+        console.warn(`[Seller HQ] ⚠️ ${label} trigger not found: ${triggerSelector}`);
         return false;
     }
 
@@ -274,10 +274,10 @@ async function selectDropdownOption(
     const option = document.querySelector(`[data-testid="${optionTestId}"]`);
     if (option) {
         simulateReactClick(option);
-        console.log(`[Vinted HQ] ✅ Selected ${label}: ${optionTestId}`);
+        console.log(`[Seller HQ] ✅ Selected ${label}: ${optionTestId}`);
         return true;
     } else {
-        console.warn(`[Vinted HQ] ⚠️ ${label} option not found: ${optionTestId}`);
+        console.warn(`[Seller HQ] ⚠️ ${label} option not found: ${optionTestId}`);
         // Close the open menu by clicking away
         document.body.click();
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -348,14 +348,14 @@ function extractItemIdFromUrl(): string | null {
 // @ts-ignore: kept for future use
 function getSniffedTokens(): Promise<{ csrfToken: string | null; anonId: string | null }> {
     return new Promise((resolve) => {
-        console.log('[Vinted HQ CSRF] Requesting sniffed tokens from background...');
+        console.log('[Seller HQ CSRF] Requesting sniffed tokens from background...');
 
         chrome.runtime.sendMessage({ type: 'GET_SNIFFED_TOKENS' }, (response) => {
             if (response && response.ok) {
-                console.log('[Vinted HQ CSRF] Retrieved sniffed tokens:', response);
+                console.log('[Seller HQ CSRF] Retrieved sniffed tokens:', response);
                 resolve({ csrfToken: response.csrfToken, anonId: response.anonId });
             } else {
-                console.warn('[Vinted HQ CSRF] Failed to retrieve sniffed tokens.');
+                console.warn('[Seller HQ CSRF] Failed to retrieve sniffed tokens.');
                 resolve({ csrfToken: null, anonId: null });
             }
         });
@@ -372,7 +372,7 @@ function getCookiesFromBackground(): Promise<chrome.cookies.Cookie[]> {
             if (response && response.ok && response.cookies) {
                 resolve(response.cookies);
             } else {
-                console.warn('[Vinted HQ BG] Failed to fetch cookies via background.');
+                console.warn('[Seller HQ BG] Failed to fetch cookies via background.');
                 resolve([]);
             }
         });
@@ -391,7 +391,7 @@ function showBanner(message: string, type: 'info' | 'success' | 'error' = 'info'
         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         transition: opacity 0.3s ease;
     `);
-    banner.textContent = `🏠 Vinted HQ: ${message}`;
+    banner.textContent = `🏠 Seller HQ: ${message}`;
     document.body.appendChild(banner);
 
     setTimeout(() => {
@@ -403,31 +403,31 @@ function showBanner(message: string, type: 'info' | 'success' | 'error' = 'info'
 async function runAssistedEdit() {
     const itemId = extractItemIdFromUrl();
     if (!itemId) {
-        console.error('[Vinted HQ] Could not extract item_id from URL.');
+        console.error('[Seller HQ] Could not extract item_id from URL.');
         showBanner('Could not determine item ID.', 'error');
         return;
     }
 
     showBanner('Fetching local data…', 'info');
-    console.log(`[Vinted HQ] Fetching local data for item ${itemId}…`);
+    console.log(`[Seller HQ] Fetching local data for item ${itemId}…`);
 
     const result = await bridgeFetch(`/items/${itemId}`);
 
     if (!result.ok) {
-        console.error('[Vinted HQ] Bridge fetch failed:', result.error);
+        console.error('[Seller HQ] Bridge fetch failed:', result.error);
         showBanner('Failed to connect to Python Bridge.', 'error');
         return;
     }
 
     const payload = result.data;
     if (!payload?.ok) {
-        console.error('[Vinted HQ] Item not found in local DB:', payload);
+        console.error('[Seller HQ] Item not found in local DB:', payload);
         showBanner(`Item ${itemId} not found in local database.`, 'error');
         return;
     }
 
     const data = payload.data;
-    console.log('[Vinted HQ] Local data retrieved:', data);
+    console.log('[Seller HQ] Local data retrieved:', data);
 
     // Wait for the form to be rendered by Vinted's React app
     await waitForElement('input[name="title"], [data-testid="title-input"]', 8000);
@@ -443,9 +443,9 @@ async function runAssistedEdit() {
         if (titleInput && data.title) {
             setReactInputValue(titleInput, data.title);
             filled++;
-            console.log('[Vinted HQ] ✅ Filled title:', data.title);
+            console.log('[Seller HQ] ✅ Filled title:', data.title);
         }
-    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to fill title:', e); }
+    } catch (e) { console.warn('[Seller HQ] ⚠️ Failed to fill title:', e); }
 
     // ── Description ──
     try {
@@ -455,9 +455,9 @@ async function runAssistedEdit() {
         if (descInput && data.description) {
             setReactInputValue(descInput, data.description);
             filled++;
-            console.log('[Vinted HQ] ✅ Filled description');
+            console.log('[Seller HQ] ✅ Filled description');
         }
-    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to fill description:', e); }
+    } catch (e) { console.warn('[Seller HQ] ⚠️ Failed to fill description:', e); }
 
     // ── Price ──
     try {
@@ -467,9 +467,9 @@ async function runAssistedEdit() {
         if (priceInput && data.price != null) {
             setReactInputValue(priceInput, String(data.price));
             filled++;
-            console.log('[Vinted HQ] ✅ Filled price:', data.price);
+            console.log('[Seller HQ] ✅ Filled price:', data.price);
         }
-    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to fill price:', e); }
+    } catch (e) { console.warn('[Seller HQ] ⚠️ Failed to fill price:', e); }
 
     // ── Dropdown Puppeteering (Phase D.1) ──
     // Must be sequential — React Headless UI modals steal focus from each other
@@ -478,27 +478,27 @@ async function runAssistedEdit() {
             const ok = await selectCondition(data.status_id);
             if (ok) filled++;
         }
-    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to select condition:', e); }
+    } catch (e) { console.warn('[Seller HQ] ⚠️ Failed to select condition:', e); }
 
     try {
         if (data.size_id) {
             const ok = await selectSize(data.size_id);
             if (ok) filled++;
         }
-    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to select size:', e); }
+    } catch (e) { console.warn('[Seller HQ] ⚠️ Failed to select size:', e); }
 
     try {
         if (data.package_size_id) {
             const ok = await selectPackageSize(data.package_size_id);
             if (ok) filled++;
         }
-    } catch (e) { console.warn('[Vinted HQ] ⚠️ Failed to select package size:', e); }
+    } catch (e) { console.warn('[Seller HQ] ⚠️ Failed to select package size:', e); }
 
     if (filled > 0) {
         showBanner(`Autofilled ${filled} field(s) from local DB.`, 'success');
     } else {
         showBanner('Form found but no fields matched. Check console.', 'error');
-        console.warn('[Vinted HQ] Could not find any matching input fields. DOM selectors may need updating.');
+        console.warn('[Seller HQ] Could not find any matching input fields. DOM selectors may need updating.');
     }
 }
 
@@ -534,43 +534,26 @@ function findItemInData(data: any, itemId: string): any {
 }
 
 
-async function runDeepSync() {
-    const itemId = extractItemIdFromPathname();
-    if (!itemId) {
-        console.error('[Vinted HQ] Could not extract item_id from URL for deep sync.');
-        showBanner('Could not determine item ID.', 'error');
-        return;
-    }
-
-    showBanner('Deep syncing item details…', 'info');
-    console.log(`[Vinted HQ] 🔄 Deep sync: extracting item data for ${itemId} from edit page`);
-
+/**
+ * Extracts the full item object from the Next.js RSC payload or __NEXT_DATA__
+ * existing on the Vinted edit page DOM.
+ */
+function extractItemFromDOM(itemId: string): any {
     let data: any = null;
 
     // ── Strategy 1: Next.js App Router RSC Payload (self.__next_f) ──────
-    // Vinted uses Next.js App Router on the edit page. The data is embedded 
-    // in flight chunks inside script tags. The main object is 'itemEditModel'.
     const scripts = Array.from(document.querySelectorAll('script'));
-    console.log(`[Vinted HQ] Scanning ${scripts.length} script tags for itemEditModel...`);
-
     for (const script of scripts) {
         const content = script.textContent;
         if (!content || !content.includes('itemEditModel')) continue;
 
-        console.log(`[Vinted HQ] Found script containing 'itemEditModel'`);
-
-        // 1. Unescape the Next.js RSC payload string (it's often escaped JSON inside an array)
-        // A generic unescape that handles \" and \\
         const unescaped = content.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-
-        // 2. Locate the itemEditModel object start
         const match = unescaped.match(/"itemEditModel":\s*({.*})/);
         if (match) {
             const str = match[1];
             let braceCount = 0;
             let endPos = -1;
 
-            // 3. Find the matching closing brace to extract exactly this object
             for (let i = 0; i < str.length; i++) {
                 if (str[i] === '{') braceCount++;
                 else if (str[i] === '}') {
@@ -587,38 +570,47 @@ async function runDeepSync() {
                     const jsonStr = str.substring(0, endPos);
                     const parsed = JSON.parse(jsonStr);
 
-                    // Verify it matches our item ID
                     if (String(parsed.id) === itemId) {
                         data = parsed;
-                        console.log(`[Vinted HQ] Successfully extracted itemEditModel JSON`, Object.keys(data));
-
                         break;
                     }
                 } catch (e) {
-                    console.error("[Vinted HQ] Failed to parse extracted itemEditModel string:", e);
+                    console.error("[Seller HQ] Failed to parse itemEditModel string:", e);
                 }
             }
         }
     }
 
-    // ── Strategy 2: Pre-rendered State (window.__NEXT_DATA__) ──────────
-    // Fallback for older Vinted pages
+    // ── Strategy 2: Pre-rendered State (__NEXT_DATA__) ──────────
     if (!data) {
         try {
             const nextDataEl = document.getElementById('__NEXT_DATA__');
             if (nextDataEl?.textContent) {
                 const parsed = JSON.parse(nextDataEl.textContent);
                 const found = findItemInData(parsed, itemId);
-                if (found) {
-                    data = found;
-                    console.log(`[Vinted HQ] Found item in __NEXT_DATA__ element`);
-                }
+                if (found) data = found;
             }
         } catch { /* skip */ }
     }
 
+    return data;
+}
+
+async function runDeepSync() {
+    const itemId = extractItemIdFromPathname();
+    if (!itemId) {
+        console.error('[Seller HQ] Could not extract item_id from URL for deep sync.');
+        showBanner('Could not determine item ID.', 'error');
+        return;
+    }
+
+    showBanner('Deep syncing item details…', 'info');
+    console.log(`[Seller HQ] 🔄 Deep sync: extracting item data for ${itemId} from edit page`);
+
+    let data = extractItemFromDOM(itemId);
+
     if (!data) {
-        console.error('[Vinted HQ] No item data found in page.');
+        console.error('[Seller HQ] No item data found in page.');
         showBanner('No item data found. Check console for diagnostics.', 'error');
         return;
     }
@@ -636,7 +628,7 @@ async function runDeepSync() {
     const catalogId = data.catalogId || data.catalog_id;
 
     if (catalogId) {
-        console.log(`[Vinted HQ] 🔄 Fetching ontology schema via Main World for catalog ${catalogId}...`);
+        console.log(`[Seller HQ] 🔄 Fetching ontology schema via Main World for catalog ${catalogId}...`);
 
         // Fetch attributes (materials schema) via Main World
         try {
@@ -649,7 +641,7 @@ async function runDeepSync() {
 
             if (attrResult?.ok && attrResult.data?.attributes) {
                 const attrs = attrResult.data.attributes;
-                console.log(`[Vinted HQ] 🎯 Main World attributes fetch: ${attrs.length} attribute groups`);
+                console.log(`[Seller HQ] 🎯 Main World attributes fetch: ${attrs.length} attribute groups`);
                 data._hq_attributes_schema = attrResult.data;
 
                 // Forward full schema to Python bridge cache
@@ -657,14 +649,14 @@ async function runDeepSync() {
                     catalog_id: Number(catalogId),
                     attributes: attrs
                 }).then(r => {
-                    if (r.ok) console.log('[Vinted HQ] ✅ Attributes schema cached in backend.');
-                    else console.warn('[Vinted HQ] ⚠️ Attributes cache response:', r.error);
-                }).catch(err => console.error('[Vinted HQ] Failed to cache attributes:', err));
+                    if (r.ok) console.log('[Seller HQ] ✅ Attributes schema cached in backend.');
+                    else console.warn('[Seller HQ] ⚠️ Attributes cache response:', r.error);
+                }).catch(err => console.error('[Seller HQ] Failed to cache attributes:', err));
             } else {
-                console.warn('[Vinted HQ] ⚠️ Main World attributes fetch failed:', attrResult?.error);
+                console.warn('[Seller HQ] ⚠️ Main World attributes fetch failed:', attrResult?.error);
             }
         } catch (err) {
-            console.error('[Vinted HQ] ⚠️ FETCH_ATTRIBUTES_MAIN_WORLD error:', err);
+            console.error('[Seller HQ] ⚠️ FETCH_ATTRIBUTES_MAIN_WORLD error:', err);
         }
 
         // Fetch sizes via Main World
@@ -680,7 +672,7 @@ async function runDeepSync() {
                 const groups = sizesResult.data.size_groups;
                 // Flatten sizes from all groups
                 const allSizes = groups.flatMap((g: any) => g.sizes || []);
-                console.log(`[Vinted HQ] 🎯 Main World sizes fetch: ${allSizes.length} sizes from ${groups.length} groups`);
+                console.log(`[Seller HQ] 🎯 Main World sizes fetch: ${allSizes.length} sizes from ${groups.length} groups`);
                 data._hq_sizes_schema = allSizes;
 
                 // Forward to Python bridge cache (skip if this category has no sizes)
@@ -689,20 +681,20 @@ async function runDeepSync() {
                         catalog_id: Number(catalogId),
                         sizes: allSizes
                     }).then(r => {
-                        if (r.ok) console.log('[Vinted HQ] ✅ Sizes schema cached in backend.');
-                        else console.warn('[Vinted HQ] ⚠️ Sizes cache response:', r.error);
-                    }).catch(err => console.error('[Vinted HQ] Failed to cache sizes:', err));
+                        if (r.ok) console.log('[Seller HQ] ✅ Sizes schema cached in backend.');
+                        else console.warn('[Seller HQ] ⚠️ Sizes cache response:', r.error);
+                    }).catch(err => console.error('[Seller HQ] Failed to cache sizes:', err));
                 } else {
-                    console.log('[Vinted HQ] ℹ️ Category has no sizes — skipping cache.');
+                    console.log('[Seller HQ] ℹ️ Category has no sizes — skipping cache.');
                 }
             } else {
-                console.warn('[Vinted HQ] ⚠️ Main World sizes fetch failed:', sizesResult?.error);
+                console.warn('[Seller HQ] ⚠️ Main World sizes fetch failed:', sizesResult?.error);
             }
         } catch (err) {
-            console.error('[Vinted HQ] ⚠️ FETCH_SIZES_MAIN_WORLD error:', err);
+            console.error('[Seller HQ] ⚠️ FETCH_SIZES_MAIN_WORLD error:', err);
         }
     } else {
-        console.warn('[Vinted HQ] ⚠️ No catalogId found, skipping ontology fetch.');
+        console.warn('[Seller HQ] ⚠️ No catalogId found, skipping ontology fetch.');
     }
 
     // ── 4. DOM Fallbacks for RSC References ─────────────────────────────
@@ -714,7 +706,7 @@ async function runDeepSync() {
     if (!data.description || (typeof data.description === 'string' && data.description.startsWith('$') && data.description.length < 10)) {
         const domDesc = document.querySelector('textarea[name="description"]') as HTMLTextAreaElement;
         if (domDesc && domDesc.value) {
-            console.log(`[Vinted HQ] Extracting description from DOM fallback`);
+            console.log(`[Seller HQ] Extracting description from DOM fallback`);
             data.description = domDesc.value;
         }
     }
@@ -723,7 +715,7 @@ async function runDeepSync() {
     if (!data.title || (typeof data.title === 'string' && data.title.startsWith('$') && data.title.length < 10)) {
         const domTitle = document.querySelector('input[name="title"]') as HTMLInputElement;
         if (domTitle && domTitle.value) {
-            console.log(`[Vinted HQ] Extracting title from DOM fallback`);
+            console.log(`[Seller HQ] Extracting title from DOM fallback`);
             data.title = domTitle.value;
         }
     }
@@ -753,46 +745,136 @@ async function runDeepSync() {
     ];
     for (const field of rscFields) {
         if (typeof data[field] === 'string' && data[field].startsWith('$')) {
-            console.log(`[Vinted HQ] 🧹 Sanitized RSC reference: ${field} = "${data[field]}" → null`);
+            console.log(`[Seller HQ] 🧹 Sanitized RSC reference: ${field} = "${data[field]}" → null`);
             data[field] = null;
         }
     }
     // Also sanitize short-string text fields that might be RSC refs
     for (const textField of ['brandTitle', 'brand_title', 'sizeTitle', 'size_title', 'condition']) {
         if (typeof data[textField] === 'string' && data[textField].startsWith('$') && data[textField].length < 15) {
-            console.log(`[Vinted HQ] 🧹 Sanitized RSC reference: ${textField} = "${data[textField]}" → null`);
+            console.log(`[Seller HQ] 🧹 Sanitized RSC reference: ${textField} = "${data[textField]}" → null`);
             data[textField] = null;
         }
     }
 
-    console.log('[Vinted HQ] Extracted item data keys:', Object.keys(data));
-    console.log('[Vinted HQ] Posting to /ingest/item…');
+    console.log('[Seller HQ] Extracted item data keys:', Object.keys(data));
+    console.log('[Seller HQ] Posting to /ingest/item…');
 
     // POST the raw item data to the Python bridge via the background service worker
     const result = await bridgeFetch('/ingest/item', 'POST', { item: data });
 
     if (result.ok && result.data?.ok) {
-        console.log('[Vinted HQ] ✅ Deep sync complete:', result.data.message);
+        console.log('[Seller HQ] ✅ Deep sync complete:', result.data.message);
         showBanner('✅ Deep sync complete! Closing tab…', 'success');
         setTimeout(() => window.close(), 2500);
     } else {
         const err = result.data?.message || result.error || 'Unknown error';
-        console.error('[Vinted HQ] Deep sync failed:', err);
+        console.error('[Seller HQ] Deep sync failed:', err);
         showBanner(`Deep sync failed: ${err}`, 'error');
+    }
+}
+
+// ─── Photo ID Fetch (Phase D.2) ─────────────────────────────────────────────
+
+async function runPhotoIdFetch() {
+    const itemId = extractItemIdFromUrl() || extractItemIdFromPathname();
+    if (!itemId) {
+        console.error('[Seller HQ] Could not extract item_id from URL for photo fetch.');
+        showBanner('Could not determine item ID.', 'error');
+        return;
+    }
+
+    showBanner('Fetching missing photo IDs…', 'info');
+    console.log(`[Seller HQ] 🔄 Photo Fetch: extracting photo IDs for ${itemId} from DOM state`);
+
+    try {
+        const itemData = extractItemFromDOM(itemId);
+        
+        // ── Defensive True ID Extractor ──
+        // From HAR analysis, true Vinted Photo IDs are massive (e.g., `35580620028`), 
+        // entirely unlike the CDN URL fragment IDs (`1774187180`).
+        // Vinted hides these somewhere in the `itemEditModel` (possibly under `images`, `rawPhotos`, etc).
+        // We will recursively search the ENTIRE object to find the array of these IDs.
+        
+        let foundIds: number[] = [];
+        
+        function recursivelyFindMassiveIds(obj: any) {
+            if (!obj || typeof obj !== 'object') return;
+            
+            // If this is an array, check if it looks like an array of Vinted Photo Objects
+            if (Array.isArray(obj)) {
+                // If it's an array of objects with VERY large `id`s (usually > 1 Billion for new photos, 
+                // but definitely > 10,000,000 for any photo)
+                const hasMassiveIds = obj.some(item => 
+                    item && typeof item === 'object' && item.id && Number(item.id) > 10000000 
+                    && !item.title // exclude sizes/brands which also have IDs
+                );
+                
+                if (hasMassiveIds && foundIds.length === 0) {
+                    foundIds = obj
+                        .filter(item => item && item.id && Number(item.id) > 10000000)
+                        .map(item => Number(item.id));
+                }
+                
+                // If it's a flat array of massive IDs (Vinted sometimes does `photo_ids: [35580620028, ...]`)
+                const isFlatIdArray = obj.length > 0 && obj.every(item => typeof item === 'number' && item > 10000000);
+                if (isFlatIdArray && foundIds.length === 0) {
+                    foundIds = obj;
+                }
+            }
+            
+            // Recurse down
+            for (const key of Object.keys(obj)) {
+                recursivelyFindMassiveIds(obj[key]);
+            }
+        }
+        
+        recursivelyFindMassiveIds(itemData);
+
+        if (foundIds && foundIds.length > 0) {
+            // Deduplicate and map
+            const uniqueIds = Array.from(new Set(foundIds));
+            const photos = uniqueIds.map(id => ({ id, orientation: 0 }));
+            
+            console.log(`[Seller HQ] ✅ Extracted ${photos.length} true DB Photo IDs!`, uniqueIds);
+            
+            const pushResult = await bridgeFetch('/ingest/photo-ids', 'POST', {
+                item_id: parseInt(itemId, 10),
+                photos
+            });
+
+            if (pushResult.ok || pushResult.data?.ok) {
+                console.log('[Seller HQ] ✅ Photo fetch complete');
+                showBanner('✅ Photo IDs synced! Closing tab…', 'success');
+                setTimeout(() => window.close(), 1000);
+            } else {
+                console.error('[Seller HQ] Photo ID bridge push failed:', pushResult);
+                showBanner('Failed to sync photo IDs to bridge', 'error');
+            }
+        } else {
+            console.warn('[Seller HQ] ⚠️ Element `photos` array missing or empty in DOM state.');
+            showBanner('Failed to extract photos from page', 'error');
+        }
+    } catch (err) {
+        console.error('[Seller HQ] ⚠️ Error parsing HTML state for photos:', err);
     }
 }
 
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 if (window.location.pathname.startsWith('/member/items')) {
-    console.log('[Vinted HQ] Member items page detected, injecting Next.js state extractor...');
+    console.log('[Seller HQ] Member items page detected, injecting Next.js state extractor...');
     setTimeout(injectScript, 1000);
 } else if (window.location.pathname.includes('/edit') && window.location.search.includes('hq_sync=true')) {
     // Deep Sync — scrape the edit page for __NUXT_DATA__ and POST to bridge
-    console.log('[Vinted HQ] 🔄 Deep Sync mode activated (edit page)...');
+    console.log('[Seller HQ] 🔄 Deep Sync mode activated (edit page)...');
     setTimeout(runDeepSync, 2000);
 } else if (window.location.pathname.includes('/edit') && window.location.search.includes('hq_mode=true')) {
     // Assisted Edit — push local data into the Vinted edit form
-    console.log('[Vinted HQ] ✨ HQ Mode activated — running Assisted Edit...');
+    console.log('[Seller HQ] ✨ HQ Mode activated — running Assisted Edit...');
     setTimeout(runAssistedEdit, 2000);
+} else if (window.location.pathname.includes('/items/') && window.location.search.includes('hq_photo_fetch=true')) {
+    // Photo ID Fast Fetch — fetch photo IDs and post to bridge
+    console.log('[Seller HQ] 📷 Photo Sync mode activated (item page)...');
+    setTimeout(runPhotoIdFetch, 1000);
 }

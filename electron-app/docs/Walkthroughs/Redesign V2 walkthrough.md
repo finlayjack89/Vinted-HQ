@@ -1139,7 +1139,7 @@ export default function App() {
 }
 ```
 
-The `<svg><feDisplacementMap>` pipeline now lives in [index.html](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/index.html) before `<div id="root">`, making it available to all components without depending on React's render tree.
+The `<svg><feDisplacementMap>` pipeline now lives in [index.html](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/index.html) before `<div id="root">`, making it available to all components without depending on React's render tree.
 
 ### Phase B — Glass Tokens + Modal GPU Fix
 
@@ -2377,7 +2377,7 @@ code {
 
 - `.liquid-glass-card::before` — diffuse radial-gradient at `var(--mouse-x) var(--mouse-y)`
 - `.liquid-glass-card::after` — edge-masked specular highlight
-- Both auto-activate via `[style*="--mouse-x"]` selector when [useMousePosition](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/hooks/useMousePosition.ts#9-31) injects values
+- Both auto-activate via `[style*="--mouse-x"]` selector when [useMousePosition](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/hooks/useMousePosition.ts#9-31) injects values
 
 ### Phase D — Feed Virtualization
 
@@ -3201,18 +3201,18 @@ function FeedItemCard({
 }
 ```
 
-- New [VirtualizedFeedGrid](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Feed.tsx#208-292) component wraps `FixedSizeList` from `react-window`
+- New [VirtualizedFeedGrid](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Feed.tsx#208-292) component wraps `FixedSizeList` from `react-window`
 - `ResizeObserver` dynamically calculates column count from container width
-- [useScrollDegradation](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/hooks/useScrollDegradation.ts#13-68) wired to the list's outer element
-- `isDegraded` prop on [FeedItemCard](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Feed.tsx#295-461) falls back to plain `blur(16px)` during fast scroll
+- [useScrollDegradation](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/hooks/useScrollDegradation.ts#13-68) wired to the list's outer element
+- `isDegraded` prop on [FeedItemCard](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Feed.tsx#295-461) falls back to plain `blur(16px)` during fast scroll
 
 ### Phase E — Keyframe Cleanup
 
 - Deleted `@keyframes fadeIn/fadeInScale/slideUp` + `.animate-fadeIn/fadeInScale/slideUp`
-- Removed 3 `animate-fadeInScale` from [Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx)
+- Removed 3 `animate-fadeInScale` from [Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx)
 - Retained `@keyframes pulse` + `.animate-pulse` (polling indicators)
 - Retained `@keyframes shimmer` (glass skeleton)
 
 ## Verification
 
-- **`tsc --noEmit`**: Zero new errors. All 30+ errors are pre-existing in untouched files ([Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/components/Wardrobe.tsx), `checkoutService.ts`, `bridge.ts`, etc.)
+- **`tsc --noEmit`**: Zero new errors. All 30+ errors are pre-existing in untouched files ([Wardrobe.tsx](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/components/Wardrobe.tsx), `checkoutService.ts`, `bridge.ts`, etc.)

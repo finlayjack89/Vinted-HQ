@@ -6,7 +6,7 @@ Implemented the "Timestamp Sweep" pattern to detect items deleted from Vinted an
 
 ## Changes Made
 
-### 1. [db.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/db.ts) — Schema Migration
+### 1. [db.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/db.ts) — Schema Migration
 
 ```diff:db.ts
 /**
@@ -354,11 +354,11 @@ export function closeDb(): void {
 
 ---
 
-### 2. [inventoryDb.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryDb.ts) — Type + Helpers
+### 2. [inventoryDb.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryDb.ts) — Type + Helpers
 
-- Added `last_seen_at: number | null` to [InventoryMasterRow](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryDb.ts#11-49)
-- **[touchLastSeenAt(localId, syncBatchTime)](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryDb.ts#465-473)** — stamps an item as "seen" (does NOT bump `updated_at`)
-- **[sweepRemovedItems(syncBatchTime)](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryDb.ts#474-489)** — flags stale items as `'removed'`, excludes `'local_only'` and already-`'removed'` items
+- Added `last_seen_at: number | null` to [InventoryMasterRow](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryDb.ts#11-49)
+- **[touchLastSeenAt(localId, syncBatchTime)](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryDb.ts#465-473)** — stamps an item as "seen" (does NOT bump `updated_at`)
+- **[sweepRemovedItems(syncBatchTime)](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryDb.ts#474-489)** — flags stale items as `'removed'`, excludes `'local_only'` and already-`'removed'` items
 
 ```diff:inventoryDb.ts
 /**
@@ -1670,7 +1670,7 @@ export function categoryRequiresSize(catalogId: number): boolean | null {
 
 ---
 
-### 3. [inventoryService.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryService.ts) — Orchestration
+### 3. [inventoryService.ts](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryService.ts) — Orchestration
 
 **Status mapping** updated to spec order with `item_closing_action` support:
 ```
@@ -1682,8 +1682,8 @@ export function categoryRequiresSize(catalogId: number): boolean | null {
 
 **Sync flow**:
 - `syncBatchTime` generated at sync start
-- Every code path that processes an item stamps it via [touchLastSeenAt](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryDb.ts#465-473) — 7 total call sites covering: initial upsert, sold items, fast-path skips, discrepancy skip, snapshot-compare skip, discrepancy-detected, and normal upsert
-- On successful completion, [sweepRemovedItems()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Vinted-HQ/electron-app/src/main/inventoryDb.ts#474-489) flags items with stale `last_seen_at`
+- Every code path that processes an item stamps it via [touchLastSeenAt](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryDb.ts#465-473) — 7 total call sites covering: initial upsert, sold items, fast-path skips, discrepancy skip, snapshot-compare skip, discrepancy-detected, and normal upsert
+- On successful completion, [sweepRemovedItems()](file:///Users/finlaysalisbury/Desktop/Software%20Development/Antigravity/Seller-HQ/electron-app/src/main/inventoryDb.ts#474-489) flags items with stale `last_seen_at`
 - Sweep is **skipped** if any API page fails (gated on `syncCompletedSuccessfully` flag)
 
 ```diff:inventoryService.ts

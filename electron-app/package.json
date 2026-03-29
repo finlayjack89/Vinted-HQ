@@ -1,8 +1,8 @@
 {
-  "name": "vinted-uk-sniper",
-  "productName": "Vinted UK Sniper",
+  "name": "seller-hq",
+  "productName": "Seller HQ",
   "version": "0.1.0",
-  "description": "Real-time Vinted UK monitoring and sniper for desktop",
+  "description": "Seller HQ — real-time monitoring and sniper dashboard for desktop",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {

@@ -264,8 +264,8 @@ export default function Feed() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: spacing.xl,
+          gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+          gap: spacing.lg,
           alignContent: 'start',
         }}
       >
@@ -283,8 +283,8 @@ export default function Feed() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-            gap: spacing.xl,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+            gap: spacing.lg,
           }}
         >
           <GlassSkeleton height={280} count={6} />
@@ -459,7 +459,7 @@ const FeedItemCard = React.memo(function FeedItemCard({
       {/* Image */}
       <div
         style={{
-          aspectRatio: '1',
+          aspectRatio: '3/4',
           background: colors.bgElevated,
           position: 'relative',
           overflow: 'hidden',
